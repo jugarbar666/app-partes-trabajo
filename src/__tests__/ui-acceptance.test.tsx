@@ -11,7 +11,7 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     defaultBackend.login('admin@climalux-demo.es', 'Admin1234!');
   });
 
-  it('Escenario 19: El dashboard administrativo muestra las cinco tarjetas requeridas y el listado ordenado por alta descendente', () => {
+  it('Escenario 19: El dashboard administrativo muestra las cinco tarjetas requeridas y el listado ordenado por fecha prevista ascendente', () => {
     const html = renderToString(<App />);
     expect(html).toContain('1. Partes no iniciados');
     expect(html).toContain('2. Partes en curso');
@@ -23,14 +23,14 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     expect(html).toContain('Añadir a compra');
     expect(html).toContain('Fichar Entrada');
 
-    // Verificar ordenación del listado general de partes en el dashboard por fecha de alta descendente:
-    // PT-2026-0001 (alta 21/10/2026) aparece antes que PT-2026-0002 (alta 20/10/2026) y PT-2026-0003 (alta 18/10/2026)
+    // Verificar ordenación del listado general de partes en el dashboard por fecha prevista ascendente:
+    // PT-2026-0002 (previsto 21/10/2026) aparece antes que PT-2026-0001 (previsto 22/10/2026) y PT-2026-0003 (terminado al final)
     const idx1 = html.indexOf('PT-2026-0001');
     const idx2 = html.indexOf('PT-2026-0002');
     const idx3 = html.indexOf('PT-2026-0003');
-    expect(idx1).toBeGreaterThan(-1);
-    expect(idx2).toBeGreaterThan(idx1);
-    expect(idx3).toBeGreaterThan(idx2);
+    expect(idx2).toBeGreaterThan(-1);
+    expect(idx1).toBeGreaterThan(idx2);
+    expect(idx3).toBeGreaterThan(idx1);
   });
 
   it('Escenario 18 y 20: Colores obligatorios de estados (Azul, Naranja, Verde) y controles persistentes utilizables', () => {

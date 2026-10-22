@@ -430,19 +430,14 @@ const MainApplicationContent: React.FC = () => {
     .filter((w) => w.status === 'terminado' || w.status === 'cerrado')
     .reduce((acc, w) => acc + (w.total_amount_cents || 0), 0);
 
-  // Ordenación del listado general de partes en Dashboard Admin: fecha de alta descendente (Regla 5 D)
-  const dashboardSortedWorkOrders = [...activeWorkOrders].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at)
-  );
-
   // Helper: indica si un parte ya ha sido realizado / finalizado
   const isWoFinished = (status: string) => status === 'terminado' || status === 'cerrado';
 
-  // Ordenación de la agenda operativa y pantalla principal del operario:
+  // Ordenación de partes: fecha y hora prevista ascendente (el primero es el primero al que tengo que ir)
   // 1. Partes pendientes de realizar (no_iniciado, en_curso) primero para tener siempre el próximo a realizar arriba
   // 2. Partes ya realizados (terminado, cerrado) pasan al final
   // 3. Dentro de cada bloque, orden estrictamente ascendente por fecha y hora prevista
-  const agendaSortedWorkOrders = [...activeWorkOrders].sort((a, b) => {
+  const dashboardSortedWorkOrders = [...activeWorkOrders].sort((a, b) => {
     const finA = isWoFinished(a.status);
     const finB = isWoFinished(b.status);
     if (finA !== finB) {
@@ -455,6 +450,8 @@ const MainApplicationContent: React.FC = () => {
     }
     return a.code.localeCompare(b.code);
   });
+
+  const agendaSortedWorkOrders = dashboardSortedWorkOrders;
 
   // Cálculos para el Planing Semanal de la Agenda Operativa (Lunes a Viernes, días laborables)
   const todayLocalDate = getCurrentLocalDate(tz);
@@ -1216,7 +1213,7 @@ const MainApplicationContent: React.FC = () => {
                       <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <h2 className="text-sm font-extrabold text-slate-900">
-                            Listado General de Partes (De más reciente a más antiguo por fecha de alta)
+                            Listado General de Partes (Por fecha y hora prevista ascendente)
                           </h2>
                           <p className="text-xs text-slate-500 mt-0.5">
                             Pulsa sobre cualquier parte para abrir su ficha completa, aportaciones, firma o cierre administrativo
