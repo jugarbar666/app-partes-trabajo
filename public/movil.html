@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulador Terminal Móvil — Gestión de Partes</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #1e293b, #090d16);
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 18px;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 16px;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 10px 16px;
+        border-radius: 14px;
+      }
+      .toolbar span {
+        font-size: 13px;
+        font-weight: 700;
+        color: #93c5fd;
+      }
+      .toolbar button, .toolbar a {
+        background: #1e293b;
+        color: #fff;
+        border: 1px solid #334155;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .toolbar button.active, .toolbar button.active-role {
+        background: #2563eb;
+        border-color: #3b82f6;
+      }
+      .toolbar .divider {
+        width: 1px;
+        height: 22px;
+        background: rgba(148, 163, 184, 0.3);
+        margin: 0 4px;
+      }
+      .phone-frame {
+        width: 404px;
+        height: 856px;
+        background: #000;
+        border-radius: 46px;
+        padding: 12px;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.65), 0 0 0 3px #334155;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        transition: width 0.2s, height 0.2s;
+      }
+      .phone-notch {
+        width: 120px;
+        height: 22px;
+        background: #000;
+        border-bottom-left-radius: 14px;
+        border-bottom-right-radius: 14px;
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: 34px;
+        background: #f8fafc;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <span>📱 Emulador Móvil</span>
+      <button id="role-operario" class="active-role" onclick="setRole('carlos', 'role-operario')">
+        👷 Ver como Operario 1 (Carlos)
+      </button>
+      <button id="role-lucia" onclick="setRole('lucia', 'role-lucia')">
+        👷 Ver como Operario 2 (Lucía)
+      </button>
+      <button id="role-admin" onclick="setRole('admin', 'role-admin')">
+        👤 Ver como Administrador (Elena)
+      </button>
+      <div class="divider"></div>
+      <button id="btn-iphone" class="size-btn active" onclick="setSize(390, 844, 'btn-iphone')">
+        iPhone (390×844)
+      </button>
+      <button id="btn-android" class="size-btn" onclick="setSize(412, 915, 'btn-android')">
+        Android (412×915)
+      </button>
+      <button id="btn-small" class="size-btn" onclick="setSize(360, 740, 'btn-small')">
+        Compacto (360×740)
+      </button>
+      <a href="/">Volver a Escritorio</a>
+    </div>
+
+    <div id="frame" class="phone-frame">
+      <div class="phone-notch"></div>
+      <iframe id="app-iframe" src="/?mobile=1&role=operario&user=carlos" title="Vista Móvil Gestión de Partes"></iframe>
+    </div>
+
+    <script>
+      function setSize(w, h, btnId) {
+        const frame = document.getElementById('frame');
+        frame.style.width = (w + 24) + 'px';
+        frame.style.height = (h + 24) + 'px';
+        document.querySelectorAll('.toolbar .size-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(btnId).classList.add('active');
+      }
+
+      function setRole(userKey, btnId) {
+        const iframe = document.getElementById('app-iframe');
+        if (userKey === 'admin') {
+          iframe.src = '/?mobile=1&role=admin&t=' + Date.now();
+        } else {
+          iframe.src = '/?mobile=1&role=operario&user=' + userKey + '&t=' + Date.now();
+        }
+        document.querySelectorAll('#role-operario, #role-lucia, #role-admin').forEach(b => b.classList.remove('active-role'));
+        document.getElementById(btnId).classList.add('active-role');
+      }
+    </script>
+  </body>
+</html>
