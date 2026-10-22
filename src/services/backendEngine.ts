@@ -1087,7 +1087,10 @@ export class InstallationBackendEngine {
       work_order_id: wo.id,
       actor_id: user.id,
       event_type: 'REPROGRAMACION_FECHA_PREVISTA',
-      details_json: {
+      from_status: wo.status,
+      to_status: wo.status,
+      reason: reasonText,
+      metadata: {
         previous_scheduled_at: prevScheduled,
         new_scheduled_at: newScheduledIso,
         reason: reasonText,

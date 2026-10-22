@@ -858,7 +858,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const events = backend.getWorkOrderEvents(wo2!.id);
     const rescheduleEvent = events.find((e) => e.event_type === 'REPROGRAMACION_FECHA_PREVISTA');
     expect(rescheduleEvent).toBeDefined();
-    expect(rescheduleEvent?.details_json.new_scheduled_at).toBe(newDateOperator);
+    expect((rescheduleEvent?.metadata as any)?.new_scheduled_at).toBe(newDateOperator);
   });
 
   it('Escenario 23: Modificación completa y reprogramación de revisiones periódicas', () => {

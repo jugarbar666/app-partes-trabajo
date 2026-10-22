@@ -102,7 +102,7 @@ const MONTHS_ES = [
 
 const MainApplicationContent: React.FC = () => {
   const backend = defaultBackend;
-  const { notifySuccessGreen, notifyError } = useUIConfirmation();
+  const { notifySuccessGreen, notifyError, requestSaveConfirmation } = useUIConfirmation();
 
   const [tick, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
