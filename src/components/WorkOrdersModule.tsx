@@ -19,6 +19,7 @@ import {
   History,
   Download,
   PenTool,
+  ArrowLeft,
   X,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -1105,20 +1106,46 @@ export const WorkOrderDetailView: React.FC<{
 
   return (
     <div className="space-y-5">
-      <ScreenHeaderBar
-        title={`Parte ${wo.code} — ${wo.snapshot_customer_name}`}
-        subtitle={`Alta del parte: ${formatDateTimeES(wo.created_at)}`}
-        onBack={onBack}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+      {/* CABECERA PRINCIPAL DEL PARTE: NÚMERO DE PARTE, CLIENTE, VOLVER Y SITUACIÓN */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-2.5">
+        {/* Primera línea: Número de parte */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
+              Parte {wo.code}
+            </span>
+            <span className="text-slate-300 font-normal">·</span>
+            <span className="text-slate-500 text-xs">
+              Alta: {formatDateTimeES(wo.created_at)}
+            </span>
+          </div>
+        </div>
+
+        {/* Segunda línea: Nombre del cliente */}
+        <div className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+          {wo.snapshot_customer_name}
+        </div>
+
+        {/* Tercera línea (abajo en la misma línea): Botón Volver a la izquierda y Situación a la derecha */}
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-600" />
+            <span>Volver</span>
+          </button>
+
+          <div>
             <WorkOrderStatusBadge
               status={wo.status}
               archivedAt={wo.archived_at}
               deletedAt={wo.deleted_at}
             />
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {/* BLOQUE DESTACADO DE FECHA, HORA, OPERARIOS Y ACCIONES PRINCIPALES */}
       <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 sm:p-5 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-4">
