@@ -132,11 +132,11 @@ const WorkOrderMobileCard: React.FC<{
         <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white shadow-sm space-y-2">
           {/* Fila superior: etiqueta de fecha y código de parte */}
           <div className="flex items-center justify-between gap-2 border-b border-white/15 pb-2">
-            <div className="flex items-center gap-1.5 text-blue-100 text-[11px] font-extrabold uppercase tracking-wider">
-              <Calendar className="w-3.5 h-3.5 text-blue-200" />
-              <span>Fecha y Hora Prevista</span>
+            <div className="flex items-center gap-1.5 text-blue-100 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider min-w-0">
+              <Calendar className="w-3.5 h-3.5 text-blue-200 shrink-0" />
+              <span className="truncate">Fecha y Hora Prevista</span>
             </div>
-            <span className="font-mono font-extrabold text-xs px-2 py-0.5 rounded-md bg-white/15 border border-white/20 text-white shadow-2xs">
+            <span className="font-mono font-extrabold text-xs px-3 py-1 rounded-md bg-white/15 border border-white/25 text-white shadow-2xs shrink-0 whitespace-nowrap tracking-wide">
               {wo.code}
             </span>
           </div>
