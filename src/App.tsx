@@ -31,6 +31,7 @@ import {
   ChevronRight,
   Wrench,
   MapPin,
+  BookOpen,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
 import { WorkOrder, WorkOrderAssignment } from './types/domain';
@@ -1259,6 +1260,21 @@ const MainApplicationContent: React.FC = () => {
           )}
         </nav>
 
+        {/* Enlace para descargar el Manual del Operario en PDF */}
+        <div className="px-3 pb-2">
+          <a
+            href="/Manual_Operario_App_Partes_Trabajo.pdf"
+            download="Manual_Operario_App_Partes_Trabajo.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-blue-300 bg-blue-950/60 border border-blue-800/80 hover:bg-blue-900/80 hover:text-white transition shadow-2xs"
+            title="Descargar Manual Completo de Uso para Operarios (PDF con capturas)"
+          >
+            <BookOpen className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>Manual Operario (PDF)</span>
+          </a>
+        </div>
+
         {/* Pie del Sidebar: Cerrar sesión */}
         <div className="p-3 border-t border-slate-800/80">
           <button
@@ -1336,6 +1352,18 @@ const MainApplicationContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <a
+              href="/Manual_Operario_App_Partes_Trabajo.pdf"
+              download="Manual_Operario_App_Partes_Trabajo.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 transition shadow-2xs"
+              title="Descargar Manual Completo de Uso para Operarios (PDF con capturas)"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline">Manual Operario (PDF)</span>
+              <span className="sm:hidden">Manual PDF</span>
+            </a>
             <a
               href="/movil.html"
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
