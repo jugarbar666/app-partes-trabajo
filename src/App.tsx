@@ -1174,22 +1174,13 @@ const MainApplicationContent: React.FC = () => {
                   <div className="block md:hidden space-y-4" data-testid="admin-mobile-home-view">
                     <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          {company.logo_url && (
-                            <img
-                              src={company.logo_url}
-                              alt={company.company_name}
-                              className="h-9 max-w-[100px] object-contain shrink-0"
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <h1 className="text-base font-extrabold text-slate-900 truncate">
-                              Partes Pendientes ({pendingAdminWorkOrders.length})
-                            </h1>
-                            <p className="text-[11px] text-slate-500 truncate">
-                              Próximos trabajos por hora prevista (ascendente)
-                            </p>
-                          </div>
+                        <div className="min-w-0">
+                          <h1 className="text-base font-extrabold text-slate-900 truncate">
+                            Partes Pendientes ({pendingAdminWorkOrders.length})
+                          </h1>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            Próximos trabajos por hora prevista (ascendente)
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -1971,23 +1962,13 @@ const MainApplicationContent: React.FC = () => {
                 /* PANTALLA INICIAL DESPEJADA DEL OPERARIO (Regla 5 y Regla 7) */
                 <div className="space-y-4" data-testid="operator-home-view">
                   <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-center gap-3">
-                      {company.logo_url && (
-                        <img
-                          src={company.logo_url}
-                          alt={company.company_name}
-                          data-testid="operator-company-logo"
-                          className="h-10 max-w-[120px] object-contain shrink-0"
-                        />
-                      )}
-                      <div>
-                        <h1 className="text-lg font-extrabold text-slate-900">
-                          Mis Partes de Trabajo Asignados ({agendaSortedWorkOrders.length})
-                        </h1>
-                        <p className="text-xs text-slate-500">
-                          Ordenados por fecha y hora previstas de realización (ascendente)
-                        </p>
-                      </div>
+                    <div>
+                      <h1 className="text-lg font-extrabold text-slate-900">
+                        Mis Partes de Trabajo Asignados ({agendaSortedWorkOrders.length})
+                      </h1>
+                      <p className="text-xs text-slate-500">
+                        Ordenados por fecha y hora previstas de realización (ascendente)
+                      </p>
                     </div>
                   </div>
 
