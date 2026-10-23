@@ -118,12 +118,18 @@ const WorkOrderMobileCard: React.FC<{
     .filter((a) => a.work_order_id === wo.id)
     .map((a) => getUserName(a.operator_id));
 
+  const isReopenedCard =
+    wo.status === 'reabierto' ||
+    Boolean(wo.reopened_at && (!wo.closed_at || wo.reopened_at > wo.closed_at));
+
   return (
     <div
       key={wo.id}
       data-testid={`operator-card-${wo.id}`}
       className={`bg-white rounded-2xl border-2 p-4 sm:p-5 shadow-2xs space-y-3 flex flex-col justify-between ${
-        wo.status === 'en_curso'
+        isReopenedCard
+          ? 'border-[#78350f]'
+          : wo.status === 'en_curso'
           ? 'border-amber-400'
           : wo.status === 'no_iniciado'
           ? 'border-blue-400'
@@ -178,9 +184,28 @@ const WorkOrderMobileCard: React.FC<{
             {wo.snapshot_customer_name}
           </div>
           <div>
-            <WorkOrderStatusBadge status={wo.status} />
+            <WorkOrderStatusBadge
+              status={wo.status}
+              archivedAt={wo.archived_at}
+              reopenedAt={wo.reopened_at}
+              reopenReason={wo.reopen_reason}
+              closedAt={wo.closed_at}
+            />
           </div>
         </div>
+
+        {wo.reopen_reason && (
+          <div
+            data-testid={`operator-card-reopen-${wo.id}`}
+            className="p-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 text-xs shadow-2xs space-y-1"
+          >
+            <div className="flex items-center gap-1.5 font-bold text-amber-900">
+              <RotateCcw className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>Parte reabierto por administración:</span>
+            </div>
+            <p className="font-semibold text-slate-900 pl-5">"{wo.reopen_reason}"</p>
+          </div>
+        )}
 
         <div className="text-xs text-slate-700 font-medium">
           📍 {wo.snapshot_address_line}, {wo.snapshot_postal_code} {wo.snapshot_city}
@@ -270,7 +295,7 @@ const MainApplicationContent: React.FC = () => {
 
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
   const [woListFilterStatus, setWoListFilterStatus] = useState<
-    'all' | 'no_iniciado' | 'en_curso' | 'terminado' | 'cerrado'
+    'all' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado'
   >('all');
   const [woSearch, setWoSearch] = useState('');
 
@@ -564,7 +589,11 @@ const MainApplicationContent: React.FC = () => {
     .reduce((acc, w) => acc + (w.total_amount_cents || 0), 0);
 
   // Helper: indica si un parte ya ha sido realizado / finalizado
-  const isWoFinished = (status: string) => status === 'terminado' || status === 'cerrado';
+  const isWoFinished = (status: string, reopenedAt?: string | null, closedAt?: string | null) => {
+    if (status === 'reabierto') return false;
+    if (reopenedAt && (!closedAt || reopenedAt > closedAt)) return false;
+    return status === 'terminado' || status === 'cerrado';
+  };
 
   // Ordenación de partes: fecha y hora prevista estrictamente ascendente (sin tener en cuenta el estado del parte)
   const dashboardSortedWorkOrders = [...activeWorkOrders].sort((a, b) => {
@@ -589,7 +618,7 @@ const MainApplicationContent: React.FC = () => {
 
   // Partes pendientes específicos para la vista móvil despejada del Administrador (Regla: igual al operario)
   const pendingAdminWorkOrders = useMemo(
-    () => agendaSortedWorkOrders.filter((w) => w.status === 'no_iniciado' || w.status === 'en_curso'),
+    () => agendaSortedWorkOrders.filter((w) => w.status === 'no_iniciado' || w.status === 'en_curso' || w.status === 'reabierto'),
     [agendaSortedWorkOrders]
   );
   const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
@@ -859,7 +888,7 @@ const MainApplicationContent: React.FC = () => {
                 ) : (
                   <>
                     {dayWos.map((wo) => {
-                      const finished = isWoFinished(wo.status);
+                      const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
                       return (
                         <div
                           key={wo.id}
@@ -894,7 +923,14 @@ const MainApplicationContent: React.FC = () => {
                               )}
                               {formatTimeES(wo.scheduled_at, tz)} h
                             </span>
-                            <WorkOrderStatusBadge status={wo.status} compact />
+                            <WorkOrderStatusBadge
+                              status={wo.status}
+                              archivedAt={wo.archived_at}
+                              reopenedAt={wo.reopened_at}
+                              reopenReason={wo.reopen_reason}
+                              closedAt={wo.closed_at}
+                              compact
+                            />
                           </div>
 
                           {/* Nombre del cliente */}
@@ -1782,6 +1818,9 @@ const MainApplicationContent: React.FC = () => {
                           const woOps = assignments
                             .filter((a) => a.work_order_id === wo.id)
                             .map((a) => getUserName(a.operator_id));
+                          const isRowReopened =
+                            wo.status === 'reabierto' ||
+                            Boolean(wo.reopened_at && (!wo.closed_at || wo.reopened_at > wo.closed_at));
                           return (
                             <div
                               key={wo.id}
@@ -1795,7 +1834,9 @@ const MainApplicationContent: React.FC = () => {
                               <div className="flex items-start gap-3.5 min-w-0 flex-1">
                                 <div
                                   className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-white shrink-0 mt-0.5 ${
-                                    wo.status === 'no_iniciado'
+                                    isRowReopened
+                                      ? 'bg-[#78350f]'
+                                      : wo.status === 'no_iniciado'
                                       ? 'bg-blue-600'
                                       : wo.status === 'en_curso'
                                       ? 'bg-amber-500 text-slate-950'
@@ -1814,6 +1855,9 @@ const MainApplicationContent: React.FC = () => {
                                     <WorkOrderStatusBadge
                                       status={wo.status}
                                       archivedAt={wo.archived_at}
+                                      reopenedAt={wo.reopened_at}
+                                      reopenReason={wo.reopen_reason}
+                                      closedAt={wo.closed_at}
                                     />
                                     <span className="font-bold text-slate-800 truncate">
                                       {wo.snapshot_customer_name}
@@ -2332,7 +2376,7 @@ const MainApplicationContent: React.FC = () => {
                   </h2>
                   <div className="divide-y divide-slate-100 text-xs">
                     {agendaSortedWorkOrders.map((wo) => {
-                      const finished = isWoFinished(wo.status);
+                      const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
                       return (
                         <div
                           key={wo.id}
@@ -2358,7 +2402,14 @@ const MainApplicationContent: React.FC = () => {
                                 )}
                                 {formatDateES(wo.scheduled_at, tz)} · {formatTimeES(wo.scheduled_at, tz)} h
                               </span>
-                              <WorkOrderStatusBadge status={wo.status} compact />
+                              <WorkOrderStatusBadge
+                                status={wo.status}
+                                archivedAt={wo.archived_at}
+                                reopenedAt={wo.reopened_at}
+                                reopenReason={wo.reopen_reason}
+                                closedAt={wo.closed_at}
+                                compact
+                              />
                               <span className="font-bold text-slate-900 text-xs">
                                 {wo.snapshot_customer_name}
                               </span>
@@ -2457,7 +2508,7 @@ const MainApplicationContent: React.FC = () => {
 
               {currentRoute === 'work_orders_list' && (
                 <div className="flex flex-wrap gap-2">
-                  {(['all', 'no_iniciado', 'en_curso', 'terminado', 'cerrado'] as const).map(
+                  {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
                     (st) => (
                       <button
                         key={st}
@@ -2469,7 +2520,11 @@ const MainApplicationContent: React.FC = () => {
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        {st === 'all' ? 'Todos los estados activos' : st.toUpperCase()}
+                        {st === 'all'
+                          ? 'Todos los estados activos'
+                          : st === 'reabierto'
+                          ? 'REABIERTO'
+                          : st.toUpperCase()}
                       </button>
                     )
                   )}
@@ -2562,6 +2617,9 @@ const MainApplicationContent: React.FC = () => {
                                   status={wo.status}
                                   archivedAt={wo.archived_at}
                                   deletedAt={wo.deleted_at}
+                                  reopenedAt={wo.reopened_at}
+                                  reopenReason={wo.reopen_reason}
+                                  closedAt={wo.closed_at}
                                 />
                               </td>
                             )}

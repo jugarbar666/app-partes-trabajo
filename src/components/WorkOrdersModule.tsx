@@ -898,7 +898,7 @@ export const WorkOrderDetailView: React.FC<{
   const isEditable =
     wo.deleted_at === null &&
     wo.archived_at === null &&
-    (isAdmin ? wo.status !== 'cerrado' : wo.status === 'no_iniciado' || wo.status === 'en_curso');
+    (isAdmin ? wo.status !== 'cerrado' : wo.status === 'no_iniciado' || wo.status === 'en_curso' || wo.status === 'reabierto');
 
   // Ventanas emergentes (Modales) para añadir o editar elementos del parte
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
@@ -981,7 +981,7 @@ export const WorkOrderDetailView: React.FC<{
   // Modal Reapertura con motivo (Solo Admin)
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
-  const [reopenTarget, setReopenTarget] = useState<'terminado' | 'en_curso'>('terminado');
+  const [reopenTarget, setReopenTarget] = useState<'reabierto' | 'en_curso' | 'terminado'>('reabierto');
 
   const handleAddEntry = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1216,6 +1216,9 @@ export const WorkOrderDetailView: React.FC<{
               status={wo.status}
               archivedAt={wo.archived_at}
               deletedAt={wo.deleted_at}
+              reopenedAt={wo.reopened_at}
+              reopenReason={wo.reopen_reason}
+              closedAt={wo.closed_at}
             />
           </div>
         </div>
@@ -1316,7 +1319,7 @@ export const WorkOrderDetailView: React.FC<{
             </button>
           )}
 
-          {(wo.status === 'no_iniciado' || wo.status === 'en_curso') && isEditable && (
+          {(wo.status === 'no_iniciado' || wo.status === 'en_curso' || wo.status === 'reabierto') && isEditable && (
             <button
               type="button"
               data-testid="btn-open-finalize-modal"
@@ -1387,7 +1390,7 @@ export const WorkOrderDetailView: React.FC<{
             </button>
           )}
 
-          {isAdmin && (wo.status === 'cerrado' || wo.status === 'terminado' || wo.archived_at !== null) && (
+          {isAdmin && (wo.status === 'cerrado' || wo.status === 'terminado' || wo.status === 'reabierto' || wo.archived_at !== null) && (
             <button
               type="button"
               onClick={() => setShowReopenModal(true)}
@@ -2328,11 +2331,12 @@ export const WorkOrderDetailView: React.FC<{
               <label className="block font-bold text-slate-700 mb-1">Estado destino</label>
               <select
                 value={reopenTarget}
-                onChange={(e) => setReopenTarget(e.target.value as 'terminado' | 'en_curso')}
+                onChange={(e) => setReopenTarget(e.target.value as 'reabierto' | 'en_curso' | 'terminado')}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
               >
+                <option value="reabierto">Reabierto (marrón en negrita - devolver a operarios)</option>
+                <option value="en_curso">Reabrir a En Curso</option>
                 <option value="terminado">Reabrir a Terminado (solo revisión admin)</option>
-                <option value="en_curso">Reabrir a En Curso (devolver a operarios)</option>
               </select>
             </div>
             <div className="flex justify-end gap-2 pt-2">

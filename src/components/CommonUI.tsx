@@ -307,7 +307,10 @@ export const WorkOrderStatusBadge: React.FC<{
   archivedAt?: string | null;
   deletedAt?: string | null;
   compact?: boolean;
-}> = ({ status, archivedAt, deletedAt, compact }) => {
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
+  closedAt?: string | null;
+}> = ({ status, archivedAt, deletedAt, compact, reopenedAt, reopenReason, closedAt }) => {
   if (deletedAt) {
     return (
       <span
@@ -330,6 +333,26 @@ export const WorkOrderStatusBadge: React.FC<{
       </span>
     );
   }
+
+  // Regla usuario: cuando se haya abierto de nuevo que no ponga cerrado que ponga reabierto
+  // y el color que sea marrón y con las letras en negrita
+  const isReopened =
+    status === 'reabierto' ||
+    Boolean(reopenedAt && (!closedAt || reopenedAt > closedAt));
+
+  if (isReopened) {
+    return (
+      <span
+        title={reopenReason ? `Motivo de reapertura: ${reopenReason}` : 'Parte reabierto'}
+        className={`inline-flex items-center justify-center text-center whitespace-nowrap rounded-full font-bold bg-[#78350f] text-white shadow-2xs ${
+          compact ? 'px-2 py-0.5 text-[10px] gap-1' : 'px-3 py-1 text-xs gap-1.5'
+        }`}
+      >
+        🔄 {compact ? 'Reabierto' : 'Parte reabierto'}
+      </span>
+    );
+  }
+
   switch (status) {
     case 'no_iniciado':
       return (

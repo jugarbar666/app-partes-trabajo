@@ -1076,4 +1076,67 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(reopenEvent).toBeDefined();
     expect(reopenEvent?.reason).toBe(motivoReapertura);
   });
+
+  it('Escenario 24: Reapertura de parte con nuevo estado reabierto (marrón en negrita) y permisos de operario', () => {
+    // 1. Admin crea y asigna un parte a Carlos
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Hotel Puerta de Alcalá',
+      snapshot_customer_tax_id: 'A28000001',
+      snapshot_contact_name: 'Recepcionista',
+      snapshot_contact_phone: '+34 912 345 678',
+      snapshot_contact_email: 'recepcion@hotelpuerta.es',
+      snapshot_address_line: 'Calle Alcalá 120',
+      snapshot_postal_code: '28009',
+      snapshot_city: 'Madrid',
+      snapshot_province: 'Madrid',
+      planned_work: 'Sustitución de termostato',
+      scheduled_at: '2026-10-23T11:00:00.000Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+
+    // 2. Operario finaliza el trabajo y Admin cierra el parte
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    backend.finalizeWorkOrder({
+      work_order_id: wo.id,
+      total_amount_cents: 4500,
+      customer_requests_invoice: false,
+      customer_has_paid: true,
+    });
+
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.closeWorkOrder(wo.id);
+
+    // 3. Admin reabre el parte por defecto como reabierto
+    const motivo = 'Falta ajustar la curva de calefacción del termostato.';
+    const reabiertoWo = backend.reopenWorkOrder(wo.id, motivo);
+    expect(reabiertoWo.status).toBe('reabierto');
+    expect(reabiertoWo.reopen_reason).toBe(motivo);
+    expect(reabiertoWo.closed_at).toBeNull();
+
+    // 4. Operario asignado puede leer el parte reabierto y añadir nuevas notas o finalizar
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    const operWo = backend.getWorkOrderById(wo.id);
+    expect(operWo.status).toBe('reabierto');
+    expect(operWo.reopen_reason).toBe(motivo);
+
+    // Operario puede registrar trabajo adicional en el parte reabierto
+    backend.addWorkEntry(wo.id, 'Ajuste de parámetros en termostato', 'Curva calibrada a 1.2');
+    const entries = backend.getWorkEntries(wo.id);
+    expect(entries.some((e) => e.description === 'Ajuste de parámetros en termostato')).toBe(true);
+
+    // Operario puede volver a finalizar el parte (al finalizar, pasa a terminado y sale del flujo del operario)
+    backend.finalizeWorkOrder({
+      work_order_id: wo.id,
+      total_amount_cents: 4500,
+      customer_requests_invoice: false,
+      customer_has_paid: true,
+    });
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const finalWo = backend.getWorkOrderById(wo.id);
+    expect(finalWo.status).toBe('terminado');
+  });
 });

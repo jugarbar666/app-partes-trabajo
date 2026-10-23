@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
+import { WorkOrderStatusBadge } from '../components/CommonUI';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
 
@@ -98,4 +99,36 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     expect(dayWos[2].code).toBe('PT-01');
     expect(dayWos[3].code).toBe('PT-04');
   });
+
+  it('Verificación de Badge Reabierto: muestra texto Reabierto con fondo marrón (#78350f) y letras en negrita', () => {
+    // 1. Con status reabierto directo
+    const html1 = renderToString(<WorkOrderStatusBadge status="reabierto" compact />);
+    expect(html1).toContain('Reabierto');
+    expect(html1).toContain('bg-[#78350f]');
+    expect(html1).toContain('font-bold');
+    expect(html1).toContain('text-white');
+    expect(html1).not.toContain('Cerrado');
+
+    // 2. Con status cerrado pero habiendo sido reabierto posteriormente
+    const html2 = renderToString(
+      <WorkOrderStatusBadge
+        status="cerrado"
+        reopenedAt="2026-10-23T12:00:00.000Z"
+        closedAt="2026-10-23T10:00:00.000Z"
+        reopenReason="Revisar caldera de nuevo"
+        compact
+      />
+    );
+    expect(html2).toContain('Reabierto');
+    expect(html2).toContain('bg-[#78350f]');
+    expect(html2).toContain('font-bold');
+    expect(html2).not.toContain('Cerrado');
+
+    // 3. Versión extendida
+    const html3 = renderToString(<WorkOrderStatusBadge status="reabierto" />);
+    expect(html3).toContain('Parte reabierto');
+    expect(html3).toContain('bg-[#78350f]');
+    expect(html3).toContain('font-bold');
+  });
 });
+

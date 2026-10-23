@@ -24,6 +24,7 @@ import {
   WorkOrderAdminData,
   WorkOrderAssignment,
   WorkOrderEvent,
+  WorkOrderStatus,
   WorkSession,
   WorkSignature,
 } from '../types/domain';
@@ -93,8 +94,12 @@ export class InstallationBackendEngine {
           if (Array.isArray(parsed.work_orders)) {
             parsed.work_orders = parsed.work_orders.map((wo, idx) => {
               const parsedSched = parseDateRobust(wo.scheduled_at);
+              const isReopened =
+                wo.status === 'reabierto' ||
+                Boolean(wo.reopened_at && (!wo.closed_at || wo.reopened_at > wo.closed_at));
               return {
                 ...wo,
+                status: (isReopened ? 'reabierto' : wo.status) as WorkOrderStatus,
                 scheduled_at: parsedSched
                   ? parsedSched.toISOString()
                   : wo.created_at || `2026-10-2${Math.min(9, idx + 1)}T09:00:00.000Z`,
@@ -662,7 +667,7 @@ export class InstallationBackendEngine {
     if (user.role === 'admin') return true;
     // Operario: Solo los asignados y visibles en su flujo activo (no terminados, no cerrados, no archivados, no borrados)
     if (wo.deleted_at !== null || wo.archived_at !== null) return false;
-    if (wo.status !== 'no_iniciado' && wo.status !== 'en_curso') return false;
+    if (wo.status !== 'no_iniciado' && wo.status !== 'en_curso' && wo.status !== 'reabierto') return false;
     return this.isOperatorAssignedAndActive(wo.id, user.id);
   }
 
@@ -1769,13 +1774,13 @@ export class InstallationBackendEngine {
 
   /**
    * Reapertura con motivo (Solo Administrador):
-   * Elimina marca de archivo si estaba archivado y permite volver a `terminado` (revisión administrativa)
-   * o a `en_curso` (reintroduciéndolo expresamente en la lista operativa de los operarios).
+   * Elimina marca de archivo si estaba archivado y permite volver a `reabierto` (marrón, en negrita),
+   * a `terminado` (revisión administrativa) o a `en_curso`.
    */
   public reopenWorkOrder(
     workOrderId: string,
     reason: string,
-    targetStatus: 'terminado' | 'en_curso' = 'terminado'
+    targetStatus: 'reabierto' | 'en_curso' | 'terminado' = 'reabierto'
   ): WorkOrder {
     this.assertOnline();
     const admin = this.requireAdmin();
@@ -1792,7 +1797,7 @@ export class InstallationBackendEngine {
     wo.archived_at = null;
     wo.archived_by = null;
     wo.status = targetStatus;
-    if (targetStatus === 'en_curso') {
+    if (targetStatus === 'en_curso' || targetStatus === 'reabierto') {
       wo.finished_at = null;
       wo.finished_by = null;
       wo.closed_at = null;

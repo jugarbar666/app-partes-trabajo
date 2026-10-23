@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'operario';
 
-export type WorkOrderStatus = 'no_iniciado' | 'en_curso' | 'terminado' | 'cerrado';
+export type WorkOrderStatus = 'no_iniciado' | 'en_curso' | 'terminado' | 'cerrado' | 'reabierto';
 
 export type ReviewStatus = 'pendiente' | 'programada' | 'realizada' | 'cancelada';
 
