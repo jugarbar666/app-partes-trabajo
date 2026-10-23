@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Euro,
   Clock,
+  Users,
   Wrench,
   Package,
   History,
@@ -1111,66 +1112,55 @@ export const WorkOrderDetailView: React.FC<{
         }
       />
 
-      {/* BLOQUE DESTACADO DE FECHA Y HORA PREVISTA DE REALIZACIÓN */}
-      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6 text-white" />
+      {/* BLOQUE DESTACADO DE FECHA, HORA, OPERARIOS Y ACCIONES PRINCIPALES */}
+      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 sm:p-5 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+              <Clock className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-2">
+                <span>Fecha y Hora Prevista del Trabajo</span>
+              </div>
+              <div className="text-lg sm:text-xl font-extrabold tracking-tight flex flex-wrap items-center gap-3">
+                <span>{formatDateES(wo.scheduled_at)} a las {formatTimeES(wo.scheduled_at)} h</span>
+                {wo.status !== 'cerrado' && wo.archived_at === null && (
+                  <button
+                    type="button"
+                    data-testid="btn-reschedule-wo"
+                    onClick={() => setShowRescheduleModal(true)}
+                    className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    title="Reprogramar fecha y hora prevista (disponible para administradores y técnicos)"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Reprogramar</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-2">
-              <span>Fecha y Hora Prevista del Trabajo</span>
-            </div>
-            <div className="text-lg sm:text-xl font-extrabold tracking-tight flex flex-wrap items-center gap-3">
-              <span>{formatDateES(wo.scheduled_at)} a las {formatTimeES(wo.scheduled_at)} h</span>
-              {wo.status !== 'cerrado' && wo.archived_at === null && (
-                <button
-                  type="button"
-                  data-testid="btn-reschedule-wo"
-                  onClick={() => setShowRescheduleModal(true)}
-                  className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                  title="Reprogramar fecha y hora prevista (disponible para administradores y técnicos)"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Reprogramar</span>
-                </button>
-              )}
-            </div>
+
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-50 bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 w-fit">
+            <Users className="w-4 h-4 text-blue-200 shrink-0" />
+            <span className="font-bold text-white">Operarios asignados:</span>
+            <span>
+              {assignments.map((a) => getUserName(a.operator_id)).join(', ') || 'Sin asignar'}
+            </span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="px-3 py-1.5 rounded-lg bg-white/15 border border-white/20 font-semibold">
-            📍 {wo.snapshot_city}
-          </span>
-          <span className="px-3 py-1.5 rounded-lg bg-white/15 border border-white/20 font-semibold">
-            👷 {assignments.map((a) => getUserName(a.operator_id)).join(', ')}
-          </span>
+
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {wo.total_amount_cents !== null && (
             <span
               data-testid="wo-header-amount-badge"
-              className="px-3 py-1.5 rounded-lg bg-emerald-500/90 text-white font-extrabold flex items-center gap-1.5 shadow-xs border border-emerald-400"
+              className="px-3 py-1.5 rounded-lg bg-emerald-500/95 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-xs border border-emerald-400"
             >
               <Euro className="w-4 h-4" />
               <span>Importe a cobrar: {formatCentsToEUR(wo.total_amount_cents)}</span>
             </span>
           )}
-        </div>
-      </div>
 
-      {/* Acciones principales de estado según rol y colores obligatorios del PDF */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-slate-600 space-y-0.5">
-          <div>
-            <strong>Operarios asignados:</strong>{' '}
-            {assignments.map((a) => getUserName(a.operator_id)).join(', ')}
-          </div>
-          <div>
-            <strong>Versión:</strong> v{wo.version} | <strong>Hash firma:</strong>{' '}
-            <code className="text-[11px]">{wo.content_hash}</code>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
           {wo.status === 'no_iniciado' && isEditable && (
             <button
               type="button"
@@ -1180,7 +1170,7 @@ export const WorkOrderDetailView: React.FC<{
                 notifySuccessGreen('Trabajo iniciado: el parte pasa a Trabajo en curso.');
                 refreshLocal();
               }}
-              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-xs"
+              className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-xs transition"
             >
               Iniciar Trabajo
             </button>
@@ -1198,7 +1188,7 @@ export const WorkOrderDetailView: React.FC<{
                 );
                 setShowFinalizeModal(true);
               }}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs"
+              className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow-xs transition"
             >
               Finalizar Trabajo
             </button>
@@ -1222,7 +1212,7 @@ export const WorkOrderDetailView: React.FC<{
                   },
                 });
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-xs transition"
             >
               <Lock className="w-3.5 h-3.5" /> Cerrar parte
             </button>
@@ -1250,7 +1240,7 @@ export const WorkOrderDetailView: React.FC<{
                   },
                 });
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold shadow-xs"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold shadow-xs transition"
             >
               <Archive className="w-3.5 h-3.5" /> Archivar parte
             </button>
@@ -1260,7 +1250,7 @@ export const WorkOrderDetailView: React.FC<{
             <button
               type="button"
               onClick={() => setShowReopenModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/30 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition"
             >
               <RotateCcw className="w-3.5 h-3.5" /> Reabrir con motivo
             </button>
@@ -1282,7 +1272,7 @@ export const WorkOrderDetailView: React.FC<{
                   },
                 })
               }
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-red-300/40 bg-red-600/80 hover:bg-red-600 text-white text-xs font-semibold transition"
             >
               <Trash2 className="w-3.5 h-3.5" /> Borrar parte
             </button>
@@ -1296,7 +1286,7 @@ export const WorkOrderDetailView: React.FC<{
                 notifySuccessGreen('Parte restaurado desde la papelera administrativa.');
                 refreshLocal();
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition"
             >
               <RotateCcw className="w-3.5 h-3.5" /> Restaurar de Papelera
             </button>
