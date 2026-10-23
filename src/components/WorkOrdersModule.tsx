@@ -1085,36 +1085,11 @@ export const WorkOrderDetailView: React.FC<{
         onBack={onBack}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {companySettings.logo_url && (
-              <img
-                src={companySettings.logo_url}
-                alt={companySettings.company_name}
-                data-testid="wo-detail-company-logo"
-                className="h-8 max-w-[120px] object-contain rounded border border-slate-200 bg-white p-0.5"
-              />
-            )}
             <WorkOrderStatusBadge
               status={wo.status}
               archivedAt={wo.archived_at}
               deletedAt={wo.deleted_at}
             />
-            <button
-              type="button"
-              onClick={() =>
-                generateWorkOrderDetailPDF({
-                  company: companySettings,
-                  workOrder: wo,
-                  entries,
-                  sessions,
-                  materials,
-                  signature: validSignature,
-                  includeAdminReserved: false,
-                })
-              }
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-            >
-              <Download className="w-3.5 h-3.5" /> PDF Parte
-            </button>
           </div>
         }
       />
