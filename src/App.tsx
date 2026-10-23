@@ -29,6 +29,8 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  Wrench,
+  MapPin,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
 import { WorkOrder, WorkOrderAssignment } from './types/domain';
@@ -903,14 +905,19 @@ const MainApplicationContent: React.FC = () => {
                             {wo.snapshot_customer_name}
                           </div>
 
-                          {/* Trabajo a realizar */}
+                          {/* Trabajo a realizar destacado */}
                           <div
-                            className={`text-xs sm:text-[13px] font-medium leading-relaxed ${
-                              finished ? 'text-slate-500' : 'text-slate-800'
+                            className={`text-xs sm:text-[13px] font-bold leading-snug px-2.5 py-1.5 rounded-lg border transition ${
+                              finished
+                                ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                : 'bg-blue-50/90 text-blue-950 border-blue-200/80 shadow-2xs'
                             }`}
                             title={wo.planned_work}
                           >
-                            {wo.planned_work}
+                            <span className="flex items-center gap-1.5">
+                              <Wrench className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span className="break-words">{wo.planned_work}</span>
+                            </span>
                           </div>
                         </div>
                       );
@@ -1799,9 +1806,18 @@ const MainApplicationContent: React.FC = () => {
                                       </button>
                                     )}
                                   </div>
-                                  <div className="text-slate-600">
-                                    {wo.planned_work} ·{' '}
-                                    <span className="text-slate-500">
+                                  {/* Trabajo a realizar destacado */}
+                                  <div className="pt-0.5">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/90 text-blue-950 font-bold text-xs sm:text-[13px] shadow-2xs">
+                                      <Wrench className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                      <span>{wo.planned_work}</span>
+                                    </span>
+                                  </div>
+
+                                  {/* Dirección de la instalación / servicio */}
+                                  <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span>
                                       {wo.snapshot_address_line} ({wo.snapshot_city})
                                     </span>
                                   </div>
