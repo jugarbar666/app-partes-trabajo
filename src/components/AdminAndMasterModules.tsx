@@ -16,6 +16,7 @@ import { InstallationBackendEngine } from '../services/backendEngine';
 import {
   EmailActionLink,
   PhoneActionLinks,
+  PhoneInputField,
   ScreenHeaderBar,
   useUIConfirmation,
 } from './CommonUI';
@@ -606,12 +607,10 @@ export const MasterDataAndUsersModule: React.FC<{
                     <label className="block font-semibold text-slate-700 mb-1">
                       Teléfono(s)
                     </label>
-                    <input
-                      type="text"
+                    <PhoneInputField
                       value={custPhone}
-                      onChange={(e) => setCustPhone(e.target.value)}
-                      placeholder="+34 600 000 000"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-sm"
+                      onChange={setCustPhone}
+                      placeholder="600 11 22 33"
                     />
                   </div>
                   <div>
@@ -776,12 +775,10 @@ export const MasterDataAndUsersModule: React.FC<{
                     placeholder="Municipio *"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                   />
-                  <input
-                    type="text"
+                  <PhoneInputField
                     value={addrPhone}
-                    onChange={(e) => setAddrPhone(e.target.value)}
+                    onChange={setAddrPhone}
                     placeholder="Teléfono instalación"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
@@ -993,12 +990,10 @@ export const MasterDataAndUsersModule: React.FC<{
                   placeholder="NIF / CIF opcional"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                 />
-                <input
-                  type="text"
+                <PhoneInputField
                   value={supPhone}
-                  onChange={(e) => setSupPhone(e.target.value)}
+                  onChange={setSupPhone}
                   placeholder="Teléfono contacto"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                 />
                 <div className="flex justify-end gap-2 pt-2">
                   <button
@@ -1151,12 +1146,10 @@ export const MasterDataAndUsersModule: React.FC<{
                     placeholder="DNI / NIE"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                   />
-                  <input
-                    type="text"
+                  <PhoneInputField
                     value={usrPhone}
-                    onChange={(e) => setUsrPhone(e.target.value)}
+                    onChange={setUsrPhone}
                     placeholder="Teléfono"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                   />
                 </div>
                 <select
@@ -1718,11 +1711,10 @@ export const AdminSystemModule: React.FC<{
               <label className="block font-semibold text-slate-700 mb-1">
                 Teléfono de contacto
               </label>
-              <input
-                type="text"
+              <PhoneInputField
                 value={compPhone}
-                onChange={(e) => setCompPhone(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                onChange={setCompPhone}
+                placeholder="600 11 22 33"
               />
             </div>
             <div>

@@ -508,6 +508,72 @@ export function calculateNextReviewDate(
 /**
  * Normaliza un número de teléfono para enlaces tel: y WhatsApp (https://wa.me/)
  */
+/**
+ * Normaliza un número de teléfono individual para asegurar el prefijo +34
+ * si no incluye otro prefijo internacional.
+ */
+export function formatSinglePhoneWithPrefix34(phone: string): string {
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.startsWith('+34')) {
+    const digits = trimmed.slice(3).replace(/\D/g, '');
+    return digits ? `+34 ${digits}` : '+34';
+  }
+  if (trimmed.startsWith('0034')) {
+    const digits = trimmed.slice(4).replace(/\D/g, '');
+    return digits ? `+34 ${digits}` : '+34';
+  }
+  if (trimmed.startsWith('+')) {
+    return trimmed;
+  }
+
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return trimmed;
+
+  if (digits.startsWith('34') && digits.length === 11) {
+    return `+34 ${digits.slice(2)}`;
+  }
+
+  return `+34 ${digits}`;
+}
+
+/**
+ * Asegura que los números de teléfono incluyan automáticamente el prefijo +34
+ * sin que el usuario tenga que escribirlo a mano.
+ * Soporta números individuales o múltiples separados por comas/barras.
+ */
+export function formatPhoneWithPrefix34(input: string | null | undefined): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.includes(',') || trimmed.includes(';')) {
+    return trimmed
+      .split(/[,;]/)
+      .map((p) => formatSinglePhoneWithPrefix34(p.trim()))
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  return formatSinglePhoneWithPrefix34(trimmed);
+}
+
+/**
+ * Devuelve el número de teléfono local sin el prefijo +34 ni 0034
+ * para mostrarlo limpiamente en un campo que ya incluye la insignia fija "+34".
+ */
+export function cleanLocalPhone(phone: string | null | undefined): string {
+  if (!phone) return '';
+  let trimmed = phone.trim();
+  if (trimmed.startsWith('+34')) {
+    trimmed = trimmed.slice(3).trim();
+  } else if (trimmed.startsWith('0034')) {
+    trimmed = trimmed.slice(4).trim();
+  }
+  return trimmed;
+}
+
 export function normalizePhoneLinks(rawPhone: string | null | undefined): {
   valid: boolean;
   display: string;
@@ -524,9 +590,12 @@ export function normalizePhoneLinks(rawPhone: string | null | undefined): {
   }
   const intlDigits =
     digitsOnly.length === 9 && /^[6789]/.test(digitsOnly) ? `34${digitsOnly}` : digitsOnly;
+  
+  const displayFormatted = formatPhoneWithPrefix34(rawPhone);
+
   return {
     valid: true,
-    display: rawPhone.trim(),
+    display: displayFormatted || rawPhone.trim(),
     telHref: `tel:+${intlDigits}`,
     whatsappHref: `https://wa.me/${intlDigits}`,
   };

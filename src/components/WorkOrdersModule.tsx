@@ -26,6 +26,7 @@ import { InstallationBackendEngine } from '../services/backendEngine';
 import {
   EmailActionLink,
   PhoneActionLinks,
+  PhoneInputField,
   ScreenHeaderBar,
   useUIConfirmation,
   WorkOrderStatusBadge,
@@ -427,11 +428,10 @@ export const WorkOrderCreateModal: React.FC<{
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Teléfono servicio
                 </label>
-                <input
-                  type="text"
+                <PhoneInputField
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm bg-white"
+                  onChange={setContactPhone}
+                  placeholder="600 11 22 33"
                 />
               </div>
               <div>
@@ -645,12 +645,10 @@ export const WorkOrderCreateModal: React.FC<{
                   <label className="block font-semibold text-slate-700 mb-1">
                     Teléfono(s)
                   </label>
-                  <input
-                    type="text"
+                  <PhoneInputField
                     value={newCustomerPhone}
-                    onChange={(e) => setNewCustomerPhone(e.target.value)}
-                    placeholder="+34 600 000 000"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
+                    onChange={setNewCustomerPhone}
+                    placeholder="600 11 22 33"
                   />
                 </div>
                 <div>
@@ -2414,11 +2412,10 @@ export const WorkOrderDetailView: React.FC<{
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Teléfono:</label>
-                  <input
-                    type="text"
+                  <PhoneInputField
                     value={editContactPhone}
-                    onChange={(e) => setEditContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                    onChange={setEditContactPhone}
+                    placeholder="600 11 22 33"
                   />
                 </div>
                 <div>

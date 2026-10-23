@@ -31,6 +31,7 @@ import {
   calculateNextReviewDate,
   calculateReviewNoticeSchedule,
   computeWorkOrderContentHash,
+  formatPhoneWithPrefix34,
   getCurrentLocalDate,
   parseDateRobust,
   sanitizeTimezone,
@@ -426,7 +427,7 @@ export class InstallationBackendEngine {
         code: data.code.trim() || prev.code,
         name: data.name.trim(),
         tax_id: data.tax_id.trim(),
-        phones: data.phones.filter(Boolean),
+        phones: data.phones.filter(Boolean).map(formatPhoneWithPrefix34),
         emails: data.emails.filter(Boolean),
         main_address: data.main_address.trim(),
         postal_code: (data.postal_code ?? prev.postal_code ?? '').trim(),
@@ -452,7 +453,7 @@ export class InstallationBackendEngine {
         name: data.name.trim(),
         tax_id: data.tax_id.trim(),
         contact_name: (data.contact_name || '').trim(),
-        phones: data.phones.filter(Boolean),
+        phones: data.phones.filter(Boolean).map(formatPhoneWithPrefix34),
         emails: data.emails.filter(Boolean),
         main_address: data.main_address.trim(),
         postal_code: (data.postal_code || '').trim(),
@@ -510,7 +511,13 @@ export class InstallationBackendEngine {
       const idx = this.state.customer_addresses.findIndex((a) => a.id === data.id);
       if (idx === -1) throw new ValidationError('Domicilio no encontrado.');
       const prev = this.state.customer_addresses[idx];
-      const updated: CustomerAddress = { ...prev, ...data, id: prev.id, updated_at: now };
+      const updated: CustomerAddress = {
+        ...prev,
+        ...data,
+        contact_phone: formatPhoneWithPrefix34(data.contact_phone),
+        id: prev.id,
+        updated_at: now,
+      };
       this.state.customer_addresses[idx] = updated;
       this.recordAudit(admin, 'maestros', 'customer_address', updated.id, 'MODIFICAR_DOMICILIO', {
         before: prev,
@@ -521,6 +528,7 @@ export class InstallationBackendEngine {
     } else {
       const created: CustomerAddress = {
         ...data,
+        contact_phone: formatPhoneWithPrefix34(data.contact_phone),
         id: genId('addr'),
         created_at: now,
         updated_at: now,
@@ -809,7 +817,7 @@ export class InstallationBackendEngine {
       snapshot_customer_name: params.snapshot_customer_name.trim(),
       snapshot_customer_tax_id: params.snapshot_customer_tax_id.trim(),
       snapshot_contact_name: params.snapshot_contact_name.trim(),
-      snapshot_contact_phone: params.snapshot_contact_phone.trim(),
+      snapshot_contact_phone: formatPhoneWithPrefix34(params.snapshot_contact_phone),
       snapshot_contact_email: params.snapshot_contact_email.trim(),
       snapshot_address_line: params.snapshot_address_line.trim(),
       snapshot_postal_code: params.snapshot_postal_code.trim(),
@@ -954,7 +962,7 @@ export class InstallationBackendEngine {
     if (patch.snapshot_customer_name !== undefined) wo.snapshot_customer_name = patch.snapshot_customer_name;
     if (patch.snapshot_customer_tax_id !== undefined) wo.snapshot_customer_tax_id = patch.snapshot_customer_tax_id;
     if (patch.snapshot_contact_name !== undefined) wo.snapshot_contact_name = patch.snapshot_contact_name;
-    if (patch.snapshot_contact_phone !== undefined) wo.snapshot_contact_phone = patch.snapshot_contact_phone;
+    if (patch.snapshot_contact_phone !== undefined) wo.snapshot_contact_phone = formatPhoneWithPrefix34(patch.snapshot_contact_phone);
     if (patch.snapshot_contact_email !== undefined) wo.snapshot_contact_email = patch.snapshot_contact_email;
     if (patch.snapshot_address_line !== undefined) wo.snapshot_address_line = patch.snapshot_address_line;
     if (patch.snapshot_postal_code !== undefined) wo.snapshot_postal_code = patch.snapshot_postal_code;

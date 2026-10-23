@@ -10,7 +10,12 @@ import {
   ArrowLeft,
   X,
 } from 'lucide-react';
-import { normalizePhoneLinks, normalizeEmailLink } from '../utils/formatters';
+import {
+  normalizePhoneLinks,
+  normalizeEmailLink,
+  formatPhoneWithPrefix34,
+  cleanLocalPhone,
+} from '../utils/formatters';
 import { WorkOrderStatus } from '../types/domain';
 
 // =============================================================================
@@ -394,6 +399,59 @@ export const PhoneActionLinks: React.FC<{ phone: string | null | undefined }> = 
         <MessageCircle className="w-3 h-3" /> WhatsApp
       </a>
     </span>
+  );
+};
+
+/**
+ * Campo de entrada de teléfono con prefijo internacional +34 integrado automáticamente.
+ * El usuario solo introduce el número de teléfono local sin tener que escribir +34 a mano.
+ */
+export const PhoneInputField: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+  id?: string;
+  name?: string;
+  'data-testid'?: string;
+}> = ({
+  value,
+  onChange,
+  placeholder = '600 11 22 33',
+  required = false,
+  className = '',
+  id,
+  name,
+  'data-testid': testId,
+}) => {
+  const localVal = cleanLocalPhone(value);
+
+  return (
+    <div className="flex rounded-lg shadow-2xs w-full">
+      <span className="inline-flex items-center px-2.5 py-1.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-700 font-extrabold text-xs select-none shrink-0">
+        +34
+      </span>
+      <input
+        id={id}
+        name={name}
+        type="tel"
+        required={required}
+        data-testid={testId}
+        value={localVal}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (!raw.trim()) {
+            onChange('');
+            return;
+          }
+          const cleaned = cleanLocalPhone(raw);
+          onChange(cleaned ? `+34 ${cleaned}` : '');
+        }}
+        placeholder={placeholder}
+        className={`w-full px-3 py-1.5 rounded-r-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+      />
+    </div>
   );
 };
 
