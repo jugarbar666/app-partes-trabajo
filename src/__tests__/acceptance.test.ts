@@ -1023,4 +1023,57 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(refreshedExisting?.contact_person).toBe('Persona Actualizada');
     expect(refreshedExisting?.notes).toBe('Notas actualizadas desde Excel');
   });
+
+  it('Escenario 23: Reapertura de parte con motivo visible para los operarios al ser devuelto a en_curso', () => {
+    // 1. Admin crea y asigna un parte a Carlos (Operario)
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Hotel Puerta de Alcalá',
+      snapshot_customer_tax_id: 'A28000001',
+      snapshot_contact_name: 'Recepcionista',
+      snapshot_contact_phone: '+34 912 345 678',
+      snapshot_contact_email: 'recepcion@hotelpuerta.es',
+      snapshot_address_line: 'Calle Alcalá 120',
+      snapshot_postal_code: '28009',
+      snapshot_city: 'Madrid',
+      snapshot_province: 'Madrid',
+      planned_work: 'Revisión y sellado de caldera',
+      scheduled_at: '2026-10-23T10:00:00.000Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+
+    // 2. Operario inicia y finaliza el trabajo
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    backend.startWorkOrder(wo.id);
+    backend.finalizeWorkOrder({
+      work_order_id: wo.id,
+      total_amount_cents: 9500,
+      customer_requests_invoice: true,
+      customer_has_paid: true,
+    });
+
+    // 3. Admin cierra el parte
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.closeWorkOrder(wo.id);
+
+    // 4. Admin reabre el parte devolviéndolo a en_curso con motivo explícito
+    const motivoReapertura = 'El cliente llama indicando goteo residual en válvula de purga. Revisar estanqueidad.';
+    backend.reopenWorkOrder(wo.id, motivoReapertura, 'en_curso');
+
+    // 5. El operario accede de nuevo al parte y comprueba que ve el motivo
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    const operWo = backend.getWorkOrderById(wo.id);
+    expect(operWo.status).toBe('en_curso');
+    expect(operWo.reopen_reason).toBe(motivoReapertura);
+    expect(operWo.reopened_at).toBeDefined();
+
+    // 6. Verificar que el evento de reapertura está registrado
+    const events = backend.getWorkOrderEvents(wo.id);
+    const reopenEvent = events.find((e) => e.event_type === 'reabierto');
+    expect(reopenEvent).toBeDefined();
+    expect(reopenEvent?.reason).toBe(motivoReapertura);
+  });
 });

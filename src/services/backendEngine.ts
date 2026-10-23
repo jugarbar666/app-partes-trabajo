@@ -1801,6 +1801,9 @@ export class InstallationBackendEngine {
       wo.closed_at = null;
       wo.closed_by = null;
     }
+    wo.reopened_at = now;
+    wo.reopened_by = admin.id;
+    wo.reopen_reason = reason.trim();
     wo.updated_at = now;
     wo.version += 1;
 

@@ -32,6 +32,7 @@ import {
   Wrench,
   MapPin,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
 import { WorkOrder, WorkOrderAssignment } from './types/domain';
@@ -905,6 +906,17 @@ const MainApplicationContent: React.FC = () => {
                           >
                             {wo.snapshot_customer_name}
                           </div>
+
+                          {/* Aviso de reapertura si fue devuelto por administración */}
+                          {wo.reopen_reason && (
+                            <div
+                              className="text-[11px] font-bold text-amber-950 bg-amber-100 border border-amber-300 rounded-md px-2 py-0.5 flex items-center gap-1 shadow-2xs"
+                              title={`Parte Reabierto: ${wo.reopen_reason}`}
+                            >
+                              <RotateCcw className="w-3 h-3 text-amber-700 shrink-0" />
+                              <span className="truncate">Reabierto: {wo.reopen_reason}</span>
+                            </div>
+                          )}
 
                           {/* Trabajo a realizar destacado */}
                           <div
@@ -1834,6 +1846,16 @@ const MainApplicationContent: React.FC = () => {
                                       </button>
                                     )}
                                   </div>
+                                  {/* Aviso si el parte ha sido reabierto con motivo */}
+                                  {wo.reopen_reason && (
+                                    <div className="pt-0.5">
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-300 text-amber-950 font-bold text-xs shadow-2xs">
+                                        <RotateCcw className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                        <span>Parte Reabierto: "{wo.reopen_reason}"</span>
+                                      </span>
+                                    </div>
+                                  )}
+
                                   {/* Trabajo a realizar destacado */}
                                   <div className="pt-0.5">
                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/90 text-blue-950 font-bold text-xs sm:text-[13px] shadow-2xs">

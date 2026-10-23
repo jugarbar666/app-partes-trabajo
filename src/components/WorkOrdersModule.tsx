@@ -1221,6 +1221,37 @@ export const WorkOrderDetailView: React.FC<{
         </div>
       </div>
 
+      {/* BANNER DESTACADO SI EL PARTE HA SIDO REABIERTO CON MOTIVO PARA LOS OPERARIOS */}
+      {wo.reopen_reason && (
+        <div
+          data-testid="banner-wo-reopened"
+          className="rounded-2xl bg-amber-500/10 border-2 border-amber-500 p-4 sm:p-5 shadow-sm text-slate-900 space-y-2"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-amber-950 font-black text-sm uppercase tracking-wide">
+              <RotateCcw className="w-5 h-5 text-amber-600" />
+              <span>Parte Reabierto por Administración</span>
+            </div>
+            {wo.reopened_at && (
+              <span className="text-xs font-bold text-amber-900 bg-amber-200/80 border border-amber-300 px-2.5 py-0.5 rounded-full">
+                Reabierto: {formatDateTimeES(wo.reopened_at)}
+              </span>
+            )}
+          </div>
+          <div className="bg-white rounded-xl p-3 border border-amber-300 shadow-2xs space-y-1">
+            <span className="text-xs font-extrabold uppercase text-amber-800 tracking-wider block">
+              Motivo por el que se ha reabierto:
+            </span>
+            <p className="text-sm font-bold text-slate-900">
+              "{wo.reopen_reason}"
+            </p>
+          </div>
+          <p className="text-xs text-amber-900 font-medium">
+            ⚠️ <strong>Atención Operario:</strong> Este parte ha sido devuelto a tu lista para su revisión o subsanación. Comprueba las indicaciones del motivo antes de darlo de nuevo por finalizado.
+          </p>
+        </div>
+      )}
+
       {/* BLOQUE DESTACADO DE FECHA, HORA, OPERARIOS Y ACCIONES PRINCIPALES */}
       <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 sm:p-5 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-2.5">
@@ -1356,7 +1387,7 @@ export const WorkOrderDetailView: React.FC<{
             </button>
           )}
 
-          {isAdmin && (wo.status === 'cerrado' || wo.archived_at !== null) && (
+          {isAdmin && (wo.status === 'cerrado' || wo.status === 'terminado' || wo.archived_at !== null) && (
             <button
               type="button"
               onClick={() => setShowReopenModal(true)}

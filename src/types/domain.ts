@@ -277,6 +277,9 @@ export interface WorkOrder {
   deleted_at: string | null;
   deleted_by: string | null;
   delete_reason: string | null;
+  reopened_at?: string | null;
+  reopened_by?: string | null;
+  reopen_reason?: string | null;
   // Solo presente si el usuario autenticado es Administrador
   admin_data?: WorkOrderAdminData;
 }
