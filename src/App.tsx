@@ -863,7 +863,7 @@ const MainApplicationContent: React.FC = () => {
                             setSelectedWorkOrderId(wo.id);
                             navigateTo('work_order_detail');
                           }}
-                          className={`rounded-xl p-2.5 border transition space-y-1.5 text-left cursor-pointer ${
+                          className={`rounded-xl p-3 border transition space-y-2 text-left cursor-pointer ${
                             finished
                               ? 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
                               : 'bg-white border-slate-200 shadow-2xs hover:border-blue-500 hover:shadow-sm'
@@ -895,7 +895,7 @@ const MainApplicationContent: React.FC = () => {
 
                           {/* Nombre del cliente */}
                           <div
-                            className={`font-bold text-xs leading-snug ${
+                            className={`font-bold text-xs sm:text-[13px] leading-snug ${
                               finished ? 'text-slate-600' : 'text-slate-900'
                             }`}
                             title={wo.snapshot_customer_name}
@@ -905,8 +905,8 @@ const MainApplicationContent: React.FC = () => {
 
                           {/* Trabajo a realizar */}
                           <div
-                            className={`text-[11px] leading-tight ${
-                              finished ? 'text-slate-500' : 'text-slate-600'
+                            className={`text-xs sm:text-[13px] font-medium leading-relaxed ${
+                              finished ? 'text-slate-500' : 'text-slate-800'
                             }`}
                             title={wo.planned_work}
                           >
@@ -928,7 +928,7 @@ const MainApplicationContent: React.FC = () => {
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-600 text-white font-bold text-[10px]">
                             Revisión
                           </span>
-                          <div className="text-[11px] font-medium text-slate-700">
+                          <div className="text-xs sm:text-[13px] font-medium text-slate-800 leading-relaxed">
                             {occ.notes || 'Revisión periódica'}
                           </div>
                         </div>
