@@ -74,6 +74,7 @@ export const WorkOrderCreateModal: React.FC<{
   const { requestSaveConfirmation, notifyError } = useUIConfirmation();
   const [customers, setCustomers] = useState(() => backend.getCustomers(false));
   const [customerSearch, setCustomerSearch] = useState('');
+  const [addressSearch, setAddressSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState(
     preselectedCustomerId || ''
   );
@@ -140,6 +141,7 @@ export const WorkOrderCreateModal: React.FC<{
   const handleSelectCustomer = (custId: string) => {
     setSelectedCustomerId(custId);
     setSelectedAddressId('');
+    setAddressSearch('');
     if (!custId) {
       setContactName('');
       setContactPhone('');
@@ -233,11 +235,23 @@ export const WorkOrderCreateModal: React.FC<{
     }
   };
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.code.toLowerCase().includes(customerSearch.toLowerCase())
-  );
+  const normalizeSearch = (str: string) =>
+    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearch.trim()) return true;
+    const term = normalizeSearch(customerSearch);
+    return normalizeSearch(c.name).includes(term);
+  });
+
+  const filteredAddresses = useMemo(() => {
+    if (!addressSearch.trim()) return addresses;
+    const term = normalizeSearch(addressSearch);
+    return addresses.filter((a) => {
+      const combined = `${a.alias || ''} ${a.address_line || ''} ${a.city || ''} ${a.postal_code || ''} ${a.province || ''}`;
+      return normalizeSearch(combined).includes(term);
+    });
+  }, [addresses, addressSearch]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -346,11 +360,14 @@ export const WorkOrderCreateModal: React.FC<{
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Cliente registrado
+                </label>
                 <input
                   type="search"
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="Filtrar cliente por nombre o código..."
+                  placeholder="Buscar cliente por nombre..."
                   className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white mb-1.5"
                 />
                 <select
@@ -362,7 +379,7 @@ export const WorkOrderCreateModal: React.FC<{
                   <option value="">-- Cliente a seleccionar --</option>
                   {filteredCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
+                      {c.name}
                     </option>
                   ))}
                 </select>
@@ -372,6 +389,14 @@ export const WorkOrderCreateModal: React.FC<{
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   Domicilio / Instalación registrada del cliente
                 </label>
+                <input
+                  type="search"
+                  value={addressSearch}
+                  onChange={(e) => setAddressSearch(e.target.value)}
+                  placeholder="Buscar dirección por calle, municipio..."
+                  disabled={!selectedCustomerId || addresses.length === 0}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white mb-1.5 disabled:bg-slate-100 disabled:text-slate-400"
+                />
                 <select
                   data-testid="select-wo-address"
                   value={selectedAddressId}
@@ -397,9 +422,9 @@ export const WorkOrderCreateModal: React.FC<{
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
                 >
                   <option value="">-- Dirección a seleccionar --</option>
-                  {addresses.map((a) => (
+                  {filteredAddresses.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.alias}: {a.address_line} ({a.city})
+                      {a.alias ? `${a.alias}: ` : ''}{a.address_line} ({a.city})
                     </option>
                   ))}
                 </select>
