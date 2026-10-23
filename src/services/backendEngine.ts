@@ -30,9 +30,12 @@ import {
 import {
   calculateNextReviewDate,
   calculateReviewNoticeSchedule,
+  combineLocalDateAndTimeToIso,
   computeWorkOrderContentHash,
   formatPhoneWithPrefix34,
+  formatTimeES,
   getCurrentLocalDate,
+  getLocalDateString,
   parseDateRobust,
   sanitizeTimezone,
 } from '../utils/formatters';
@@ -264,6 +267,8 @@ export class InstallationBackendEngine {
     this.getCurrentUser();
     return {
       ...this.state.company_settings,
+      default_work_start_time: this.state.company_settings?.default_work_start_time || '08:00',
+      default_work_end_time: this.state.company_settings?.default_work_end_time || '18:00',
       timezone: sanitizeTimezone(this.state.company_settings?.timezone),
     };
   }
@@ -2871,6 +2876,101 @@ export class InstallationBackendEngine {
     );
     this.persist();
     return { ...session };
+  }
+
+  /**
+   * Cierre y generación automática de fichajes según el horario habitual fijado por el Administrador:
+   * 1. Cierra sesiones que hayan quedado abiertas pasada la hora habitual de salida o de días anteriores.
+   * 2. Si un operario en activo no fichó entrada o salida (o ninguna de las dos), asigna el horario por defecto.
+   */
+  public autoResolvePendingAttendance(params?: {
+    targetDateCivil?: string;
+    completeMissingWorkers?: boolean;
+    referenceNowIso?: string;
+  }): { closedSessionsCount: number; createdSessionsCount: number } {
+    this.assertOnline();
+    const company = this.state.company_settings;
+    const tz = company.timezone || 'Europe/Madrid';
+    const startTime = company.default_work_start_time || '08:00';
+    const endTime = company.default_work_end_time || '18:00';
+    const todayStr = getCurrentLocalDate(tz);
+    const nowTime = formatTimeES(params?.referenceNowIso || new Date().toISOString(), tz);
+
+    let closedSessionsCount = 0;
+    let createdSessionsCount = 0;
+    const nowIso = params?.referenceNowIso || new Date().toISOString();
+
+    // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida o en días anteriores
+    for (const s of this.state.attendance_sessions) {
+      if (s.is_deleted || s.clock_out_at !== null) continue;
+      const sInDate = getLocalDateString(s.clock_in_at, tz) || todayStr;
+      const isPastDay = sInDate < todayStr;
+      const isTodayPastShift = sInDate === todayStr && nowTime >= endTime;
+
+      if (isPastDay || isTodayPastShift) {
+        let exitIso = combineLocalDateAndTimeToIso(sInDate, endTime, tz);
+        if (new Date(exitIso).getTime() <= new Date(s.clock_in_at).getTime()) {
+          exitIso = new Date(new Date(s.clock_in_at).getTime() + 60000).toISOString();
+        }
+        s.clock_out_at = exitIso;
+        s.worker_notes_out = [
+          s.worker_notes_out,
+          `Cierre automático fin de jornada (${endTime})`,
+        ]
+          .filter(Boolean)
+          .join(' / ');
+        s.updated_at = nowIso;
+        closedSessionsCount++;
+      }
+    }
+
+    // 2. Si un operario no fichó en la jornada (ni entrada ni salida), o al pulsar completar / fin de jornada:
+    const targetDate = params?.targetDateCivil || todayStr;
+    const isTargetFinished = targetDate < todayStr || (targetDate === todayStr && nowTime >= endTime);
+
+    if (params?.completeMissingWorkers || isTargetFinished) {
+      const activeOperators = this.state.profiles.filter(
+        (p) => p.is_active && (p.role === 'operario' || p.role === 'admin')
+      );
+
+      for (const op of activeOperators) {
+        const hasSession = this.state.attendance_sessions.some((s) => {
+          if (s.is_deleted || s.user_id !== op.id) return false;
+          const inDate = getLocalDateString(s.clock_in_at, tz);
+          const outDate = s.clock_out_at ? getLocalDateString(s.clock_out_at, tz) : inDate;
+          return inDate === targetDate || outDate === targetDate;
+        });
+
+        if (!hasSession && (params?.completeMissingWorkers || targetDate < todayStr)) {
+          const inIso = combineLocalDateAndTimeToIso(targetDate, startTime, tz);
+          const outIso = combineLocalDateAndTimeToIso(targetDate, endTime, tz);
+
+          const autoSession: AttendanceSession = {
+            id: genId('att'),
+            user_id: op.id,
+            clock_in_at: inIso,
+            clock_out_at: outIso,
+            worker_notes_in: `Fichaje por defecto fin de jornada (${startTime})`,
+            worker_notes_out: `Fichaje por defecto fin de jornada (${endTime})`,
+            is_deleted: false,
+            deleted_at: null,
+            deleted_by: null,
+            delete_reason: null,
+            created_by: 'sistema',
+            created_at: nowIso,
+            updated_at: nowIso,
+          };
+          this.state.attendance_sessions.unshift(autoSession);
+          createdSessionsCount++;
+        }
+      }
+    }
+
+    if (closedSessionsCount > 0 || createdSessionsCount > 0) {
+      this.persist();
+    }
+
+    return { closedSessionsCount, createdSessionsCount };
   }
 
   public getAttendanceCorrections(sessionId?: string): AttendanceCorrection[] {

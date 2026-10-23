@@ -760,6 +760,45 @@ export function getLocalDateString(
   }
 }
 
+/**
+ * Combina una fecha civil YYYY-MM-DD y una hora HH:mm en la zona horaria especificada y devuelve un string UTC ISO exacto.
+ */
+export function combineLocalDateAndTimeToIso(
+  civilDate: string,
+  timeHHmm: string,
+  timezone: string = 'Europe/Madrid'
+): string {
+  const safeTz = sanitizeTimezone(timezone);
+  const [year, month, day] = civilDate.split('-').map(Number);
+  const [hour, minute] = timeHHmm.split(':').map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour || 0, minute || 0, 0));
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: safeTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(utcGuess);
+    const getPart = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+    let localHour = getPart('hour');
+    if (localHour === 24) localHour = 0;
+    const localDay = getPart('day');
+    let diffMinutes = (localHour - (hour || 0)) * 60 + (getPart('minute') - (minute || 0));
+    if (localDay !== day) {
+      diffMinutes += (localDay > day ? 1 : -1) * 24 * 60;
+    }
+    const realUtcMs = utcGuess.getTime() - diffMinutes * 60000;
+    return new Date(realUtcMs).toISOString();
+  } catch {
+    return new Date(`${civilDate}T${timeHHmm}:00`).toISOString();
+  }
+}
+
 export interface WeekDayInfo {
   dateStr: string; // '2026-10-19'
   dayNumber: number; // 19

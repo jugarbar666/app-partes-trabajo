@@ -907,6 +907,8 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
       work_order_prefix: 'PT',
       work_order_next_seq: 5,
       timezone: 'Europe/Madrid',
+      default_work_start_time: '08:00',
+      default_work_end_time: '18:00',
       locale: 'es-ES',
       currency: 'EUR',
       date_format: 'dd/mm/aaaa',

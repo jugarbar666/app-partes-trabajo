@@ -37,6 +37,8 @@ export interface CompanySettings {
   work_order_prefix: string;
   work_order_next_seq: number;
   timezone: string;
+  default_work_start_time?: string;
+  default_work_end_time?: string;
   locale: string;
   currency: string;
   date_format: string;

@@ -1391,6 +1391,41 @@ export const AttendanceAndReportsModule: React.FC<{
   const [filterFrom, setFilterFrom] = useState(defaultFrom);
   const [filterTo, setFilterTo] = useState(defaultTo);
 
+  // Horario habitual por defecto configurable por el Administrador
+  const [defaultWorkStartTime, setDefaultWorkStartTime] = useState(
+    company.default_work_start_time || '08:00'
+  );
+  const [defaultWorkEndTime, setDefaultWorkEndTime] = useState(
+    company.default_work_end_time || '18:00'
+  );
+
+  const handleSaveDefaultWorkSchedule = () => {
+    try {
+      backend.updateCompanySettings({
+        default_work_start_time: defaultWorkStartTime,
+        default_work_end_time: defaultWorkEndTime,
+      });
+      notifySuccessGreen(`Horario habitual guardado: ${defaultWorkStartTime} a ${defaultWorkEndTime}`);
+      refresh();
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al guardar el horario habitual');
+    }
+  };
+
+  const handleRunAutoResolveAttendance = () => {
+    try {
+      const res = backend.autoResolvePendingAttendance({
+        completeMissingWorkers: true,
+      });
+      notifySuccessGreen(
+        `Cierre automático completado: ${res.closedSessionsCount} jornada(s) pendiente(s) cerrada(s) y ${res.createdSessionsCount} fichaje(s) por defecto asignado(s).`
+      );
+      refresh();
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al ejecutar el cierre automático');
+    }
+  };
+
   // Formulario administrativo para crear o corregir fichaje con motivo obligatorio
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | undefined>(undefined);
@@ -1536,6 +1571,68 @@ export const AttendanceAndReportsModule: React.FC<{
         }
       />
 
+      {/* Panel de configuración de horario habitual y cierre automático para Administradores */}
+      {isAdmin && (
+        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-sm font-extrabold text-white">
+                  Horario Habitual de Jornada para Fichajes Automáticos
+                </h3>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Si un operario no ficha la entrada, la salida o ambas, el sistema asignará este horario por defecto al finalizar la jornada para evitar fichajes colgados o pendientes.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-testid="btn-auto-resolve-attendance"
+                onClick={handleRunAutoResolveAttendance}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs"
+                title="Comprobar jornadas pendientes y completar con el horario por defecto"
+              >
+                <Check className="w-3.5 h-3.5" /> Ejecutar Cierre Automático Ahora
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-xs rounded-xl p-3 border border-white/15 flex flex-wrap items-center gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <label className="font-semibold text-slate-200">Hora de entrada fijada:</label>
+              <input
+                type="time"
+                value={defaultWorkStartTime}
+                onChange={(e) => setDefaultWorkStartTime(e.target.value)}
+                className="px-2.5 py-1 rounded bg-white text-slate-900 font-mono font-bold text-xs border border-white/30"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="font-semibold text-slate-200">Hora de salida fijada:</label>
+              <input
+                type="time"
+                value={defaultWorkEndTime}
+                onChange={(e) => setDefaultWorkEndTime(e.target.value)}
+                className="px-2.5 py-1 rounded bg-white text-slate-900 font-mono font-bold text-xs border border-white/30"
+              />
+            </div>
+            <button
+              type="button"
+              data-testid="btn-save-default-schedule"
+              onClick={handleSaveDefaultWorkSchedule}
+              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition"
+            >
+              Guardar Horario Habitual
+            </button>
+            <span className="text-[11px] text-slate-300 italic">
+              * Cualquier fichaje fijado por defecto se podrá modificar posteriormente desde el botón Corregir.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Panel de fichaje en directo para el usuario actual */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -1674,7 +1771,18 @@ export const AttendanceAndReportsModule: React.FC<{
                   </td>
                   <td className="p-3 font-bold">{dur.formatted}</td>
                   <td className="p-3 text-slate-600">
-                    {[s.worker_notes_in, s.worker_notes_out].filter(Boolean).join(' / ') || '—'}
+                    <div className="space-y-1">
+                      <div>
+                        {[s.worker_notes_in, s.worker_notes_out].filter(Boolean).join(' / ') || '—'}
+                      </div>
+                      {(s.worker_notes_in?.includes('por defecto') ||
+                        s.worker_notes_out?.includes('automático') ||
+                        s.worker_notes_out?.includes('por defecto')) && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Horario automático
+                        </span>
+                      )}
+                    </div>
                   </td>
                   {isAdmin && (
                     <td className="p-3 text-right space-x-1.5">
