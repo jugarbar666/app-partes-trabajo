@@ -913,6 +913,10 @@ export class InstallationBackendEngine {
   public updateWorkOrderPlanningAndAssignments(
     workOrderId: string,
     patch: {
+      customer_id?: string;
+      customer_address_id?: string | null;
+      snapshot_customer_name?: string;
+      snapshot_customer_tax_id?: string;
       snapshot_contact_name?: string;
       snapshot_contact_phone?: string;
       snapshot_contact_email?: string;
@@ -938,6 +942,17 @@ export class InstallationBackendEngine {
     }
 
     const now = new Date().toISOString();
+    if (patch.customer_id !== undefined) {
+      wo.customer_id = patch.customer_id;
+      const cust = this.state.customers.find((c) => c.id === patch.customer_id);
+      if (cust) {
+        wo.snapshot_customer_name = cust.name;
+        wo.snapshot_customer_tax_id = cust.tax_id;
+      }
+    }
+    if (patch.customer_address_id !== undefined) wo.customer_address_id = patch.customer_address_id;
+    if (patch.snapshot_customer_name !== undefined) wo.snapshot_customer_name = patch.snapshot_customer_name;
+    if (patch.snapshot_customer_tax_id !== undefined) wo.snapshot_customer_tax_id = patch.snapshot_customer_tax_id;
     if (patch.snapshot_contact_name !== undefined) wo.snapshot_contact_name = patch.snapshot_contact_name;
     if (patch.snapshot_contact_phone !== undefined) wo.snapshot_contact_phone = patch.snapshot_contact_phone;
     if (patch.snapshot_contact_email !== undefined) wo.snapshot_contact_email = patch.snapshot_contact_email;

@@ -857,6 +857,37 @@ export const WorkOrderDetailView: React.FC<{
   );
   const [rescheduleReason, setRescheduleReason] = useState('');
 
+  // Modal Modificar Datos del Servicio, Dirección y Contacto (Solo Admin)
+  const [showEditServiceDataModal, setShowEditServiceDataModal] = useState(false);
+  const [editAddressLine, setEditAddressLine] = useState(wo.snapshot_address_line);
+  const [editPostalCode, setEditPostalCode] = useState(wo.snapshot_postal_code);
+  const [editCity, setEditCity] = useState(wo.snapshot_city);
+  const [editProvince, setEditProvince] = useState(wo.snapshot_province);
+  const [editContactName, setEditContactName] = useState(wo.snapshot_contact_name);
+  const [editContactPhone, setEditContactPhone] = useState(wo.snapshot_contact_phone);
+  const [editContactEmail, setEditContactEmail] = useState(wo.snapshot_contact_email);
+  const [editPlannedWork, setEditPlannedWork] = useState(wo.planned_work);
+  const [editInitialNotes, setEditInitialNotes] = useState(wo.initial_notes || '');
+
+  const customerAddresses = useMemo(
+    () => (wo.customer_id ? backend.getCustomerAddresses(wo.customer_id, false) : []),
+    [backend, wo.customer_id]
+  );
+
+  useEffect(() => {
+    if (wo) {
+      setEditAddressLine(wo.snapshot_address_line);
+      setEditPostalCode(wo.snapshot_postal_code);
+      setEditCity(wo.snapshot_city);
+      setEditProvince(wo.snapshot_province);
+      setEditContactName(wo.snapshot_contact_name);
+      setEditContactPhone(wo.snapshot_contact_phone);
+      setEditContactEmail(wo.snapshot_contact_email);
+      setEditPlannedWork(wo.planned_work);
+      setEditInitialNotes(wo.initial_notes || '');
+    }
+  }, [wo]);
+
   useEffect(() => {
     if (wo?.scheduled_at) {
       setRescheduleDateStr(wo.scheduled_at.slice(0, 16));
@@ -1290,9 +1321,34 @@ export const WorkOrderDetailView: React.FC<{
       {/* Datos del cliente, contacto y dirección específica del servicio */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 text-sm">
-          <h2 className="font-bold text-slate-900 border-b border-slate-100 pb-2">
-            Datos del Servicio e Instantánea del Cliente
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 className="font-bold text-slate-900">
+              Datos del Servicio e Instantánea del Cliente
+            </h2>
+            {isAdmin && isEditable && (
+              <button
+                type="button"
+                data-testid="btn-open-edit-service-data"
+                onClick={() => {
+                  setEditAddressLine(wo.snapshot_address_line);
+                  setEditPostalCode(wo.snapshot_postal_code);
+                  setEditCity(wo.snapshot_city);
+                  setEditProvince(wo.snapshot_province);
+                  setEditContactName(wo.snapshot_contact_name);
+                  setEditContactPhone(wo.snapshot_contact_phone);
+                  setEditContactEmail(wo.snapshot_contact_email);
+                  setEditPlannedWork(wo.planned_work);
+                  setEditInitialNotes(wo.initial_notes || '');
+                  setShowEditServiceDataModal(true);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                title="Modificar dirección, población, contacto o trabajos encargados"
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span>Modificar Datos</span>
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
             <div>
               <span className="text-slate-500">Cliente:</span>{' '}
@@ -2177,6 +2233,216 @@ export const WorkOrderDetailView: React.FC<{
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* VENTANA EMERGENTE: MODIFICAR DATOS DEL SERVICIO, UBICACIÓN Y CONTACTO (SOLO ADMIN) */}
+      {showEditServiceDataModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4 overflow-y-auto"
+          data-testid="modal-edit-service-data"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editAddressLine.trim() || !editCity.trim()) {
+                notifyError('La dirección y la población son campos obligatorios.');
+                return;
+              }
+              setShowEditServiceDataModal(false);
+              requestSaveConfirmation({
+                title: `Modificar Datos del Parte — ${wo.code}`,
+                changes: [
+                  { label: 'Dirección', value: editAddressLine },
+                  { label: 'Población / Municipio', value: editCity },
+                  { label: 'Código Postal', value: editPostalCode },
+                  { label: 'Provincia', value: editProvince },
+                  { label: 'Persona de contacto', value: editContactName || '—' },
+                  { label: 'Teléfono', value: editContactPhone || '—' },
+                  { label: 'Trabajo encargado', value: editPlannedWork },
+                ],
+                onConfirm: () => {
+                  backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+                    snapshot_address_line: editAddressLine.trim(),
+                    snapshot_postal_code: editPostalCode.trim(),
+                    snapshot_city: editCity.trim(),
+                    snapshot_province: editProvince.trim(),
+                    snapshot_contact_name: editContactName.trim(),
+                    snapshot_contact_phone: editContactPhone.trim(),
+                    snapshot_contact_email: editContactEmail.trim(),
+                    planned_work: editPlannedWork.trim() || wo.planned_work,
+                    initial_notes: editInitialNotes.trim(),
+                  });
+                  notifySuccessGreen('Datos del servicio y población actualizados correctamente.');
+                  refreshLocal();
+                },
+              });
+            }}
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 my-8"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-blue-600" />
+                Modificar Datos del Servicio y Ubicación
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditServiceDataModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Edita la dirección del servicio, población, personas de contacto o el trabajo planificado de este parte.
+            </p>
+
+            {customerAddresses.length > 0 && (
+              <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
+                <label className="block text-[11px] font-bold text-blue-900">
+                  📍 Cargar desde otra dirección registrada del cliente:
+                </label>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const found = customerAddresses.find((a) => a.id === e.target.value);
+                    if (found) {
+                      setEditAddressLine(found.address_line);
+                      setEditPostalCode(found.postal_code);
+                      setEditCity(found.city);
+                      setEditProvince(found.province);
+                      if (found.contact_name) setEditContactName(found.contact_name);
+                      if (found.contact_phone) setEditContactPhone(found.contact_phone);
+                      if (found.contact_email) setEditContactEmail(found.contact_email);
+                    }
+                  }}
+                  className="w-full px-2.5 py-1.5 text-xs bg-white rounded-lg border border-blue-300 text-slate-800"
+                >
+                  <option value="">-- Seleccionar dirección guardada --</option>
+                  {customerAddresses.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.alias ? `${a.alias}: ` : ''}{a.address_line}, {a.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Dirección del Servicio (Calle, número, piso):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editAddressLine}
+                  onChange={(e) => setEditAddressLine(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="col-span-1 sm:col-span-1">
+                  <label className="block font-bold text-slate-700 mb-1">Población:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCity}
+                    onChange={(e) => setEditCity(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Cód. Postal:</label>
+                  <input
+                    type="text"
+                    value={editPostalCode}
+                    onChange={(e) => setEditPostalCode(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Provincia:</label>
+                  <input
+                    type="text"
+                    value={editProvince}
+                    onChange={(e) => setEditProvince(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Contacto:</label>
+                  <input
+                    type="text"
+                    value={editContactName}
+                    onChange={(e) => setEditContactName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Teléfono:</label>
+                  <input
+                    type="text"
+                    value={editContactPhone}
+                    onChange={(e) => setEditContactPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Email:</label>
+                  <input
+                    type="email"
+                    value={editContactEmail}
+                    onChange={(e) => setEditContactEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Trabajo Encargado / Planificado:
+                </label>
+                <textarea
+                  rows={2}
+                  value={editPlannedWork}
+                  onChange={(e) => setEditPlannedWork(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Notas Iniciales:</label>
+                <textarea
+                  rows={2}
+                  value={editInitialNotes}
+                  onChange={(e) => setEditInitialNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowEditServiceDataModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Guardar Cambios
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
