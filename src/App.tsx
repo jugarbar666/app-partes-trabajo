@@ -705,6 +705,239 @@ const MainApplicationContent: React.FC = () => {
   const pctTerminado = Math.round((countPendientesCierre / totalForPie) * 100);
   const pctArchivado = Math.max(0, 100 - pctNoIniciado - pctEnCurso - pctTerminado);
 
+  // PLANING SEMANAL INTERACTIVO REUTILIZABLE (INICIO Y AGENDA)
+  const renderWeeklyPlanningSection = () => (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4" data-testid="weekly-planning-board">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-extrabold text-base text-slate-900">
+                Planing Semanal de Trabajos y Horarios
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                {totalWeekWorkOrders} {totalWeekWorkOrders === 1 ? 'parte' : 'partes'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium">
+              Semana del {selectedWeekDays[0].formattedDate} al{' '}
+              {selectedWeekDays[selectedWeekDays.length - 1].formattedDate} (Lunes a Viernes)
+            </p>
+          </div>
+        </div>
+
+        {/* BOTONES PARA CAMBIAR ENTRE SEMANA ACTUAL Y SIGUIENTE */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-testid="btn-agenda-current-week"
+            onClick={() => setAgendaWeekOffset(0)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              agendaWeekOffset === 0
+                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Semana Actual ({currentWeekRangeLabel})</span>
+            {agendaWeekOffset === 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            data-testid="btn-agenda-next-week"
+            onClick={() => setAgendaWeekOffset(1)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              agendaWeekOffset === 1
+                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <ArrowRight className="w-4 h-4" />
+            <span>Semana Siguiente ({nextWeekRangeLabel})</span>
+            {agendaWeekOffset === 1 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+            <button
+              type="button"
+              title="Semana anterior"
+              onClick={() => setAgendaWeekOffset((p) => p - 1)}
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              title="Semana posterior"
+              onClick={() => setAgendaWeekOffset((p) => p + 1)}
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* CUADRÍCULA DE LOS 5 DÍAS LABORABLES (LUNES A VIERNES) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start">
+        {selectedWeekDays.map((day) => {
+          const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
+          const dayRevs = weekReviewsByDay.get(day.dateStr) || [];
+
+          return (
+            <div
+              key={day.dateStr}
+              className={`rounded-2xl border transition-all overflow-hidden flex flex-col ${
+                day.isToday
+                  ? 'bg-blue-50/30 border-blue-400 ring-2 ring-blue-200 shadow-sm'
+                  : 'bg-slate-50/50 border-slate-200'
+              }`}
+            >
+              {/* Cabecera del día */}
+              <div
+                className={`p-3 border-b flex items-center justify-between ${
+                  day.isToday
+                    ? 'bg-blue-600 text-white border-blue-500'
+                    : 'bg-white text-slate-900 border-slate-200'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-xs">
+                      {day.weekdayName}
+                    </span>
+                    {day.isToday && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black tracking-wide">
+                        HOY
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={`text-[11px] ${
+                      day.isToday ? 'text-blue-100' : 'text-slate-500'
+                    }`}
+                  >
+                    {day.dayNumber} {day.monthShort}
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    day.isToday
+                      ? 'bg-blue-700 text-blue-100'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {dayWos.length}
+                </span>
+              </div>
+
+              {/* Lista de trabajos y horas del día */}
+              <div className="p-2 space-y-2.5 min-h-[140px] flex-1">
+                {dayWos.length === 0 && dayRevs.length === 0 ? (
+                  <div className="h-full py-8 text-center flex flex-col items-center justify-center text-slate-400 text-[11px]">
+                    <Clock className="w-4 h-4 text-slate-300 mb-1 opacity-60" />
+                    <span>Sin trabajos</span>
+                  </div>
+                ) : (
+                  <>
+                    {dayWos.map((wo) => {
+                      const finished = isWoFinished(wo.status);
+                      return (
+                        <div
+                          key={wo.id}
+                          onClick={() => {
+                            setSelectedWorkOrderId(wo.id);
+                            navigateTo('work_order_detail');
+                          }}
+                          className={`rounded-xl p-2.5 border transition space-y-1.5 text-left cursor-pointer ${
+                            finished
+                              ? 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
+                              : 'bg-white border-slate-200 shadow-2xs hover:border-blue-500 hover:shadow-sm'
+                          }`}
+                          title={
+                            finished
+                              ? 'Parte ya realizado (clic para ver detalle)'
+                              : 'Próximo trabajo a realizar (clic para ver detalle)'
+                          }
+                        >
+                          {/* Hora y situación del parte */}
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-extrabold text-[11px] shadow-2xs ${
+                                finished
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-indigo-600 text-white'
+                              }`}
+                            >
+                              {finished ? (
+                                <CheckCircle2 className="w-3 h-3" />
+                              ) : (
+                                <Clock className="w-3 h-3" />
+                              )}
+                              {formatTimeES(wo.scheduled_at, tz)} h
+                            </span>
+                            <WorkOrderStatusBadge status={wo.status} compact />
+                          </div>
+
+                          {/* Nombre del cliente */}
+                          <div
+                            className={`font-bold text-xs leading-snug ${
+                              finished ? 'text-slate-600' : 'text-slate-900'
+                            }`}
+                            title={wo.snapshot_customer_name}
+                          >
+                            {wo.snapshot_customer_name}
+                          </div>
+
+                          {/* Trabajo a realizar */}
+                          <div
+                            className={`text-[11px] leading-tight ${
+                              finished ? 'text-slate-500' : 'text-slate-600'
+                            }`}
+                            title={wo.planned_work}
+                          >
+                            {wo.planned_work}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Revisiones previstas para este día */}
+                    {dayRevs.map((occ) => {
+                      return (
+                        <div
+                          key={occ.id}
+                          onClick={() => navigateTo('reviews')}
+                          className="bg-amber-50/70 border border-amber-200 rounded-xl p-2 space-y-1 text-left text-xs cursor-pointer hover:border-amber-400 transition"
+                          title="Gestionar revisión"
+                        >
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-600 text-white font-bold text-[10px]">
+                            Revisión
+                          </span>
+                          <div className="text-[11px] font-medium text-slate-700">
+                            {occ.notes || 'Revisión periódica'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen flex bg-[#f4f6fa] text-slate-900">
       {/* =====================================================================
@@ -1284,6 +1517,7 @@ const MainApplicationContent: React.FC = () => {
                             <div className="text-2xl font-black mt-1">{countRevisionesPendientes}</div>
                           </button>
                         </div>
+                        {renderWeeklyPlanningSection()}
                       </div>
                     ) : (
                       /* VISTA PRINCIPAL POR DEFECTO EN MÓVIL: TARJETAS DE PARTES IGUAL QUE EN OPERARIO */
@@ -1477,6 +1711,9 @@ const MainApplicationContent: React.FC = () => {
                       </div>
                     </button>
                   </div>
+
+                  {/* PLANING SEMANAL DE TRABAJOS Y HORARIOS EN EL INICIO */}
+                  {renderWeeklyPlanningSection()}
 
                   {/* SECCIÓN PRINCIPAL: DOS COLUMNAS EN ESCRITORIO (PARTES Y REVISIONES) */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -2026,235 +2263,7 @@ const MainApplicationContent: React.FC = () => {
               />
 
               {/* PLANING SEMANAL INTERACTIVO */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="font-extrabold text-base text-slate-900">
-                          Planing Semanal de Trabajos y Horarios
-                        </h2>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
-                          {totalWeekWorkOrders} {totalWeekWorkOrders === 1 ? 'parte' : 'partes'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium">
-                        Semana del {selectedWeekDays[0].formattedDate} al{' '}
-                        {selectedWeekDays[selectedWeekDays.length - 1].formattedDate} (Lunes a Viernes)
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* BOTONES PARA CAMBIAR ENTRE SEMANA ACTUAL Y SIGUIENTE */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      data-testid="btn-agenda-current-week"
-                      onClick={() => setAgendaWeekOffset(0)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                        agendaWeekOffset === 0
-                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Calendar className="w-4 h-4" />
-                      <span>Semana Actual ({currentWeekRangeLabel})</span>
-                      {agendaWeekOffset === 0 && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      data-testid="btn-agenda-next-week"
-                      onClick={() => setAgendaWeekOffset(1)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                        agendaWeekOffset === 1
-                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <ArrowRight className="w-4 h-4" />
-                      <span>Semana Siguiente ({nextWeekRangeLabel})</span>
-                      {agendaWeekOffset === 1 && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                      )}
-                    </button>
-
-                    <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
-                      <button
-                        type="button"
-                        title="Semana anterior"
-                        onClick={() => setAgendaWeekOffset((p) => p - 1)}
-                        className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Semana posterior"
-                        onClick={() => setAgendaWeekOffset((p) => p + 1)}
-                        className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CUADRÍCULA DE LOS 5 DÍAS LABORABLES (LUNES A VIERNES) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start">
-                  {selectedWeekDays.map((day) => {
-                    const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
-                    const dayRevs = weekReviewsByDay.get(day.dateStr) || [];
-
-                    return (
-                      <div
-                        key={day.dateStr}
-                        className={`rounded-2xl border transition-all overflow-hidden flex flex-col ${
-                          day.isToday
-                            ? 'bg-blue-50/30 border-blue-400 ring-2 ring-blue-200 shadow-sm'
-                            : 'bg-slate-50/50 border-slate-200'
-                        }`}
-                      >
-                        {/* Cabecera del día */}
-                        <div
-                          className={`p-3 border-b flex items-center justify-between ${
-                            day.isToday
-                              ? 'bg-blue-600 text-white border-blue-500'
-                              : 'bg-white text-slate-900 border-slate-200'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-xs">
-                                {day.weekdayName}
-                              </span>
-                              {day.isToday && (
-                                <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black tracking-wide">
-                                  HOY
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              className={`text-[11px] ${
-                                day.isToday ? 'text-blue-100' : 'text-slate-500'
-                              }`}
-                            >
-                              {day.dayNumber} {day.monthShort}
-                            </div>
-                          </div>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              day.isToday
-                                ? 'bg-blue-700 text-blue-100'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {dayWos.length}
-                          </span>
-                        </div>
-
-                        {/* Lista de trabajos y horas del día */}
-                        <div className="p-2 space-y-2.5 min-h-[140px] flex-1">
-                          {dayWos.length === 0 && dayRevs.length === 0 ? (
-                            <div className="h-full py-8 text-center flex flex-col items-center justify-center text-slate-400 text-[11px]">
-                              <Clock className="w-4 h-4 text-slate-300 mb-1 opacity-60" />
-                              <span>Sin trabajos</span>
-                            </div>
-                          ) : (
-                            <>
-                              {dayWos.map((wo) => {
-                                const finished = isWoFinished(wo.status);
-                                return (
-                                  <div
-                                    key={wo.id}
-                                    onClick={() => {
-                                      setSelectedWorkOrderId(wo.id);
-                                      navigateTo('work_order_detail');
-                                    }}
-                                    className={`rounded-xl p-2.5 border transition space-y-1.5 text-left cursor-pointer ${
-                                      finished
-                                        ? 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
-                                        : 'bg-white border-slate-200 shadow-2xs hover:border-blue-500 hover:shadow-sm'
-                                    }`}
-                                    title={
-                                      finished
-                                        ? 'Parte ya realizado (clic para ver detalle)'
-                                        : 'Próximo trabajo a realizar (clic para ver detalle)'
-                                    }
-                                  >
-                                    {/* Hora y situación del parte */}
-                                    <div className="flex items-center justify-between gap-1 flex-wrap">
-                                      <span
-                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-extrabold text-[11px] shadow-2xs ${
-                                          finished
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-indigo-600 text-white'
-                                        }`}
-                                      >
-                                        {finished ? (
-                                          <CheckCircle2 className="w-3 h-3" />
-                                        ) : (
-                                          <Clock className="w-3 h-3" />
-                                        )}
-                                        {formatTimeES(wo.scheduled_at, tz)} h
-                                      </span>
-                                      <WorkOrderStatusBadge status={wo.status} compact />
-                                    </div>
-
-                                    {/* Nombre del cliente */}
-                                    <div
-                                      className={`font-bold text-xs leading-snug ${
-                                        finished ? 'text-slate-600' : 'text-slate-900'
-                                      }`}
-                                      title={wo.snapshot_customer_name}
-                                    >
-                                      {wo.snapshot_customer_name}
-                                    </div>
-
-                                    {/* Trabajo a realizar */}
-                                    <div
-                                      className={`text-[11px] leading-tight ${
-                                        finished ? 'text-slate-500' : 'text-slate-600'
-                                      }`}
-                                      title={wo.planned_work}
-                                    >
-                                      {wo.planned_work}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-
-                              {/* Revisiones previstas para este día */}
-                              {dayRevs.map((occ) => {
-                                return (
-                                  <div
-                                    key={occ.id}
-                                    onClick={() => navigateTo('reviews')}
-                                    className="bg-amber-50/70 border border-amber-200 rounded-xl p-2 space-y-1 text-left text-xs cursor-pointer hover:border-amber-400 transition"
-                                    title="Gestionar revisión"
-                                  >
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-600 text-white font-bold text-[10px]">
-                                      Revisión
-                                    </span>
-                                    <div className="text-[11px] font-medium text-slate-700">
-                                      {occ.notes || 'Revisión periódica'}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {renderWeeklyPlanningSection()}
 
               {/* LISTADOS DETALLADOS COMPLEMENTARIOS */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
