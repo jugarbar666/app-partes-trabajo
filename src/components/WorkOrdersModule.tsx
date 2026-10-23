@@ -75,22 +75,22 @@ export const WorkOrderCreateModal: React.FC<{
   const [customers, setCustomers] = useState(() => backend.getCustomers(false));
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState(
-    preselectedCustomerId || customers[0]?.id || ''
+    preselectedCustomerId || ''
   );
 
   const addresses = useMemo(
-    () => backend.getCustomerAddresses(selectedCustomerId, false),
+    () => (selectedCustomerId ? backend.getCustomerAddresses(selectedCustomerId, false) : []),
     [backend, selectedCustomerId, customers]
   );
   const [selectedAddressId, setSelectedAddressId] = useState<string>(
-    preselectedAddressId || addresses[0]?.id || ''
+    preselectedAddressId || ''
   );
 
-  const initialCustomer = customers.find((c) => c.id === selectedCustomerId);
-  const initialAddr = addresses.find((a) => a.id === selectedAddressId);
+  const initialCustomer = preselectedCustomerId ? customers.find((c) => c.id === preselectedCustomerId) : undefined;
+  const initialAddr = preselectedAddressId ? addresses.find((a) => a.id === preselectedAddressId) : undefined;
 
   const [contactName, setContactName] = useState(
-    initialAddr?.contact_name || initialCustomer?.name || ''
+    initialAddr?.contact_name || initialCustomer?.contact_name || initialCustomer?.name || ''
   );
   const [contactPhone, setContactPhone] = useState(
     initialAddr?.contact_phone || initialCustomer?.phones[0] || ''
@@ -99,11 +99,11 @@ export const WorkOrderCreateModal: React.FC<{
     initialAddr?.contact_email || initialCustomer?.emails[0] || ''
   );
   const [addressLine, setAddressLine] = useState(
-    initialAddr?.address_line || initialCustomer?.main_address || ''
+    initialAddr?.address_line || (preselectedCustomerId ? initialCustomer?.main_address || '' : '')
   );
-  const [postalCode, setPostalCode] = useState(initialAddr?.postal_code || '28000');
-  const [city, setCity] = useState(initialAddr?.city || 'Madrid');
-  const [province, setProvince] = useState(initialAddr?.province || 'Madrid');
+  const [postalCode, setPostalCode] = useState(initialAddr?.postal_code || (preselectedCustomerId ? '28000' : ''));
+  const [city, setCity] = useState(initialAddr?.city || (preselectedCustomerId ? 'Madrid' : ''));
+  const [province, setProvince] = useState(initialAddr?.province || (preselectedCustomerId ? 'Madrid' : ''));
 
   const [plannedWork, setPlannedWork] = useState(preselectedPlannedWork || '');
   const [scheduledAt, setScheduledAt] = useState(
@@ -139,18 +139,26 @@ export const WorkOrderCreateModal: React.FC<{
 
   const handleSelectCustomer = (custId: string) => {
     setSelectedCustomerId(custId);
+    setSelectedAddressId('');
+    if (!custId) {
+      setContactName('');
+      setContactPhone('');
+      setContactEmail('');
+      setAddressLine('');
+      setPostalCode('');
+      setCity('');
+      setProvince('');
+      return;
+    }
     const cust = customers.find((c) => c.id === custId);
-    const custAddrs = backend.getCustomerAddresses(custId, false);
-    const firstAddr = custAddrs[0];
-    setSelectedAddressId(firstAddr?.id || '');
     if (cust) {
-      setContactName(firstAddr?.contact_name || cust.name);
-      setContactPhone(firstAddr?.contact_phone || cust.phones[0] || '');
-      setContactEmail(firstAddr?.contact_email || cust.emails[0] || '');
-      setAddressLine(firstAddr?.address_line || cust.main_address || '');
-      setPostalCode(firstAddr?.postal_code || '28000');
-      setCity(firstAddr?.city || 'Madrid');
-      setProvince(firstAddr?.province || 'Madrid');
+      setContactName(cust.contact_name || cust.name || '');
+      setContactPhone(cust.phones[0] || '');
+      setContactEmail(cust.emails[0] || '');
+      setAddressLine('');
+      setPostalCode('');
+      setCity('');
+      setProvince('');
     }
   };
 
@@ -235,7 +243,11 @@ export const WorkOrderCreateModal: React.FC<{
     e.preventDefault();
     const cust = customers.find((c) => c.id === selectedCustomerId);
     if (!cust) {
-      notifyError('Selecciona un cliente válido.');
+      notifyError('Debes seleccionar un cliente.');
+      return;
+    }
+    if (!addressLine.trim() || !city.trim()) {
+      notifyError('Debes indicar la dirección y municipio del servicio.');
       return;
     }
     if (selectedOperatorIds.length === 0) {
@@ -347,6 +359,7 @@ export const WorkOrderCreateModal: React.FC<{
                   onChange={(e) => handleSelectCustomer(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white font-medium"
                 >
+                  <option value="">-- Cliente a seleccionar --</option>
                   {filteredCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.code} — {c.name}
@@ -360,6 +373,7 @@ export const WorkOrderCreateModal: React.FC<{
                   Domicilio / Instalación registrada del cliente
                 </label>
                 <select
+                  data-testid="select-wo-address"
                   value={selectedAddressId}
                   onChange={(e) => {
                     const addrId = e.target.value;
@@ -367,17 +381,22 @@ export const WorkOrderCreateModal: React.FC<{
                     const addr = addresses.find((a) => a.id === addrId);
                     if (addr) {
                       setAddressLine(addr.address_line);
-                      setPostalCode(addr.postal_code);
-                      setCity(addr.city);
-                      setProvince(addr.province);
+                      setPostalCode(addr.postal_code || '');
+                      setCity(addr.city || '');
+                      setProvince(addr.province || '');
                       if (addr.contact_name) setContactName(addr.contact_name);
                       if (addr.contact_phone) setContactPhone(addr.contact_phone);
                       if (addr.contact_email) setContactEmail(addr.contact_email);
+                    } else {
+                      setAddressLine('');
+                      setPostalCode('');
+                      setCity('');
+                      setProvince('');
                     }
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
                 >
-                  <option value="">-- Otra dirección específica para este parte --</option>
+                  <option value="">-- Dirección a seleccionar --</option>
                   {addresses.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.alias}: {a.address_line} ({a.city})
