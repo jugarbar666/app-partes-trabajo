@@ -1512,6 +1512,7 @@ export class InstallationBackendEngine {
     total_amount_cents: number | null | undefined;
     customer_requests_invoice: boolean | null | undefined;
     customer_has_paid: boolean | null | undefined;
+    observations?: string | null;
   }): WorkOrder {
     this.assertOnline();
     const user = this.getCurrentUser();
@@ -1570,6 +1571,20 @@ export class InstallationBackendEngine {
     wo.updated_at = now;
     wo.version += 1;
 
+    const obsText = params.observations?.trim() || null;
+    if (obsText) {
+      wo.final_observations = obsText;
+      this.state.work_entries.push({
+        id: genId('we'),
+        work_order_id: wo.id,
+        description: 'Observaciones de finalización / intervención',
+        observations: obsText,
+        created_by: user.id,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
     this.recomputeHashAndCheckSignatureValidity(params.work_order_id, 'Finalización del parte');
 
     this.state.work_order_events.unshift({
@@ -1584,6 +1599,7 @@ export class InstallationBackendEngine {
         total_amount_cents: wo.total_amount_cents,
         customer_requests_invoice: wo.customer_requests_invoice,
         customer_has_paid: wo.customer_has_paid,
+        observations: obsText,
       },
       created_at: now,
     });
@@ -1593,6 +1609,7 @@ export class InstallationBackendEngine {
       total_amount_cents: wo.total_amount_cents,
       customer_requests_invoice: wo.customer_requests_invoice,
       customer_has_paid: wo.customer_has_paid,
+      observations: obsText,
     });
 
     this.persist();

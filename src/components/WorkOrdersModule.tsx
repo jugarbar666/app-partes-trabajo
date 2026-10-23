@@ -892,6 +892,7 @@ export const WorkOrderDetailView: React.FC<{
     'unset' | 'yes' | 'no'
   >('unset');
   const [finalizeHasPaid, setFinalizeHasPaid] = useState<'unset' | 'yes' | 'no'>('unset');
+  const [finalizeObservations, setFinalizeObservations] = useState(wo.final_observations || '');
 
   useEffect(() => {
     if (wo?.total_amount_cents !== null && wo?.total_amount_cents !== undefined) {
@@ -1046,6 +1047,9 @@ export const WorkOrderDetailView: React.FC<{
           label: '¿El cliente solicita factura?',
           value: finalizeRequestsInvoice === 'yes' ? 'SÍ' : 'NO',
         },
+        ...(finalizeObservations.trim()
+          ? [{ label: 'Observaciones de finalización', value: finalizeObservations.trim() }]
+          : []),
         {
           label: 'Efecto operativo',
           value:
@@ -1058,6 +1062,7 @@ export const WorkOrderDetailView: React.FC<{
           total_amount_cents: cents,
           customer_requests_invoice: finalizeRequestsInvoice === 'yes',
           customer_has_paid: finalizeHasPaid === 'yes',
+          observations: finalizeObservations.trim() || undefined,
         });
         if (!isAdmin) {
           onBack();
@@ -1186,6 +1191,7 @@ export const WorkOrderDetailView: React.FC<{
                     ? (wo.total_amount_cents / 100).toFixed(2).replace('.', ',')
                     : ''
                 );
+                setFinalizeObservations(wo.final_observations || '');
                 setShowFinalizeModal(true);
               }}
               className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow-xs transition"
@@ -1296,7 +1302,11 @@ export const WorkOrderDetailView: React.FC<{
 
       {/* Datos del cliente, contacto y dirección específica del servicio */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 text-sm">
+        <div
+          className={`${
+            isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'
+          } bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 text-sm`}
+        >
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h2 className="font-bold text-slate-900">
               Datos del Servicio e Instantánea del Cliente
@@ -1361,155 +1371,161 @@ export const WorkOrderDetailView: React.FC<{
                 <strong>Notas iniciales:</strong> {wo.initial_notes}
               </p>
             )}
+            {wo.final_observations && (
+              <div className="pt-2 mt-2 border-t border-slate-200">
+                <span className="font-bold text-blue-900">Observaciones de finalización:</span>
+                <p className="text-slate-800 pt-0.5 whitespace-pre-line">{wo.final_observations}</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Resumen económico y Bloque Administrativo Reservado */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-              <Euro className="w-4 h-4 text-blue-600" />
-              Datos de Finalización y Cobro
-            </h2>
-            {isAdmin && wo.status !== 'cerrado' && !wo.archived_at && !wo.deleted_at && (
-              <button
-                type="button"
-                data-testid="btn-open-edit-amount"
-                onClick={() => {
-                  setEditAmountStr(
-                    wo.total_amount_cents !== null ? (wo.total_amount_cents / 100).toFixed(2) : ''
-                  );
-                  setShowEditAmountModal(true);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 transition"
-              >
-                <span>{wo.total_amount_cents !== null ? '✏️ Modificar importe' : '+ Fijar importe'}</span>
-              </button>
-            )}
-          </div>
-
-          {/* Tarjeta destacada de importe a cobrar al cliente (para operario y admin) */}
-          {wo.total_amount_cents !== null ? (
-            <div
-              data-testid="box-amount-to-collect"
-              className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                  <Euro className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
-                    Importe a cobrar al cliente
-                  </div>
-                  <div className="text-base font-extrabold text-emerald-950">
-                    {formatCentsToEUR(wo.total_amount_cents)}
-                  </div>
-                </div>
-              </div>
-              <span className="text-[11px] bg-emerald-200/90 text-emerald-900 font-bold px-2 py-0.5 rounded-md">
-                {wo.status === 'terminado' || wo.status === 'cerrado'
-                  ? 'Finalizado'
-                  : 'Fijado por Administración'}
-              </span>
+        {/* Resumen económico y Bloque Administrativo Reservado (Solo para administradores) */}
+        {isAdmin && (
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                <Euro className="w-4 h-4 text-blue-600" />
+                Datos de Finalización y Cobro
+              </h2>
+              {wo.status !== 'cerrado' && !wo.archived_at && !wo.deleted_at && (
+                <button
+                  type="button"
+                  data-testid="btn-open-edit-amount"
+                  onClick={() => {
+                    setEditAmountStr(
+                      wo.total_amount_cents !== null ? (wo.total_amount_cents / 100).toFixed(2) : ''
+                    );
+                    setShowEditAmountModal(true);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 transition"
+                >
+                  <span>{wo.total_amount_cents !== null ? '✏️ Modificar importe' : '+ Fijar importe'}</span>
+                </button>
+              )}
             </div>
-          ) : (
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
-              <span>Importe a cobrar aún no fijado.</span>
-              {isAdmin && (
+
+            {/* Tarjeta destacada de importe a cobrar al cliente */}
+            {wo.total_amount_cents !== null ? (
+              <div
+                data-testid="box-amount-to-collect"
+                className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                    <Euro className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                      Importe a cobrar al cliente
+                    </div>
+                    <div className="text-base font-extrabold text-emerald-950">
+                      {formatCentsToEUR(wo.total_amount_cents)}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[11px] bg-emerald-200/90 text-emerald-900 font-bold px-2 py-0.5 rounded-md">
+                  {wo.status === 'terminado' || wo.status === 'cerrado'
+                    ? 'Finalizado'
+                    : 'Fijado por Administración'}
+                </span>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
+                <span>Importe a cobrar aún no fijado.</span>
                 <span className="text-[11px] text-blue-600 font-medium">
                   Puedes fijarlo antes de finalizar para que el operario sepa cuánto cobrar.
                 </span>
-              )}
-            </div>
-          )}
-
-          <dl className="text-xs space-y-1.5">
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Importe del trabajo:</dt>
-              <dd className="font-bold text-slate-900 text-sm">
-                {formatCentsToEUR(wo.total_amount_cents)}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">¿Cliente ha pagado?:</dt>
-              <dd className="font-semibold">
-                {wo.customer_has_paid === null
-                  ? 'Pendiente de finalizar'
-                  : wo.customer_has_paid
-                  ? 'SÍ'
-                  : 'NO'}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">¿Cliente solicita factura?:</dt>
-              <dd className="font-semibold">
-                {wo.customer_requests_invoice === null
-                  ? 'Pendiente de finalizar'
-                  : wo.customer_requests_invoice
-                  ? 'SÍ'
-                  : 'NO'}
-              </dd>
-            </div>
-          </dl>
-
-          {isAdmin && wo.admin_data && (
-            <div
-              className="mt-3 pt-3 border-t-2 border-slate-200 bg-slate-50 rounded-xl p-3 space-y-2.5"
-              data-testid="admin-reserved-financial-box"
-            >
-              <div className="text-[11px] font-bold uppercase text-slate-700 flex items-center justify-between">
-                <span>Control Reservado Admin</span>
-                <span className="px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px]">
-                  Solo Admin
-                </span>
               </div>
+            )}
 
-              {wo.customer_has_paid && !wo.admin_data.money_delivered && (
-                <div className="p-2 rounded bg-amber-100 border border-amber-300 text-[11px] text-amber-950 font-medium">
-                  ⚠️ Aviso: El cliente pagó pero el dinero figura como NO entregado.
+            <dl className="text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <dt className="text-slate-500">Importe del trabajo:</dt>
+                <dd className="font-bold text-slate-900 text-sm">
+                  {formatCentsToEUR(wo.total_amount_cents)}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500">¿Cliente ha pagado?:</dt>
+                <dd className="font-semibold">
+                  {wo.customer_has_paid === null
+                    ? 'Pendiente de finalizar'
+                    : wo.customer_has_paid
+                    ? 'SÍ'
+                    : 'NO'}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500">¿Cliente solicita factura?:</dt>
+                <dd className="font-semibold">
+                  {wo.customer_requests_invoice === null
+                    ? 'Pendiente de finalizar'
+                    : wo.customer_requests_invoice
+                    ? 'SÍ'
+                    : 'NO'}
+                </dd>
+              </div>
+            </dl>
+
+            {wo.admin_data && (
+              <div
+                className="mt-3 pt-3 border-t-2 border-slate-200 bg-slate-50 rounded-xl p-3 space-y-2.5"
+                data-testid="admin-reserved-financial-box"
+              >
+                <div className="text-[11px] font-bold uppercase text-slate-700 flex items-center justify-between">
+                  <span>Control Reservado Admin</span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px]">
+                    Solo Admin
+                  </span>
                 </div>
-              )}
-              {wo.customer_requests_invoice && !wo.admin_data.invoice_issued && (
-                <div className="p-2 rounded bg-amber-100 border border-amber-300 text-[11px] text-amber-950 font-medium">
-                  ⚠️ Aviso: El cliente solicitó factura pero aún figura como NO emitida.
-                </div>
-              )}
 
-              <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
-                <span>Dinero entregado en oficina:</span>
-                <input
-                  type="checkbox"
-                  checked={wo.admin_data.money_delivered}
-                  onChange={(e) => {
-                    backend.updateWorkOrderAdminData(wo.id, {
-                      money_delivered: e.target.checked,
-                    });
-                    notifySuccessGreen('Estado de dinero entregado actualizado.');
-                    refreshLocal();
-                  }}
-                  className="w-4 h-4 rounded text-blue-600"
-                />
-              </label>
+                {wo.customer_has_paid && !wo.admin_data.money_delivered && (
+                  <div className="p-2 rounded bg-amber-100 border border-amber-300 text-[11px] text-amber-950 font-medium">
+                    ⚠️ Aviso: El cliente pagó pero el dinero figura como NO entregado.
+                  </div>
+                )}
+                {wo.customer_requests_invoice && !wo.admin_data.invoice_issued && (
+                  <div className="p-2 rounded bg-amber-100 border border-amber-300 text-[11px] text-amber-950 font-medium">
+                    ⚠️ Aviso: El cliente solicitó factura pero aún figura como NO emitida.
+                  </div>
+                )}
 
-              <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
-                <span>Factura emitida:</span>
-                <input
-                  type="checkbox"
-                  checked={wo.admin_data.invoice_issued}
-                  onChange={(e) => {
-                    backend.updateWorkOrderAdminData(wo.id, {
-                      invoice_issued: e.target.checked,
-                    });
-                    notifySuccessGreen('Estado de factura emitida actualizado.');
-                    refreshLocal();
-                  }}
-                  className="w-4 h-4 rounded text-blue-600"
-                />
-              </label>
-            </div>
-          )}
-        </div>
+                <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
+                  <span>Dinero entregado en oficina:</span>
+                  <input
+                    type="checkbox"
+                    checked={wo.admin_data.money_delivered}
+                    onChange={(e) => {
+                      backend.updateWorkOrderAdminData(wo.id, {
+                        money_delivered: e.target.checked,
+                      });
+                      notifySuccessGreen('Estado de dinero entregado actualizado.');
+                      refreshLocal();
+                    }}
+                    className="w-4 h-4 rounded text-blue-600"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
+                  <span>Factura emitida:</span>
+                  <input
+                    type="checkbox"
+                    checked={wo.admin_data.invoice_issued}
+                    onChange={(e) => {
+                      backend.updateWorkOrderAdminData(wo.id, {
+                        invoice_issued: e.target.checked,
+                      });
+                      notifySuccessGreen('Estado de factura emitida actualizado.');
+                      refreshLocal();
+                    }}
+                    className="w-4 h-4 rounded text-blue-600"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* =====================================================================
@@ -2644,6 +2660,20 @@ export const WorkOrderDetailView: React.FC<{
                   <option value="yes">SÍ solicita factura</option>
                   <option value="no">NO solicita factura</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  4. Observaciones de la intervención / cobro (opcional)
+                </label>
+                <textarea
+                  data-testid="textarea-finalize-observations"
+                  rows={3}
+                  value={finalizeObservations}
+                  onChange={(e) => setFinalizeObservations(e.target.value)}
+                  placeholder="Escribe aquí observaciones sobre el trabajo realizado, modificaciones de precio, cobro o incidencias..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-500"
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">

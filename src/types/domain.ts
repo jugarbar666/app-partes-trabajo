@@ -258,6 +258,7 @@ export interface WorkOrder {
   total_amount_cents: number | null;
   customer_requests_invoice: boolean | null;
   customer_has_paid: boolean | null;
+  final_observations?: string | null;
   content_hash: string;
   // Trazabilidad
   created_by: string;
