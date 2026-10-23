@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -500,6 +500,226 @@ export const PhoneInputField: React.FC<{
         placeholder={placeholder}
         className={`w-full px-3 py-1.5 rounded-r-lg border border-slate-300 text-sm bg-white focus:outline-none ${className}`}
       />
+    </div>
+  );
+};
+
+export interface SearchableSelectOption {
+  value: string;
+  label: string;
+  sublabel?: string;
+}
+
+/**
+ * Desplegable interactivo con filtro en tiempo real.
+ * Al empezar a escribir en el campo, filtra las opciones por cualquier parte del texto
+ * ignorando mayúsculas, minúsculas y tildes.
+ */
+export const SearchableSelect: React.FC<{
+  options: SearchableSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  emptyOptionLabel?: string;
+  disabled?: boolean;
+  required?: boolean;
+  className?: string;
+  id?: string;
+  name?: string;
+  'data-testid'?: string;
+}> = ({
+  options,
+  value,
+  onChange,
+  placeholder = 'Escribe para buscar...',
+  emptyOptionLabel,
+  disabled = false,
+  required = false,
+  className = '',
+  id,
+  name,
+  'data-testid': testId,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  // Normalizador para búsqueda insensible a acentos y mayúsculas
+  const normalize = (str: string) =>
+    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  // Filtrado de opciones en tiempo real por cualquier parte del texto
+  const filteredOptions = options.filter((o) => {
+    if (!searchTerm.trim()) return true;
+    const term = normalize(searchTerm);
+    return normalize(o.label).includes(term) || (o.sublabel && normalize(o.sublabel).includes(term));
+  });
+
+  // Cierre al hacer clic fuera del componente
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleSelectOption = (optValue: string) => {
+    onChange(optValue);
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange('');
+    setSearchTerm('');
+    setIsOpen(false);
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      {/* Select nativo oculto accesible para tests automatizados y formularios */}
+      <select
+        id={id}
+        name={name}
+        data-testid={testId}
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        className="sr-only pointer-events-none"
+        tabIndex={-1}
+        aria-hidden="true"
+      >
+        <option value="">{emptyOptionLabel || placeholder}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+
+      {/* Campo interactivo */}
+      <div
+        onClick={() => {
+          if (!disabled) {
+            setIsOpen(true);
+            if (inputRef.current) inputRef.current.focus();
+          }
+        }}
+        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border bg-white text-sm transition cursor-pointer ${
+          disabled
+            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+            : isOpen
+            ? 'border-blue-500 ring-2 ring-blue-100 shadow-xs'
+            : 'border-slate-300 hover:border-slate-400 shadow-2xs'
+        }`}
+      >
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            disabled={disabled}
+            value={isOpen ? searchTerm : selectedOption ? selectedOption.label : ''}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onFocus={() => {
+              if (!disabled) setIsOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setIsOpen(false);
+                setSearchTerm('');
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (filteredOptions.length > 0) {
+                  handleSelectOption(filteredOptions[0].value);
+                }
+              }
+            }}
+            placeholder={selectedOption ? selectedOption.label : placeholder}
+            className="w-full bg-transparent text-slate-800 placeholder:text-slate-400 focus:outline-none text-sm truncate"
+          />
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0 text-slate-400">
+          {value && !disabled && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="p-0.5 rounded hover:bg-slate-100 hover:text-slate-600 transition"
+              title="Borrar selección"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-blue-600' : ''}`}
+          />
+        </div>
+      </div>
+
+      {/* Lista desplegable filtrada en tiempo real */}
+      {isOpen && !disabled && (
+        <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl bg-white border border-slate-200 shadow-xl py-1 text-sm divide-y divide-slate-50">
+          {emptyOptionLabel && (
+            <div
+              onClick={() => handleSelectOption('')}
+              className={`px-3 py-2 cursor-pointer transition text-xs font-semibold ${
+                !value
+                  ? 'bg-blue-50 text-blue-700 font-bold'
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {emptyOptionLabel}
+            </div>
+          )}
+
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-3 text-center text-xs text-slate-500 italic">
+              No se encontraron coincidencias para "{searchTerm}"
+            </div>
+          ) : (
+            filteredOptions.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => handleSelectOption(opt.value)}
+                  className={`px-3 py-2.5 cursor-pointer transition flex items-center justify-between gap-2 ${
+                    isSelected
+                      ? 'bg-blue-600 text-white font-semibold'
+                      : 'hover:bg-blue-50/70 text-slate-800'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{opt.label}</div>
+                    {opt.sublabel && (
+                      <div
+                        className={`text-[11px] truncate ${
+                          isSelected ? 'text-blue-100' : 'text-slate-500'
+                        }`}
+                      >
+                        {opt.sublabel}
+                      </div>
+                    )}
+                  </div>
+                  {isSelected && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 };

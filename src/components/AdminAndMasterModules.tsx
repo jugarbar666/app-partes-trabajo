@@ -18,6 +18,7 @@ import {
   PhoneActionLinks,
   PhoneInputField,
   ScreenHeaderBar,
+  SearchableSelect,
   useUIConfirmation,
 } from './CommonUI';
 import {
@@ -740,17 +741,15 @@ export const MasterDataAndUsersModule: React.FC<{
                 }}
                 className="p-5 space-y-3 text-xs"
               >
-                <select
+                <SearchableSelect
                   value={addrCustomerId}
-                  onChange={(e) => setAddrCustomerId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
-                >
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAddrCustomerId}
+                  placeholder="Escribe para buscar cliente..."
+                  options={customers.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                  }))}
+                />
                 <input
                   type="text"
                   required

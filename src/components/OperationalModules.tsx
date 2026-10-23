@@ -13,7 +13,7 @@ import {
   Send,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
-import { ScreenHeaderBar, useUIConfirmation } from './CommonUI';
+import { ScreenHeaderBar, useUIConfirmation, SearchableSelect } from './CommonUI';
 import {
   calculateDuration,
   calculateReviewNoticeSchedule,
@@ -577,56 +577,48 @@ export const ReviewsAndNotificationsModule: React.FC<{
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Cliente *</label>
-              <select
+              <SearchableSelect
                 value={reviewCustomerId}
-                onChange={(e) => {
-                  const cid = e.target.value;
+                onChange={(cid) => {
                   setReviewCustomerId(cid);
                   const custAddrs = addresses.filter((a) => a.customer_id === cid);
                   setReviewAddressId(custAddrs[0]?.id || '');
                 }}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Escribe para buscar cliente..."
+                options={customers.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+              />
             </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
                 Instalación / Domicilio *
               </label>
-              <select
+              <SearchableSelect
                 value={reviewAddressId}
-                onChange={(e) => setReviewAddressId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
-              >
-                {availableAddressesForReview.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.alias ? `${a.alias} — ` : ''}
-                    {a.address_line} ({a.city})
-                  </option>
-                ))}
-              </select>
+                onChange={setReviewAddressId}
+                placeholder="Escribe para buscar instalación..."
+                disabled={!reviewCustomerId || availableAddressesForReview.length === 0}
+                options={availableAddressesForReview.map((a) => ({
+                  value: a.id,
+                  label: `${a.alias ? `${a.alias} — ` : ''}${a.address_line} (${a.city})`,
+                }))}
+              />
             </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Tipo de Revisión *</label>
-              <select
+              <SearchableSelect
                 value={reviewTypeId}
-                onChange={(e) => setReviewTypeId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
-              >
-                {reviewTypes.map((rt) => (
-                  <option key={rt.id} value={rt.id}>
-                    {rt.name} ({rt.periodicity_value} {rt.periodicity_unit} —{' '}
-                    {formatCentsToEUR(rt.suggested_price_cents)})
-                  </option>
-                ))}
-              </select>
+                onChange={setReviewTypeId}
+                placeholder="Escribe para buscar tipo de revisión..."
+                options={reviewTypes.map((rt) => ({
+                  value: rt.id,
+                  label: `${rt.name} (${rt.periodicity_value} ${rt.periodicity_unit} — ${formatCentsToEUR(rt.suggested_price_cents)})`,
+                }))}
+              />
             </div>
 
             <div>
@@ -1142,18 +1134,16 @@ export const ShoppingListModule: React.FC<{
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Artículo del catálogo *
                 </label>
-                <select
+                <SearchableSelect
                   data-testid="select-shopping-article"
                   value={selectedArticleId}
-                  onChange={(e) => setSelectedArticleId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
-                >
-                  {articles.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.code} — {a.name} ({a.unit})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedArticleId}
+                  placeholder="Escribe para buscar artículo del catálogo..."
+                  options={articles.map((a) => ({
+                    value: a.id,
+                    label: `${a.code} — ${a.name} (${a.unit})`,
+                  }))}
+                />
                 {isAdmin && (
                   <button
                     type="button"
