@@ -1391,8 +1391,6 @@ export const AdminSystemModule: React.FC<{
   const [compNotifEmail, setCompNotifEmail] = useState(settings.notification_email);
   const [compPrefix, setCompPrefix] = useState(settings.work_order_prefix);
   const [compTimezone, setCompTimezone] = useState(sanitizeTimezone(settings.timezone));
-  const [compWorkStartTime, setCompWorkStartTime] = useState(settings.default_work_start_time || '08:00');
-  const [compWorkEndTime, setCompWorkEndTime] = useState(settings.default_work_end_time || '18:00');
   const [compLogoUrl, setCompLogoUrl] = useState<string>(settings.logo_url || '');
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1708,8 +1706,6 @@ export const AdminSystemModule: React.FC<{
                 { label: 'Email que recibe avisos de revisiones', value: compNotifEmail },
                 { label: 'Prefijo de numeración de partes', value: compPrefix },
                 { label: 'Zona horaria', value: compTimezone },
-                { label: 'Hora habitual de entrada por defecto', value: compWorkStartTime },
-                { label: 'Hora habitual de salida por defecto', value: compWorkEndTime },
               ],
               onConfirm: () => {
                 backend.updateCompanySettings({
@@ -1725,8 +1721,8 @@ export const AdminSystemModule: React.FC<{
                   notification_email: compNotifEmail,
                   work_order_prefix: compPrefix,
                   timezone: compTimezone,
-                  default_work_start_time: compWorkStartTime,
-                  default_work_end_time: compWorkEndTime,
+                  default_work_start_time: settings.default_work_start_time,
+                  default_work_end_time: settings.default_work_end_time,
                 });
                 refresh();
               },
@@ -1938,31 +1934,6 @@ export const AdminSystemModule: React.FC<{
                     <option value={compTimezone}>{compTimezone}</option>
                   )}
                 </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Hora habitual de entrada (fichajes por defecto)
-                </label>
-                <input
-                  type="time"
-                  value={compWorkStartTime}
-                  onChange={(e) => setCompWorkStartTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono font-bold"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Hora habitual de salida (fichajes por defecto)
-                </label>
-                <input
-                  type="time"
-                  value={compWorkEndTime}
-                  onChange={(e) => setCompWorkEndTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono font-bold"
-                />
               </div>
             </div>
           </div>
