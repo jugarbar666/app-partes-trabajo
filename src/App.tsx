@@ -552,20 +552,21 @@ const MainApplicationContent: React.FC = () => {
   // Helper: indica si un parte ya ha sido realizado / finalizado
   const isWoFinished = (status: string) => status === 'terminado' || status === 'cerrado';
 
-  // Ordenación de partes: fecha y hora prevista ascendente (el primero es el primero al que tengo que ir)
-  // 1. Partes pendientes de realizar (no_iniciado, en_curso) primero para tener siempre el próximo a realizar arriba
-  // 2. Partes ya realizados (terminado, cerrado) pasan al final
-  // 3. Dentro de cada bloque, orden estrictamente ascendente por fecha y hora prevista
+  // Ordenación de partes: fecha y hora prevista estrictamente ascendente (sin tener en cuenta el estado del parte)
   const dashboardSortedWorkOrders = [...activeWorkOrders].sort((a, b) => {
-    const finA = isWoFinished(a.status);
-    const finB = isWoFinished(b.status);
-    if (finA !== finB) {
-      return finA ? 1 : -1;
-    }
-    const timeA = parseDateRobust(a.scheduled_at)?.getTime() ?? 0;
-    const timeB = parseDateRobust(b.scheduled_at)?.getTime() ?? 0;
+    const timeA = a.scheduled_at
+      ? parseDateRobust(a.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      : Number.MAX_SAFE_INTEGER;
+    const timeB = b.scheduled_at
+      ? parseDateRobust(b.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      : Number.MAX_SAFE_INTEGER;
     if (timeA !== timeB) {
       return timeA - timeB;
+    }
+    const createA = parseDateRobust(a.created_at)?.getTime() ?? 0;
+    const createB = parseDateRobust(b.created_at)?.getTime() ?? 0;
+    if (createA !== createB) {
+      return createA - createB;
     }
     return a.code.localeCompare(b.code);
   });
@@ -603,14 +604,9 @@ const MainApplicationContent: React.FC = () => {
         map.get(dStr)!.push(wo);
       }
     }
-    // Dentro de cada día: pendientes primero (hora ascendente) y realizados al final del día (hora ascendente)
+    // Dentro de cada día: orden cronológico por hora prevista
     map.forEach((list) => {
       list.sort((a, b) => {
-        const finA = isWoFinished(a.status);
-        const finB = isWoFinished(b.status);
-        if (finA !== finB) {
-          return finA ? 1 : -1;
-        }
         const timeA = parseDateRobust(a.scheduled_at)?.getTime() ?? 0;
         const timeB = parseDateRobust(b.scheduled_at)?.getTime() ?? 0;
         if (timeA !== timeB) {

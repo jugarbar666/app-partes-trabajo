@@ -25,12 +25,14 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
 
     // Verificar ordenación del listado general de partes en el dashboard por fecha prevista ascendente:
     // PT-2026-0002 (previsto 21/10/2026) aparece antes que PT-2026-0001 (previsto 22/10/2026) y PT-2026-0003 (terminado al final)
-    const idx1 = html.indexOf('PT-2026-0001');
-    const idx2 = html.indexOf('PT-2026-0002');
-    const idx3 = html.indexOf('PT-2026-0003');
-    expect(idx2).toBeGreaterThan(-1);
+    // Verificar ordenación del listado general de partes en el dashboard por fecha prevista estrictamente ascendente (sin tener en cuenta el estado)
+    const listHtml = html.slice(html.indexOf('data-testid="dashboard-wo-list"'));
+    const idx3 = listHtml.indexOf('PT-2026-0003');
+    const idx2 = listHtml.indexOf('PT-2026-0002');
+    const idx1 = listHtml.indexOf('PT-2026-0001');
+    expect(idx3).toBeGreaterThan(-1);
+    expect(idx2).toBeGreaterThan(idx3);
     expect(idx1).toBeGreaterThan(idx2);
-    expect(idx3).toBeGreaterThan(idx1);
   });
 
   it('Escenario 18 y 20: Colores obligatorios de estados (Azul, Naranja, Verde) y controles persistentes utilizables', () => {
