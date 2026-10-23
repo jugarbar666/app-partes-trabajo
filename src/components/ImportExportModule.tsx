@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   FileSpreadsheet,
   FileDown,
+  FileText,
   Upload,
   CheckCircle2,
   AlertTriangle,
@@ -13,6 +14,7 @@ import {
   downloadImportTemplateExcel,
   executeValidatedImport,
   exportRowsToExcel,
+  exportRowsToPDF,
   ImportPreviewResult,
   validateAndPreviewImport,
 } from '../utils/exportImportUtils';
@@ -284,6 +286,28 @@ export const ImportExportModule: React.FC<{
     });
   };
 
+  const handleDownloadIncidentsReportPDF = () => {
+    const errs =
+      lastExecutionResult?.errors ||
+      preview?.rows.flatMap((r) =>
+        r.errors.map((e) => ({ row: r.rowNumber, field: e.field, message: e.message }))
+      ) ||
+      [];
+    exportRowsToPDF({
+      fileName: `Informe_Incidencias_Importacion_${entityType}.pdf`,
+      title: `Informe Oficial de Incidencias de Importación (${entityType.toUpperCase()})`,
+      subtitle: `Filas con errores de validación o duplicados detectados · ${company.company_name}`,
+      company,
+      columns: [
+        { key: 'row', header: 'Fila' },
+        { key: 'field', header: 'Campo' },
+        { key: 'message', header: 'Detalle del Error' },
+      ],
+      rows: errs,
+      orientation: 'portrait',
+    });
+  };
+
   const handleExportMasterCatalog = (target: 'customers' | 'suppliers' | 'articles' | 'work_orders' | 'reviews') => {
     if (target === 'customers') {
       const list = backend.getCustomers(true);
@@ -402,6 +426,146 @@ export const ImportExportModule: React.FC<{
     }
   };
 
+  const handleExportMasterCatalogPDF = (
+    target: 'customers' | 'suppliers' | 'articles' | 'work_orders' | 'reviews'
+  ) => {
+    const tz = company.timezone || 'Europe/Madrid';
+    const nowStr = formatDateTimeES(new Date().toISOString(), tz);
+
+    if (target === 'customers') {
+      const list = backend.getCustomers(true);
+      exportRowsToPDF({
+        fileName: 'Exportacion_Clientes.pdf',
+        title: 'Listado Oficial de Clientes',
+        subtitle: `Catálogo de clientes registrados · ${company.company_name} · Generado: ${nowStr}`,
+        company,
+        columns: [
+          { key: 'code', header: 'Código' },
+          { key: 'name', header: 'Nombre / Razón Social' },
+          { key: 'tax_id', header: 'NIF / CIF' },
+          { key: 'phone', header: 'Teléfono' },
+          { key: 'email', header: 'Email' },
+          { key: 'main_address', header: 'Domicilio Principal' },
+          { key: 'active', header: 'Estado' },
+        ],
+        rows: list.map((c) => ({
+          code: c.code,
+          name: c.name,
+          tax_id: c.tax_id || '—',
+          phone: c.phones.join(', ') || '—',
+          email: c.emails.join(', ') || '—',
+          main_address: c.main_address || '—',
+          active: c.is_active ? 'Activo' : 'Inactivo',
+        })),
+        orientation: 'landscape',
+      });
+    } else if (target === 'suppliers') {
+      const list = backend.getSuppliers(true);
+      exportRowsToPDF({
+        fileName: 'Exportacion_Proveedores.pdf',
+        title: 'Listado Oficial de Proveedores',
+        subtitle: `Catálogo de proveedores homologados · ${company.company_name} · Generado: ${nowStr}`,
+        company,
+        columns: [
+          { key: 'name', header: 'Nombre / Razón Social' },
+          { key: 'tax_id', header: 'NIF / CIF' },
+          { key: 'phone', header: 'Teléfono' },
+          { key: 'email', header: 'Email' },
+          { key: 'contact_person', header: 'Persona de Contacto' },
+          { key: 'notes', header: 'Observaciones / Notas' },
+          { key: 'active', header: 'Estado' },
+        ],
+        rows: list.map((s) => ({
+          name: s.name,
+          tax_id: s.tax_id || '—',
+          phone: s.phone || '—',
+          email: s.email || '—',
+          contact_person: s.contact_person || '—',
+          notes: s.notes || '—',
+          active: s.is_active ? 'Activo' : 'Inactivo',
+        })),
+        orientation: 'landscape',
+      });
+    } else if (target === 'articles') {
+      const list = backend.getArticles(true);
+      exportRowsToPDF({
+        fileName: 'Exportacion_Articulos.pdf',
+        title: 'Catálogo Oficial de Artículos y Tarifas',
+        subtitle: `Tarifas y existencias de materiales · ${company.company_name} · Generado: ${nowStr}`,
+        company,
+        columns: [
+          { key: 'code', header: 'Código' },
+          { key: 'name', header: 'Artículo' },
+          { key: 'unit', header: 'Unidad' },
+          { key: 'purchase', header: 'Precio Compra' },
+          { key: 'sale', header: 'Precio Venta' },
+          { key: 'active', header: 'Estado' },
+        ],
+        rows: list.map((a) => ({
+          code: a.code,
+          name: a.name,
+          unit: a.unit,
+          purchase: formatCentsToEUR(a.purchase_price_cents),
+          sale: formatCentsToEUR(a.sale_price_cents),
+          active: a.is_active ? 'Activo' : 'Inactivo',
+        })),
+        orientation: 'portrait',
+      });
+    } else if (target === 'work_orders') {
+      const list = backend.getWorkOrders({ includeArchived: true });
+      exportRowsToPDF({
+        fileName: 'Exportacion_Listado_Partes.pdf',
+        title: 'Listado General de Partes de Trabajo',
+        subtitle: `Registro histórico y operativo de partes · ${company.company_name} · Generado: ${nowStr}`,
+        company,
+        columns: [
+          { key: 'code', header: 'Nº Parte' },
+          { key: 'customer', header: 'Cliente' },
+          { key: 'planned_work', header: 'Trabajo a Realizar' },
+          { key: 'address', header: 'Dirección Servicio' },
+          { key: 'scheduled', header: 'Fecha Programada' },
+          { key: 'status', header: 'Estado' },
+          { key: 'amount', header: 'Importe' },
+        ],
+        rows: list.map((w) => ({
+          code: w.code,
+          customer: w.snapshot_customer_name,
+          planned_work: w.planned_work || '—',
+          address: `${w.snapshot_address_line} (${w.snapshot_city})`,
+          scheduled: formatDateTimeES(w.scheduled_at, tz),
+          status: w.archived_at ? 'Archivado' : w.status.toUpperCase(),
+          amount: formatCentsToEUR(w.total_amount_cents),
+        })),
+        orientation: 'landscape',
+      });
+    } else if (target === 'reviews') {
+      const revs = backend.getInstallationReviews();
+      const custs = backend.getCustomers(true);
+      const types = backend.getReviewTypes(true);
+      exportRowsToPDF({
+        fileName: 'Exportacion_Revisiones.pdf',
+        title: 'Listado Oficial de Revisiones Periódicas',
+        subtitle: `Calendario de inspecciones de instalaciones · ${company.company_name} · Generado: ${nowStr}`,
+        company,
+        columns: [
+          { key: 'customer', header: 'Cliente' },
+          { key: 'type', header: 'Tipo de Revisión' },
+          { key: 'last', header: 'Última Revisión' },
+          { key: 'next', header: 'Próxima Fecha' },
+          { key: 'status', header: 'Estado' },
+        ],
+        rows: revs.map((r) => ({
+          customer: custs.find((c) => c.id === r.customer_id)?.name || r.customer_id,
+          type: types.find((t) => t.id === r.review_type_id)?.name || r.review_type_id,
+          last: r.last_review_date || '—',
+          next: r.next_review_date,
+          status: r.status.toUpperCase(),
+        })),
+        orientation: 'portrait',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <ScreenHeaderBar
@@ -431,8 +595,8 @@ export const ImportExportModule: React.FC<{
         </div>
       </div>
 
-      {/* Exportación rápida de listados */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+      {/* Exportación rápida de catálogos y listados en Excel y PDF */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <FileDown className="w-5 h-5 text-blue-600" />
@@ -446,42 +610,100 @@ export const ImportExportModule: React.FC<{
             />
           )}
         </div>
-        <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={() => handleExportMasterCatalog('customers')}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-          >
-            Exportar Clientes (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExportMasterCatalog('suppliers')}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-          >
-            Exportar Proveedores (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExportMasterCatalog('articles')}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-          >
-            Exportar Artículos (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExportMasterCatalog('work_orders')}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-          >
-            Exportar Listado de Partes (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExportMasterCatalog('reviews')}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-          >
-            Exportar Revisiones Periódicas (.xlsx)
-          </button>
+
+        {/* Sección de exportación a Excel (.xlsx) */}
+        <div className="space-y-1.5">
+          <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Exportar a Hoja de Cálculo Excel (.xlsx):</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleExportMasterCatalog('customers')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Exportar Clientes (.xlsx)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportMasterCatalog('suppliers')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Exportar Proveedores (.xlsx)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportMasterCatalog('articles')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Exportar Artículos (.xlsx)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportMasterCatalog('work_orders')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Exportar Listado de Partes (.xlsx)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportMasterCatalog('reviews')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Exportar Revisiones Periódicas (.xlsx)
+            </button>
+          </div>
+        </div>
+
+        {/* Sección de exportación a PDF (.pdf) */}
+        <div className="space-y-1.5 pt-3 border-t border-slate-100">
+          <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-rose-600" />
+            <span>Exportar a Documento PDF (.pdf oficial con membrete y logotipo):</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="btn-export-customers-pdf"
+              onClick={() => handleExportMasterCatalogPDF('customers')}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs"
+            >
+              Exportar Clientes (.pdf)
+            </button>
+            <button
+              type="button"
+              data-testid="btn-export-suppliers-pdf"
+              onClick={() => handleExportMasterCatalogPDF('suppliers')}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs"
+            >
+              Exportar Proveedores (.pdf)
+            </button>
+            <button
+              type="button"
+              data-testid="btn-export-articles-pdf"
+              onClick={() => handleExportMasterCatalogPDF('articles')}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs"
+            >
+              Exportar Artículos (.pdf)
+            </button>
+            <button
+              type="button"
+              data-testid="btn-export-workorders-pdf"
+              onClick={() => handleExportMasterCatalogPDF('work_orders')}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs"
+            >
+              Exportar Listado de Partes (.pdf)
+            </button>
+            <button
+              type="button"
+              data-testid="btn-export-reviews-pdf"
+              onClick={() => handleExportMasterCatalogPDF('reviews')}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs"
+            >
+              Exportar Revisiones Periódicas (.pdf)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -685,13 +907,22 @@ export const ImportExportModule: React.FC<{
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleDownloadIncidentsReport}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-              >
-                Descargar Informe de Incidencias (.xlsx)
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadIncidentsReport}
+                  className="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+                >
+                  Descargar Informe de Incidencias (.xlsx)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadIncidentsReportPDF}
+                  className="px-3.5 py-2 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-xs font-semibold text-rose-800"
+                >
+                  Descargar Informe de Incidencias (.pdf)
+                </button>
+              </div>
               <button
                 type="button"
                 data-testid="btn-execute-import"

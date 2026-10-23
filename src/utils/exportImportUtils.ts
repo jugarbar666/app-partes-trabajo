@@ -50,6 +50,75 @@ export function exportRowsToExcel(params: {
   XLSX.writeFile(workbook, params.fileName.endsWith('.xlsx') ? params.fileName : `${params.fileName}.xlsx`);
 }
 
+// =============================================================================
+// 1.1. EXPORTACIÓN SEGURA A PDF (.pdf) CON LOGO, CABECERA Y FORMATO OFICIAL
+// =============================================================================
+export function exportRowsToPDF(params: {
+  fileName: string;
+  title: string;
+  subtitle?: string;
+  company: CompanySettings;
+  columns: Array<{ key: string; header: string }>;
+  rows: Array<Record<string, unknown>>;
+  orientation?: 'portrait' | 'landscape';
+}): void {
+  const orientation = params.orientation || (params.columns.length > 5 ? 'landscape' : 'portrait');
+  const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+  const pageWidth = orientation === 'landscape' ? 297 : 210;
+  const pageHeight = orientation === 'landscape' ? 210 : 297;
+
+  // Título principal
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(params.title, 14, 15, { maxWidth: params.company.logo_url ? pageWidth - 70 : pageWidth - 28 });
+
+  if (params.subtitle) {
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    doc.text(params.subtitle, 14, 21, { maxWidth: params.company.logo_url ? pageWidth - 70 : pageWidth - 28 });
+  }
+
+  tryAddCompanyLogo(doc, params.company.logo_url, pageWidth - 55, 8, 40, 16);
+
+  autoTable(doc, {
+    startY: params.subtitle ? 26 : 22,
+    head: [params.columns.map((c) => c.header)],
+    body: params.rows.map((r) =>
+      params.columns.map((c) => (r[c.key] !== undefined && r[c.key] !== null ? String(r[c.key]) : '—'))
+    ),
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.2,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: 255,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],
+    },
+    margin: { left: 14, right: 14, bottom: 15 },
+  });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7.5);
+    doc.setTextColor(130);
+    doc.text(
+      `${params.company.company_name} · ${params.title} — Página ${p} de ${totalPages}`,
+      14,
+      pageHeight - 8
+    );
+  }
+
+  doc.save(params.fileName.endsWith('.pdf') ? params.fileName : `${params.fileName}.pdf`);
+}
+
 /**
  * Descarga una plantilla Excel oficial para importación de la entidad seleccionada
  */
