@@ -450,12 +450,11 @@ export const WorkOrderCreateModal: React.FC<{
                   disabled={addresses.length === 0}
                   options={addresses.map((a) => {
                     const cust = customers.find((c) => c.id === a.customer_id);
-                    const aliasPart = a.alias ? `[${a.alias}] ` : '';
                     const cityPart = a.city ? ` (${a.city})` : '';
                     const custPart = a.customer_id !== selectedCustomerId && cust ? ` — Cliente: ${cust.name}` : '';
                     return {
                       value: a.id,
-                      label: `${aliasPart}${a.address_line}${cityPart}${custPart}`,
+                      label: `${a.address_line}${cityPart}${custPart}`,
                     };
                   })}
                 />
@@ -2421,7 +2420,7 @@ export const WorkOrderDetailView: React.FC<{
                   <option value="">-- Seleccionar dirección guardada --</option>
                   {customerAddresses.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.alias ? `${a.alias}: ` : ''}{a.address_line}, {a.city}
+                      {a.address_line}, {a.city}
                     </option>
                   ))}
                 </select>
