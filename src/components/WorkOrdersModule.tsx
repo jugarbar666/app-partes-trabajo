@@ -1320,22 +1320,8 @@ export const WorkOrderDetailView: React.FC<{
             </div>
           </div>
           <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs space-y-1">
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-200/80">
+            <div className="pb-1.5 border-b border-slate-200/80">
               <span className="font-bold text-slate-700">Trabajos encargados / planificados:</span>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-extrabold text-xs">
-                  🗓️ Previsto: {formatDateES(wo.scheduled_at)} · {formatTimeES(wo.scheduled_at)} h
-                </span>
-                {wo.status !== 'cerrado' && wo.archived_at === null && (
-                  <button
-                    type="button"
-                    onClick={() => setShowRescheduleModal(true)}
-                    className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold text-xs cursor-pointer"
-                  >
-                    Reprogramar
-                  </button>
-                )}
-              </div>
             </div>
             <p className="text-slate-900 pt-1">{wo.planned_work}</p>
             {wo.initial_notes && (
