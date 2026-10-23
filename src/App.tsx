@@ -2550,6 +2550,7 @@ const MainApplicationContent: React.FC = () => {
           {/* 7. FICHAJE Y CONTROL HORARIO */}
           {currentRoute === 'attendance' && (
             <AttendanceAndReportsModule
+              key={tick}
               backend={backend}
               onBack={navigateBack}
               onRefresh={refresh}

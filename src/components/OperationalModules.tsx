@@ -24,6 +24,7 @@ import {
   getCurrentLocalDate,
   getReviewAlertInfo,
   getWeekdayNameES,
+  parseDateRobust,
   parseEurosToCents,
 } from '../utils/formatters';
 import { generateAttendanceReportPDF } from '../utils/exportImportUtils';
@@ -1372,21 +1373,23 @@ export const AttendanceAndReportsModule: React.FC<{
   const company = backend.getCompanySettings();
   const tz = company.timezone || 'Europe/Madrid';
 
-  const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
-  const sessions = useMemo(() => backend.getAttendanceSessions(false), [backend, tick]);
-  const openSession = useMemo(
-    () => backend.getOpenAttendanceSessionForCurrentUser(),
-    [backend, tick]
-  );
-  const corrections = useMemo(
-    () => (isAdmin ? backend.getAttendanceCorrections() : []),
-    [backend, isAdmin, tick]
-  );
+  const profiles = backend.getProfiles();
+  const sessions = backend.getAttendanceSessions(false);
+  const openSession = backend.getOpenAttendanceSessionForCurrentUser();
+  const corrections = isAdmin ? backend.getAttendanceCorrections() : [];
 
   const [workerNote, setWorkerNote] = useState('');
+
+  // Rango de fechas por defecto: mes en curso según zona horaria
+  const todayStr = getCurrentLocalDate(tz);
+  const [currentYear, currentMonth] = todayStr.split('-');
+  const defaultFrom = `${currentYear}-${currentMonth}-01`;
+  const lastDayOfMonth = new Date(Number(currentYear), Number(currentMonth), 0).getDate();
+  const defaultTo = `${currentYear}-${currentMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
   const [filterWorkerId, setFilterWorkerId] = useState<string>('all');
-  const [filterFrom, setFilterFrom] = useState('2026-10-01');
-  const [filterTo, setFilterTo] = useState('2026-10-31');
+  const [filterFrom, setFilterFrom] = useState(defaultFrom);
+  const [filterTo, setFilterTo] = useState(defaultTo);
 
   // Formulario administrativo para crear o corregir fichaje con motivo obligatorio
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -1397,13 +1400,18 @@ export const AttendanceAndReportsModule: React.FC<{
   const [adminNotesIn, setAdminNotesIn] = useState('');
   const [adminReason, setAdminReason] = useState('');
 
-  const filteredSessions = sessions.filter((s) => {
-    if (filterWorkerId !== 'all' && s.user_id !== filterWorkerId) return false;
-    const dateStr = s.clock_in_at.slice(0, 10);
-    if (filterFrom && dateStr < filterFrom) return false;
-    if (filterTo && dateStr > filterTo) return false;
-    return true;
-  });
+  const filteredSessions = sessions
+    .filter((s) => {
+      if (filterWorkerId !== 'all' && s.user_id !== filterWorkerId) return false;
+      const inDate = s.clock_in_at ? getCurrentLocalDate(tz, parseDateRobust(s.clock_in_at) || undefined) : '';
+      const outDate = s.clock_out_at
+        ? getCurrentLocalDate(tz, parseDateRobust(s.clock_out_at) || undefined)
+        : inDate;
+      if (filterFrom && outDate < filterFrom) return false;
+      if (filterTo && inDate > filterTo) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.clock_in_at).getTime() - new Date(a.clock_in_at).getTime());
 
   const totalMinutes = filteredSessions.reduce(
     (acc, s) => acc + calculateDuration(s.clock_in_at, s.clock_out_at).minutes,
@@ -1631,13 +1639,33 @@ export const AttendanceAndReportsModule: React.FC<{
             {filteredSessions.map((s) => {
               const worker = profiles.find((p) => p.id === s.user_id);
               const dur = calculateDuration(s.clock_in_at, s.clock_out_at);
+              const inDate = formatDateES(s.clock_in_at, tz);
+              const outDate = s.clock_out_at ? formatDateES(s.clock_out_at, tz) : null;
+              const isMultiDay = Boolean(outDate && inDate !== outDate);
+              const inWeekday = getWeekdayNameES(s.clock_in_at, tz);
+              const outWeekday = s.clock_out_at ? getWeekdayNameES(s.clock_out_at, tz) : null;
+
               return (
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="p-3 font-semibold text-slate-900">
                     {worker?.full_name || s.user_id}
                   </td>
-                  <td className="p-3">{formatDateES(s.clock_in_at, tz)}</td>
-                  <td className="p-3">{getWeekdayNameES(s.clock_in_at, tz)}</td>
+                  <td className="p-3">
+                    <div className="font-medium text-slate-800">{inDate}</div>
+                    {isMultiDay && (
+                      <div className="text-[10px] text-amber-700 font-bold mt-0.5">
+                        Salida: {outDate}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <div className="text-slate-700">{inWeekday}</div>
+                    {isMultiDay && (
+                      <div className="text-[10px] text-amber-700 font-bold mt-0.5">
+                        a {outWeekday}
+                      </div>
+                    )}
+                  </td>
                   <td className="p-3 font-mono font-bold text-emerald-700">
                     {formatTimeES(s.clock_in_at, tz)}
                   </td>
@@ -1655,8 +1683,18 @@ export const AttendanceAndReportsModule: React.FC<{
                         onClick={() => {
                           setEditingSessionId(s.id);
                           setAdminUserId(s.user_id);
-                          setAdminClockIn(s.clock_in_at.slice(0, 16));
-                          setAdminClockOut(s.clock_out_at ? s.clock_out_at.slice(0, 16) : '');
+                          const dIn = parseDateRobust(s.clock_in_at);
+                          const dOut = s.clock_out_at ? parseDateRobust(s.clock_out_at) : null;
+                          const fmtLocal = (d: Date) => {
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            const h = String(d.getHours()).padStart(2, '0');
+                            const min = String(d.getMinutes()).padStart(2, '0');
+                            return `${y}-${m}-${day}T${h}:${min}`;
+                          };
+                          setAdminClockIn(dIn ? fmtLocal(dIn) : s.clock_in_at.slice(0, 16));
+                          setAdminClockOut(dOut ? fmtLocal(dOut) : '');
                           setAdminNotesIn(s.worker_notes_in);
                           setAdminReason('');
                           setShowAdminModal(true);
