@@ -31,6 +31,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
+import { WorkOrder, WorkOrderAssignment } from './types/domain';
 import {
   PhoneActionLinks,
   ScreenHeaderBar,
@@ -99,6 +100,116 @@ const MONTHS_ES = [
   { value: '11', label: 'Noviembre' },
   { value: '12', label: 'Diciembre' },
 ];
+
+const WorkOrderMobileCard: React.FC<{
+  wo: WorkOrder;
+  tz: string;
+  assignments: WorkOrderAssignment[];
+  getUserName: (id: string) => string;
+  onOpenDetail: (id: string) => void;
+  onReschedule: (wo: WorkOrder) => void;
+}> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule }) => {
+  const woOps = assignments
+    .filter((a) => a.work_order_id === wo.id)
+    .map((a) => getUserName(a.operator_id));
+
+  return (
+    <div
+      key={wo.id}
+      data-testid={`operator-card-${wo.id}`}
+      className={`bg-white rounded-2xl border-2 p-4 sm:p-5 shadow-2xs space-y-3 flex flex-col justify-between ${
+        wo.status === 'en_curso'
+          ? 'border-amber-400'
+          : wo.status === 'no_iniciado'
+          ? 'border-blue-400'
+          : wo.status === 'terminado'
+          ? 'border-emerald-400'
+          : 'border-slate-300'
+      }`}
+    >
+      <div className="space-y-2.5">
+        {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
+        <div className="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-sm flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <Calendar className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-100">
+                Fecha y Hora Prevista
+              </div>
+              <div className="text-sm font-extrabold tracking-tight">
+                {formatDateES(wo.scheduled_at, tz)} — {formatTimeES(wo.scheduled_at, tz)} h
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              data-testid={`operator-card-reschedule-${wo.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReschedule(wo);
+              }}
+              className="px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold border border-white/25 transition cursor-pointer"
+              title="Reprogramar fecha y hora prevista"
+            >
+              Reprogramar
+            </button>
+            <span className="font-mono font-extrabold text-xs px-2 py-1 rounded-md bg-white/15 text-white">
+              {wo.code}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="text-sm font-extrabold text-slate-900 truncate">
+            {wo.snapshot_customer_name}
+          </div>
+          <WorkOrderStatusBadge status={wo.status} />
+        </div>
+
+        <div className="text-xs text-slate-700 font-medium">
+          📍 {wo.snapshot_address_line}, {wo.snapshot_postal_code} {wo.snapshot_city}
+        </div>
+        <div className="text-xs">
+          <PhoneActionLinks phone={wo.snapshot_contact_phone} />
+        </div>
+
+        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800">
+          <strong>Trabajo a realizar:</strong> {wo.planned_work}
+        </div>
+
+        {wo.total_amount_cents !== null && (
+          <div
+            data-testid={`operator-card-amount-${wo.id}`}
+            className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between text-emerald-950 text-xs shadow-2xs"
+          >
+            <div className="flex items-center gap-1.5 font-bold">
+              <Euro className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Importe a cobrar:</span>
+            </div>
+            <span className="font-extrabold text-sm text-emerald-800">
+              {formatCentsToEUR(wo.total_amount_cents)}
+            </span>
+          </div>
+        )}
+
+        <div className="text-xs text-slate-600">
+          👷 <strong>Equipo asignado:</strong> {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onOpenDetail(wo.id)}
+        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+      >
+        Abrir Parte / Gestionar →
+      </button>
+    </div>
+  );
+};
 
 const MainApplicationContent: React.FC = () => {
   const backend = defaultBackend;
@@ -452,6 +563,14 @@ const MainApplicationContent: React.FC = () => {
   });
 
   const agendaSortedWorkOrders = dashboardSortedWorkOrders;
+
+  // Partes pendientes específicos para la vista móvil despejada del Administrador (Regla: igual al operario)
+  const pendingAdminWorkOrders = useMemo(
+    () => agendaSortedWorkOrders.filter((w) => w.status === 'no_iniciado' || w.status === 'en_curso'),
+    [agendaSortedWorkOrders]
+  );
+  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
+  const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   // Cálculos para el Planing Semanal de la Agenda Operativa (Lunes a Viernes, días laborables)
   const todayLocalDate = getCurrentLocalDate(tz);
@@ -1051,7 +1170,161 @@ const MainApplicationContent: React.FC = () => {
             <div className="space-y-6">
               {isAdmin ? (
                 <>
-                  {/* Tarjeta de Cabecera del Panel de Control con selectores de Mes y Año */}
+                  {/* VISTA MÓVIL EXCLUSIVA DE ADMINISTRADOR (md:hidden): PARTES PENDIENTES EN FORMATO TARJETAS (IGUAL A LA DEL OPERARIO) */}
+                  <div className="block md:hidden space-y-4" data-testid="admin-mobile-home-view">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {company.logo_url && (
+                            <img
+                              src={company.logo_url}
+                              alt={company.company_name}
+                              className="h-9 max-w-[100px] object-contain shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <h1 className="text-base font-extrabold text-slate-900 truncate">
+                              Partes Pendientes ({pendingAdminWorkOrders.length})
+                            </h1>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              Próximos trabajos por hora prevista (ascendente)
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCreateWoModalProps({ open: true })}
+                          className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Nuevo</span>
+                        </button>
+                      </div>
+
+                      {/* Selector de filtro rápido en móvil */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setAdminMobileFilter('pendientes')}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            adminMobileFilter === 'pendientes'
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Pendientes ({pendingAdminWorkOrders.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminMobileFilter('todos')}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            adminMobileFilter === 'todos'
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Todos ({agendaSortedWorkOrders.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminMobileShowDashboard(!adminMobileShowDashboard)}
+                          className={`ml-auto px-2.5 py-1.5 rounded-lg font-semibold text-[11px] border cursor-pointer ${
+                            adminMobileShowDashboard
+                              ? 'bg-amber-50 border-amber-300 text-amber-900'
+                              : 'bg-white border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {adminMobileShowDashboard ? 'Ver Partes' : '📊 Métricas'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {adminMobileShowDashboard ? (
+                      /* Si el admin en móvil pulsa en Métricas, puede ver el resumen y los contadores en versión móvil */
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3" data-testid="admin-mobile-cards-grid">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWoListFilterStatus('no_iniciado');
+                              navigateTo('work_orders_list');
+                            }}
+                            className="p-4 rounded-xl bg-blue-600 text-white text-left shadow-xs cursor-pointer"
+                          >
+                            <div className="text-[11px] font-bold uppercase opacity-85">1. No iniciados</div>
+                            <div className="text-2xl font-black mt-1">{countNoIniciados}</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWoListFilterStatus('en_curso');
+                              navigateTo('work_orders_list');
+                            }}
+                            className="p-4 rounded-xl bg-amber-500 text-slate-950 text-left shadow-xs cursor-pointer"
+                          >
+                            <div className="text-[11px] font-bold uppercase opacity-85">2. En curso</div>
+                            <div className="text-2xl font-black mt-1">{countEnCurso}</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWoListFilterStatus('terminado');
+                              navigateTo('work_orders_list');
+                            }}
+                            className="p-4 rounded-xl bg-emerald-600 text-white text-left shadow-xs cursor-pointer"
+                          >
+                            <div className="text-[11px] font-bold uppercase opacity-85">3. Pdtes. Cierre</div>
+                            <div className="text-2xl font-black mt-1">{countPendientesCierre}</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => navigateTo('reviews')}
+                            className="p-4 rounded-xl bg-indigo-600 text-white text-left shadow-xs cursor-pointer"
+                          >
+                            <div className="text-[11px] font-bold uppercase opacity-85">4. Revisiones</div>
+                            <div className="text-2xl font-black mt-1">{countRevisionesPendientes}</div>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* VISTA PRINCIPAL POR DEFECTO EN MÓVIL: TARJETAS DE PARTES IGUAL QUE EN OPERARIO */
+                      (adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).length === 0 ? (
+                        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+                          No hay partes de trabajo en este momento.
+                        </div>
+                      ) : (
+                        <div className="space-y-3.5">
+                          {(adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).map((wo) => (
+                            <WorkOrderMobileCard
+                              key={wo.id}
+                              wo={wo}
+                              tz={tz}
+                              assignments={assignments}
+                              getUserName={getUserName}
+                              onOpenDetail={(id) => {
+                                setSelectedWorkOrderId(id);
+                                navigateTo('work_order_detail');
+                              }}
+                              onReschedule={(targetWo) => {
+                                setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
+                                setRescheduleReasonInput('');
+                                setRescheduleWoModal({
+                                  open: true,
+                                  workOrderId: targetWo.id,
+                                  code: targetWo.code,
+                                  currentScheduledAt: targetWo.scheduled_at,
+                                });
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  {/* VISTA ESCRITORIO DE ADMINISTRADOR (hidden md:block): PANEL DE CONTROL COMPLETO */}
+                  <div className="hidden md:block space-y-6">
+                    {/* Tarjeta de Cabecera del Panel de Control con selectores de Mes y Año */}
                   <div className="bg-white rounded-2xl border border-slate-200/90 px-6 py-4 shadow-2xs flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h1 className="text-lg font-extrabold text-slate-900 tracking-tight">
@@ -1692,6 +1965,7 @@ const MainApplicationContent: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  </div>
                 </>
               ) : (
                 /* PANTALLA INICIAL DESPEJADA DEL OPERARIO (Regla 5 y Regla 7) */
@@ -1723,114 +1997,29 @@ const MainApplicationContent: React.FC = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {agendaSortedWorkOrders.map((wo) => {
-                        const woOps = assignments
-                          .filter((a) => a.work_order_id === wo.id)
-                          .map((a) => getUserName(a.operator_id));
-                        return (
-                          <div
-                            key={wo.id}
-                            data-testid={`operator-card-${wo.id}`}
-                            className={`bg-white rounded-2xl border-2 p-5 shadow-2xs space-y-3 flex flex-col justify-between ${
-                              wo.status === 'en_curso'
-                                ? 'border-amber-400'
-                                : 'border-blue-400'
-                            }`}
-                          >
-                            <div className="space-y-2.5">
-                              {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
-                              <div className="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-sm flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-                                    <Calendar className="w-4 h-4 text-white" />
-                                  </div>
-                                  <div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-blue-100">
-                                      Fecha y Hora Prevista
-                                    </div>
-                                    <div className="text-sm font-extrabold tracking-tight">
-                                      {formatDateES(wo.scheduled_at, tz)} — {formatTimeES(wo.scheduled_at, tz)} h
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    data-testid={`operator-card-reschedule-${wo.id}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setRescheduleDatetimeInput(wo.scheduled_at.slice(0, 16));
-                                      setRescheduleReasonInput('');
-                                      setRescheduleWoModal({
-                                        open: true,
-                                        workOrderId: wo.id,
-                                        code: wo.code,
-                                        currentScheduledAt: wo.scheduled_at,
-                                      });
-                                    }}
-                                    className="px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold border border-white/25 transition cursor-pointer"
-                                    title="Reprogramar fecha y hora prevista"
-                                  >
-                                    Reprogramar
-                                  </button>
-                                  <span className="font-mono font-extrabold text-xs px-2 py-1 rounded-md bg-white/15 text-white">
-                                    {wo.code}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-2 pt-0.5">
-                                <div className="text-sm font-extrabold text-slate-900">
-                                  {wo.snapshot_customer_name}
-                                </div>
-                                <WorkOrderStatusBadge status={wo.status} />
-                              </div>
-
-                              <div className="text-xs text-slate-700 font-medium">
-                                📍 {wo.snapshot_address_line}, {wo.snapshot_postal_code}{' '}
-                                {wo.snapshot_city}
-                              </div>
-                              <div className="text-xs">
-                                <PhoneActionLinks phone={wo.snapshot_contact_phone} />
-                              </div>
-
-                              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800">
-                                <strong>Trabajo a realizar:</strong> {wo.planned_work}
-                              </div>
-
-                              {wo.total_amount_cents !== null && (
-                                <div
-                                  data-testid={`operator-card-amount-${wo.id}`}
-                                  className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between text-emerald-950 text-xs shadow-2xs"
-                                >
-                                  <div className="flex items-center gap-1.5 font-bold">
-                                    <Euro className="w-4 h-4 text-emerald-600 shrink-0" />
-                                    <span>Importe a cobrar:</span>
-                                  </div>
-                                  <span className="font-extrabold text-sm text-emerald-800">
-                                    {formatCentsToEUR(wo.total_amount_cents)}
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="text-xs text-slate-600">
-                                👷 <strong>Equipo asignado:</strong> {woOps.join(', ')}
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedWorkOrderId(wo.id);
-                                navigateTo('work_order_detail');
-                              }}
-                              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
-                            >
-                              Abrir Parte / Registrar Intervención →
-                            </button>
-                          </div>
-                        );
-                      })}
+                      {agendaSortedWorkOrders.map((wo) => (
+                        <WorkOrderMobileCard
+                          key={wo.id}
+                          wo={wo}
+                          tz={tz}
+                          assignments={assignments}
+                          getUserName={getUserName}
+                          onOpenDetail={(id) => {
+                            setSelectedWorkOrderId(id);
+                            navigateTo('work_order_detail');
+                          }}
+                          onReschedule={(targetWo) => {
+                            setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
+                            setRescheduleReasonInput('');
+                            setRescheduleWoModal({
+                              open: true,
+                              workOrderId: targetWo.id,
+                              code: targetWo.code,
+                              currentScheduledAt: targetWo.scheduled_at,
+                            });
+                          }}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
