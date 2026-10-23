@@ -80,10 +80,39 @@ export const WorkOrderCreateModal: React.FC<{
     preselectedCustomerId || ''
   );
 
-  const addresses = useMemo(
-    () => (selectedCustomerId ? backend.getCustomerAddresses(selectedCustomerId, false) : []),
-    [backend, selectedCustomerId, customers]
-  );
+  const allAddresses = useMemo(() => {
+    const raw = backend.getCustomerAddresses(undefined, false);
+    const list = [...raw];
+    for (const c of customers) {
+      if (c.main_address && !list.some((a) => a.customer_id === c.id)) {
+        list.push({
+          id: `main-${c.id}`,
+          customer_id: c.id,
+          alias: 'Dirección principal',
+          address_line: c.main_address,
+          postal_code: c.postal_code || '',
+          city: c.city || '',
+          province: c.province || '',
+          contact_name: c.contact_name || c.name,
+          contact_phone: c.phones[0] || '',
+          contact_email: c.emails[0] || '',
+          notes: '',
+          is_active: true,
+          created_at: c.created_at,
+          updated_at: c.updated_at,
+        });
+      }
+    }
+    return list;
+  }, [backend, customers]);
+
+  const addresses = useMemo(() => {
+    if (!selectedCustomerId) return allAddresses;
+    const clientAddrs = allAddresses.filter((a) => a.customer_id === selectedCustomerId);
+    const otherAddrs = allAddresses.filter((a) => a.customer_id !== selectedCustomerId);
+    return [...clientAddrs, ...otherAddrs];
+  }, [allAddresses, selectedCustomerId]);
+
   const [selectedAddressId, setSelectedAddressId] = useState<string>(
     preselectedAddressId || ''
   );
@@ -162,6 +191,37 @@ export const WorkOrderCreateModal: React.FC<{
       setPostalCode('');
       setCity('');
       setProvince('');
+    }
+  };
+
+  const handleSelectAddress = (addrId: string) => {
+    setSelectedAddressId(addrId);
+    if (!addrId) {
+      setAddressLine('');
+      setPostalCode('');
+      setCity('');
+      setProvince('');
+      return;
+    }
+    const addr = allAddresses.find((a) => a.id === addrId);
+    if (addr) {
+      if (selectedCustomerId !== addr.customer_id) {
+        setSelectedCustomerId(addr.customer_id);
+      }
+      const cust = customers.find((c) => c.id === addr.customer_id);
+      setAddressLine(addr.address_line);
+      setPostalCode(addr.postal_code || '');
+      setCity(addr.city || '');
+      setProvince(addr.province || '');
+      if (addr.contact_name || cust?.contact_name || cust?.name) {
+        setContactName(addr.contact_name || cust?.contact_name || cust?.name || '');
+      }
+      if (addr.contact_phone || cust?.phones[0]) {
+        setContactPhone(addr.contact_phone || cust?.phones[0] || '');
+      }
+      if (addr.contact_email || cust?.emails[0]) {
+        setContactEmail(addr.contact_email || cust?.emails[0] || '');
+      }
     }
   };
 
@@ -384,37 +444,20 @@ export const WorkOrderCreateModal: React.FC<{
                 <SearchableSelect
                   data-testid="select-wo-address"
                   value={selectedAddressId}
-                  onChange={(addrId) => {
-                    setSelectedAddressId(addrId);
-                    const addr = addresses.find((a) => a.id === addrId);
-                    if (addr) {
-                      setAddressLine(addr.address_line);
-                      setPostalCode(addr.postal_code || '');
-                      setCity(addr.city || '');
-                      setProvince(addr.province || '');
-                      if (addr.contact_name) setContactName(addr.contact_name);
-                      if (addr.contact_phone) setContactPhone(addr.contact_phone);
-                      if (addr.contact_email) setContactEmail(addr.contact_email);
-                    } else {
-                      setAddressLine('');
-                      setPostalCode('');
-                      setCity('');
-                      setProvince('');
-                    }
-                  }}
-                  emptyOptionLabel="-- Dirección a seleccionar --"
-                  placeholder={
-                    !selectedCustomerId
-                      ? 'Selecciona primero un cliente...'
-                      : addresses.length === 0
-                      ? 'Sin instalaciones registradas...'
-                      : 'Escribe para buscar dirección o municipio...'
-                  }
-                  disabled={!selectedCustomerId || addresses.length === 0}
-                  options={addresses.map((a) => ({
-                    value: a.id,
-                    label: `${a.alias ? `${a.alias}: ` : ''}${a.address_line} (${a.city})`,
-                  }))}
+                  onChange={handleSelectAddress}
+                  emptyOptionLabel="-- Dirección o calle a seleccionar --"
+                  placeholder="Escribe calle, dirección, municipio o cliente..."
+                  disabled={addresses.length === 0}
+                  options={addresses.map((a) => {
+                    const cust = customers.find((c) => c.id === a.customer_id);
+                    const aliasPart = a.alias ? `[${a.alias}] ` : '';
+                    const cityPart = a.city ? ` (${a.city})` : '';
+                    const custPart = a.customer_id !== selectedCustomerId && cust ? ` — Cliente: ${cust.name}` : '';
+                    return {
+                      value: a.id,
+                      label: `${aliasPart}${a.address_line}${cityPart}${custPart}`,
+                    };
+                  })}
                 />
               </div>
             </div>
