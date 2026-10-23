@@ -875,20 +875,6 @@ export const WorkOrderDetailView: React.FC<{
   );
 
   useEffect(() => {
-    if (wo) {
-      setEditAddressLine(wo.snapshot_address_line);
-      setEditPostalCode(wo.snapshot_postal_code);
-      setEditCity(wo.snapshot_city);
-      setEditProvince(wo.snapshot_province);
-      setEditContactName(wo.snapshot_contact_name);
-      setEditContactPhone(wo.snapshot_contact_phone);
-      setEditContactEmail(wo.snapshot_contact_email);
-      setEditPlannedWork(wo.planned_work);
-      setEditInitialNotes(wo.initial_notes || '');
-    }
-  }, [wo]);
-
-  useEffect(() => {
     if (wo?.scheduled_at) {
       setRescheduleDateStr(wo.scheduled_at.slice(0, 16));
     }
