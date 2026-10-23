@@ -129,21 +129,25 @@ const WorkOrderMobileCard: React.FC<{
     >
       <div className="space-y-2.5">
         {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
-        <div className="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-sm flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-              <Calendar className="w-4 h-4 text-white" />
+        <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white shadow-sm space-y-2">
+          {/* Fila superior: etiqueta de fecha y código de parte */}
+          <div className="flex items-center justify-between gap-2 border-b border-white/15 pb-2">
+            <div className="flex items-center gap-1.5 text-blue-100 text-[11px] font-extrabold uppercase tracking-wider">
+              <Calendar className="w-3.5 h-3.5 text-blue-200" />
+              <span>Fecha y Hora Prevista</span>
             </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-100">
-                Fecha y Hora Prevista
-              </div>
-              <div className="text-sm font-extrabold tracking-tight">
-                {formatDateES(wo.scheduled_at, tz)} — {formatTimeES(wo.scheduled_at, tz)} h
-              </div>
-            </div>
+            <span className="font-mono font-extrabold text-xs px-2 py-0.5 rounded-md bg-white/15 border border-white/20 text-white shadow-2xs">
+              {wo.code}
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+
+          {/* Fila inferior: fecha y hora destacada y botón reprogramar */}
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <div className="text-sm sm:text-base font-black tracking-tight text-white">
+              <span>{formatDateES(wo.scheduled_at, tz)}</span>
+              <span className="text-blue-200 font-semibold text-xs mx-1.5">a las</span>
+              <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
+            </div>
             <button
               type="button"
               data-testid={`operator-card-reschedule-${wo.id}`}
@@ -151,14 +155,11 @@ const WorkOrderMobileCard: React.FC<{
                 e.stopPropagation();
                 onReschedule(wo);
               }}
-              className="px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold border border-white/25 transition cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
               title="Reprogramar fecha y hora prevista"
             >
               Reprogramar
             </button>
-            <span className="font-mono font-extrabold text-xs px-2 py-1 rounded-md bg-white/15 text-white">
-              {wo.code}
-            </span>
           </div>
         </div>
 
