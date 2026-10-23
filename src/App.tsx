@@ -1053,19 +1053,6 @@ const MainApplicationContent: React.FC = () => {
             <span>Inicio</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => navigateTo('agenda')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-              currentRoute === 'agenda'
-                ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                : 'text-slate-300 hover:bg-white/5 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-4 h-4 shrink-0" />
-            <span>Agenda operativa</span>
-          </button>
-
           {isAdmin && (
             <>
               <button
