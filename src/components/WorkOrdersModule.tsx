@@ -43,6 +43,8 @@ import { generateWorkOrderDetailPDF } from '../utils/exportImportUtils';
 
 // Feature flag: Fotografías y archivos privados (oculto temporalmente para todos los usuarios, conservado íntegro para próximas versiones)
 const ENABLE_PHOTO_ATTACHMENTS = false;
+// Feature flag: Historial de estados en el detalle del parte (retirado a petición del usuario)
+const ENABLE_HISTORY_SECTION = false;
 
 // =============================================================================
 // 1. FORMULARIO DE ALTA DE PARTE (SOLO ADMIN) EN VENTANA EMERGENTE
@@ -1869,44 +1871,46 @@ export const WorkOrderDetailView: React.FC<{
         )}
       </div>
 
-      {/* Historial de transiciones */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-            <History className="w-4 h-4 text-blue-600" />
-            Historial de Estados y Trazabilidad del Parte
-          </h2>
-          {isAdmin && onOpenAuditForWorkOrder && (
-            <button
-              type="button"
-              onClick={() => onOpenAuditForWorkOrder(wo.id)}
-              className="text-xs font-semibold text-blue-600 hover:underline"
-            >
-              Ver en Auditoría Técnica Completa →
-            </button>
-          )}
-        </div>
-        <div className="divide-y divide-slate-100 text-xs">
-          {events.map((ev) => (
-            <div key={ev.id} className="py-2 flex flex-wrap justify-between gap-2">
-              <div>
-                <span className="font-bold uppercase text-slate-800">{ev.event_type}</span>{' '}
-                {ev.from_status && (
-                  <span className="text-slate-500">
-                    ({ev.from_status} → {ev.to_status})
-                  </span>
-                )}
-                {ev.reason && (
-                  <span className="ml-2 text-amber-800 font-medium">Motivo: {ev.reason}</span>
-                )}
+      {/* Historial de transiciones (Oculto a petición del usuario) */}
+      {ENABLE_HISTORY_SECTION && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <History className="w-4 h-4 text-blue-600" />
+              Historial de Estados y Trazabilidad del Parte
+            </h2>
+            {isAdmin && onOpenAuditForWorkOrder && (
+              <button
+                type="button"
+                onClick={() => onOpenAuditForWorkOrder(wo.id)}
+                className="text-xs font-semibold text-blue-600 hover:underline"
+              >
+                Ver en Auditoría Técnica Completa →
+              </button>
+            )}
+          </div>
+          <div className="divide-y divide-slate-100 text-xs">
+            {events.map((ev) => (
+              <div key={ev.id} className="py-2 flex flex-wrap justify-between gap-2">
+                <div>
+                  <span className="font-bold uppercase text-slate-800">{ev.event_type}</span>{' '}
+                  {ev.from_status && (
+                    <span className="text-slate-500">
+                      ({ev.from_status} → {ev.to_status})
+                    </span>
+                  )}
+                  {ev.reason && (
+                    <span className="ml-2 text-amber-800 font-medium">Motivo: {ev.reason}</span>
+                  )}
+                </div>
+                <div className="text-slate-500">
+                  {getUserName(ev.actor_id)} · {formatDateTimeES(ev.created_at)}
+                </div>
               </div>
-              <div className="text-slate-500">
-                {getUserName(ev.actor_id)} · {formatDateTimeES(ev.created_at)}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* =====================================================================
           VENTANAS EMERGENTES (MODALES) PARA ESCRIBIR Y GUARDAR APORTACIONES
