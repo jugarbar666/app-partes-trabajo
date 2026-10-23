@@ -79,6 +79,7 @@ const DEFAULT_WO_COLUMNS = [
   'code',
   'customer',
   'address',
+  'planned_work',
   'scheduled_at',
   'created_at',
   'operators',
@@ -498,7 +499,16 @@ const MainApplicationContent: React.FC = () => {
 
   const visibleWoColumns = useMemo(() => {
     const prefs = loggedUser.column_preferences?.work_orders_list || DEFAULT_WO_COLUMNS;
-    return prefs.includes('scheduled_at') ? prefs : [...prefs, 'scheduled_at'];
+    let cols = prefs.includes('scheduled_at') ? prefs : [...prefs, 'scheduled_at'];
+    if (!cols.includes('planned_work')) {
+      const addrIdx = cols.indexOf('address');
+      if (addrIdx !== -1) {
+        cols = [...cols.slice(0, addrIdx + 1), 'planned_work', ...cols.slice(addrIdx + 1)];
+      } else {
+        cols = [...cols, 'planned_work'];
+      }
+    }
+    return cols;
   }, [loggedUser.column_preferences]);
 
   const handleToggleWoColumn = (colKey: string) => {
@@ -2369,6 +2379,7 @@ const MainApplicationContent: React.FC = () => {
                   { key: 'code', label: 'Número de Parte' },
                   { key: 'customer', label: 'Cliente' },
                   { key: 'address', label: 'Dirección Servicio' },
+                  { key: 'planned_work', label: 'Trabajo a Realizar' },
                   { key: 'scheduled_at', label: 'Fecha Programada' },
                   { key: 'created_at', label: 'Fecha de Alta' },
                   { key: 'operators', label: 'Operarios Asignados' },
@@ -2406,6 +2417,9 @@ const MainApplicationContent: React.FC = () => {
                       {visibleWoColumns.includes('code') && <th className="p-3.5">N.º Parte</th>}
                       {visibleWoColumns.includes('customer') && <th className="p-3.5">Cliente</th>}
                       {visibleWoColumns.includes('address') && <th className="p-3.5">Dirección</th>}
+                      {visibleWoColumns.includes('planned_work') && (
+                        <th className="p-3.5 min-w-[220px]">Trabajo a realizar</th>
+                      )}
                       {visibleWoColumns.includes('scheduled_at') && (
                         <th className="p-3.5">Previsto</th>
                       )}
@@ -2453,6 +2467,13 @@ const MainApplicationContent: React.FC = () => {
                             {visibleWoColumns.includes('address') && (
                               <td className="p-3.5">
                                 {wo.snapshot_address_line} ({wo.snapshot_city})
+                              </td>
+                            )}
+                            {visibleWoColumns.includes('planned_work') && (
+                              <td className="p-3.5 max-w-[280px]">
+                                <div className="font-medium text-slate-800 text-xs leading-relaxed line-clamp-2" title={wo.planned_work}>
+                                  {wo.planned_work || '—'}
+                                </div>
                               </td>
                             )}
                             {visibleWoColumns.includes('scheduled_at') && (
