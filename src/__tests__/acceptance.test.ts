@@ -941,4 +941,86 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(audit.some((a) => a.operation === 'MODIFICAR_REVISIÓN')).toBe(true);
     expect(audit.some((a) => a.operation === 'REPROGRAMAR_VENCIMIENTO_REVISIÓN')).toBe(true);
   });
+
+  it('Escenario 22: Importación de proveedores desde Excel con validación, detección de duplicados y actualización', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    const initialSuppliers = backend.getSuppliers(true);
+    const existingSupplier = initialSuppliers[0];
+    expect(existingSupplier).toBeDefined();
+
+    const rawRows = [
+      {
+        Nombre_Razon_Social: 'Distribuidora Calderas Mediterráneo S.L.',
+        NIF_CIF: 'B99112233',
+        Telefono: '+34 963 888 999',
+        Email: 'pedidos@calderasmed.es',
+        Persona_Contacto: 'Vicente Pérez',
+        Notas: 'Entrega urgente 12h',
+      },
+      {
+        Nombre_Razon_Social: existingSupplier.name,
+        NIF_CIF: existingSupplier.tax_id,
+        Telefono: '+34 911 000 111',
+        Email: 'actualizado@proveedor.es',
+        Persona_Contacto: 'Persona Actualizada',
+        Notas: 'Notas actualizadas desde Excel',
+      },
+      {
+        Nombre_Razon_Social: '',
+        NIF_CIF: 'A00000000',
+        Telefono: '123',
+        Email: 'invalido@test.es',
+        Persona_Contacto: '',
+        Notas: 'Debe fallar por falta de nombre',
+      },
+    ];
+
+    const mapping = {
+      name: 'Nombre_Razon_Social',
+      tax_id: 'NIF_CIF',
+      phone: 'Telefono',
+      email: 'Email',
+      contact_person: 'Persona_Contacto',
+      notes: 'Notas',
+    };
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'suppliers',
+      rawRows,
+      columnMapping: mapping,
+    });
+
+    expect(preview.totalRows).toBe(3);
+    expect(preview.validNewCount).toBe(1);
+    expect(preview.duplicateCount).toBe(1);
+    expect(preview.errorCount).toBe(1);
+
+    const result = executeValidatedImport({
+      backend,
+      entityType: 'suppliers',
+      fileName: 'proveedores_2026.xlsx',
+      conflictPolicy: 'update_existing',
+      preview,
+    });
+
+    expect(result.inserted).toBe(1);
+    expect(result.updated).toBe(1);
+    expect(result.rejected).toBe(1);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0].field).toBe('name');
+
+    const updatedSuppliers = backend.getSuppliers(true);
+    const newSupplier = updatedSuppliers.find((s) => s.tax_id === 'B99112233');
+    expect(newSupplier).toBeDefined();
+    expect(newSupplier?.name).toBe('Distribuidora Calderas Mediterráneo S.L.');
+    expect(newSupplier?.contact_person).toBe('Vicente Pérez');
+    expect(newSupplier?.is_active).toBe(true);
+
+    const refreshedExisting = updatedSuppliers.find((s) => s.id === existingSupplier.id);
+    expect(refreshedExisting?.email).toBe('actualizado@proveedor.es');
+    expect(refreshedExisting?.contact_person).toBe('Persona Actualizada');
+    expect(refreshedExisting?.notes).toBe('Notas actualizadas desde Excel');
+  });
 });

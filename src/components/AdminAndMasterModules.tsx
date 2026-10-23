@@ -11,7 +11,11 @@ import {
   Plus,
   RotateCcw,
   X,
+  FileSpreadsheet,
+  FileDown,
+  Upload,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import {
   EmailActionLink,
@@ -28,6 +32,12 @@ import {
   parseEurosToCents,
   sanitizeTimezone,
 } from '../utils/formatters';
+import {
+  downloadImportTemplateExcel,
+  executeValidatedImport,
+  exportRowsToExcel,
+  validateAndPreviewImport,
+} from '../utils/exportImportUtils';
 
 // =============================================================================
 // 1. MÓDULO DE DATOS MAESTROS Y USUARIOS (SECCIONES 3 Y 6)
@@ -112,6 +122,100 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
   const [usrRole, setUsrRole] = useState<'operario' | 'admin'>('operario');
+
+  const handleSupplierFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const firstSheet = wb.SheetNames[0];
+      if (!firstSheet) {
+        notifyError('El archivo Excel no contiene ninguna hoja.');
+        return;
+      }
+      const ws = wb.Sheets[firstSheet];
+      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+      if (json.length === 0) {
+        notifyError('La hoja Excel está vacía.');
+        return;
+      }
+      const headers = Object.keys(json[0]);
+      const mapping: Record<string, string> = {
+        name:
+          headers.find((h) => /nombre|razon|proveedor/i.test(h)) ||
+          headers[0] ||
+          'name',
+        tax_id: headers.find((h) => /nif|cif|ident/i.test(h)) || '',
+        phone: headers.find((h) => /tel|telefono|movil|celular/i.test(h)) || '',
+        email: headers.find((h) => /email|correo/i.test(h)) || '',
+        contact_person: headers.find((h) => /contacto|persona/i.test(h)) || '',
+        notes: headers.find((h) => /nota|observa|coment/i.test(h)) || '',
+      };
+
+      const preview = validateAndPreviewImport({
+        backend,
+        entityType: 'suppliers',
+        rawRows: json,
+        columnMapping: mapping,
+      });
+
+      requestSaveConfirmation({
+        title: `Importar Proveedores desde Excel (${file.name})`,
+        changes: [
+          { label: 'Filas leídas en Excel', value: String(preview.totalRows) },
+          { label: 'Proveedores válidos nuevos', value: String(preview.validNewCount) },
+          {
+            label: 'Proveedores existentes coincidentes (se actualizarán)',
+            value: String(preview.duplicateCount),
+          },
+          { label: 'Filas con errores (se omitirán)', value: String(preview.errorCount) },
+        ],
+        onConfirm: () => {
+          const res = executeValidatedImport({
+            backend,
+            entityType: 'suppliers',
+            fileName: file.name,
+            conflictPolicy: 'update_existing',
+            preview,
+          });
+          notifySuccessGreen(
+            `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
+          );
+          refresh();
+        },
+      });
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al procesar el archivo Excel.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleExportSuppliers = () => {
+    exportRowsToExcel({
+      fileName: 'Exportacion_Proveedores.xlsx',
+      sheetName: 'Proveedores',
+      columns: [
+        { key: 'name', header: 'Nombre / Razón Social' },
+        { key: 'tax_id', header: 'NIF / CIF' },
+        { key: 'phone', header: 'Teléfono' },
+        { key: 'email', header: 'Email' },
+        { key: 'contact_person', header: 'Persona de Contacto' },
+        { key: 'notes', header: 'Notas' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: suppliers.map((s) => ({
+        name: s.name,
+        tax_id: s.tax_id || '',
+        phone: s.phone || '',
+        email: s.email || '',
+        contact_person: s.contact_person || '',
+        notes: s.notes || '',
+        active: s.is_active ? 'Activo' : 'Inactivo',
+      })),
+    });
+  };
 
   const q = search.trim().toLowerCase();
 
@@ -326,27 +430,89 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 4. LISTADO DE PROVEEDORES */}
       {activeTab === 'suppliers' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
-          {suppliers.map((s) => (
-            <div key={s.id} className="p-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="font-bold text-slate-900">{s.name}</div>
-                <div className="text-slate-600">
-                  NIF: {s.tax_id || '—'} · Contacto: {s.contact_person || '—'}
-                </div>
-              </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Proveedores:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  backend.saveSupplier({ ...s, is_active: !s.is_active });
-                  refresh();
-                }}
-                className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                onClick={() => downloadImportTemplateExcel('suppliers')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold"
+                title="Descargar archivo Excel con plantilla oficial de proveedores"
               >
-                {s.is_active ? 'Inactivar' : 'Reactivar'}
+                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+              </button>
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
+                <Upload className="w-3.5 h-3.5" /> Importar Proveedores (Excel)
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                  data-testid="input-import-suppliers-excel"
+                  onChange={handleSupplierFileImport}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleExportSuppliers}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
               </button>
             </div>
-          ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+            {suppliers
+              .filter(
+                (s) =>
+                  !q ||
+                  s.name.toLowerCase().includes(q) ||
+                  (s.tax_id && s.tax_id.toLowerCase().includes(q)) ||
+                  (s.contact_person && s.contact_person.toLowerCase().includes(q))
+              )
+              .map((s) => (
+                <div key={s.id} className="p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-bold text-slate-900">
+                      {s.name}{' '}
+                      {!s.is_active && (
+                        <span className="ml-2 px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[11px]">
+                          INACTIVO
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-slate-600">
+                      NIF: {s.tax_id || '—'} · Contacto: {s.contact_person || '—'}{' '}
+                      {s.phone ? `· Tel: ${s.phone}` : ''} {s.email ? `· Email: ${s.email}` : ''}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      backend.saveSupplier({ ...s, is_active: !s.is_active });
+                      refresh();
+                    }}
+                    className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                  >
+                    {s.is_active ? 'Inactivar' : 'Reactivar'}
+                  </button>
+                </div>
+              ))}
+            {suppliers.filter(
+              (s) =>
+                !q ||
+                s.name.toLowerCase().includes(q) ||
+                (s.tax_id && s.tax_id.toLowerCase().includes(q)) ||
+                (s.contact_person && s.contact_person.toLowerCase().includes(q))
+            ).length === 0 && (
+              <div className="p-6 text-center text-slate-500">
+                No hay proveedores {q ? 'que coincidan con la búsqueda' : 'registrados aún'}.
+              </div>
+            )}
+          </div>
         </div>
       )}
 

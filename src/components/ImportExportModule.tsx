@@ -20,7 +20,7 @@ import { ScreenHeaderBar, useUIConfirmation } from './CommonUI';
 import { formatCentsToEUR, formatDateTimeES } from '../utils/formatters';
 
 const ENTITY_FIELDS: Record<
-  'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',
+  'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',
   Array<{ key: string; label: string; defaultHeader: string }>
 > = {
   customers: [
@@ -31,6 +31,14 @@ const ENTITY_FIELDS: Record<
     { key: 'email', label: 'Email', defaultHeader: 'Email' },
     { key: 'main_address', label: 'Dirección Principal', defaultHeader: 'Direccion_Principal' },
     { key: 'notes', label: 'Observaciones', defaultHeader: 'Observaciones' },
+  ],
+  suppliers: [
+    { key: 'name', label: 'Nombre o Razón Social *', defaultHeader: 'Nombre_Razon_Social' },
+    { key: 'tax_id', label: 'NIF / CIF', defaultHeader: 'NIF_CIF' },
+    { key: 'phone', label: 'Teléfono', defaultHeader: 'Telefono' },
+    { key: 'email', label: 'Email', defaultHeader: 'Email' },
+    { key: 'contact_person', label: 'Persona de Contacto', defaultHeader: 'Persona_Contacto' },
+    { key: 'notes', label: 'Observaciones / Notas', defaultHeader: 'Notas' },
   ],
   articles: [
     { key: 'code', label: 'Código Único Artículo *', defaultHeader: 'Codigo_Articulo' },
@@ -71,7 +79,7 @@ export const ImportExportModule: React.FC<{
   const { requestSaveConfirmation, notifyError } = useUIConfirmation();
   const company = backend.getCompanySettings();
   const [entityType, setEntityType] = useState<
-    'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
+    'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
   >('customers');
   const [fileName, setFileName] = useState('');
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -173,6 +181,33 @@ export const ImportExportModule: React.FC<{
               Observaciones: 'Fila con error intencionado de validación',
             },
           ]
+        : entityType === 'suppliers'
+        ? [
+            {
+              Nombre_Razon_Social: 'Suministros Térmicos Levante S.L. [FICTICIO]',
+              NIF_CIF: 'B12345678',
+              Telefono: '+34 961 223 344',
+              Email: 'pedidos@suministrostermicos-ficticio.es',
+              Persona_Contacto: 'Carlos Vendedor',
+              Notas: 'Plazo habitual de entrega 24 horas',
+            },
+            {
+              Nombre_Razon_Social: 'Distribuciones Fontanería Central',
+              NIF_CIF: 'A88776655',
+              Telefono: '+34 911 223 344',
+              Email: 'central@distrifont.es',
+              Persona_Contacto: 'Marta Proveedora',
+              Notas: 'Proveedor con NIF coincidente de prueba',
+            },
+            {
+              Nombre_Razon_Social: '',
+              NIF_CIF: '',
+              Telefono: '',
+              Email: '',
+              Persona_Contacto: '',
+              Notas: 'Fila sin nombre para comprobación de error',
+            },
+          ]
         : [
             {
               Codigo_Articulo: 'MAT-099',
@@ -249,7 +284,7 @@ export const ImportExportModule: React.FC<{
     });
   };
 
-  const handleExportMasterCatalog = (target: 'customers' | 'articles' | 'work_orders' | 'reviews') => {
+  const handleExportMasterCatalog = (target: 'customers' | 'suppliers' | 'articles' | 'work_orders' | 'reviews') => {
     if (target === 'customers') {
       const list = backend.getCustomers(true);
       exportRowsToExcel({
@@ -272,6 +307,30 @@ export const ImportExportModule: React.FC<{
           email: c.emails.join(', '),
           main_address: c.main_address,
           active: c.is_active ? 'Activo' : 'Inactivo',
+        })),
+      });
+    } else if (target === 'suppliers') {
+      const list = backend.getSuppliers(true);
+      exportRowsToExcel({
+        fileName: 'Exportacion_Proveedores.xlsx',
+        sheetName: 'Proveedores',
+        columns: [
+          { key: 'name', header: 'Nombre / Razón Social' },
+          { key: 'tax_id', header: 'NIF / CIF' },
+          { key: 'phone', header: 'Teléfono' },
+          { key: 'email', header: 'Email' },
+          { key: 'contact_person', header: 'Persona de Contacto' },
+          { key: 'notes', header: 'Observaciones / Notas' },
+          { key: 'active', header: 'Estado' },
+        ],
+        rows: list.map((s) => ({
+          name: s.name,
+          tax_id: s.tax_id || '',
+          phone: s.phone || '',
+          email: s.email || '',
+          contact_person: s.contact_person || '',
+          notes: s.notes || '',
+          active: s.is_active ? 'Activo' : 'Inactivo',
         })),
       });
     } else if (target === 'articles') {
@@ -397,6 +456,13 @@ export const ImportExportModule: React.FC<{
           </button>
           <button
             type="button"
+            onClick={() => handleExportMasterCatalog('suppliers')}
+            className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+          >
+            Exportar Proveedores (.xlsx)
+          </button>
+          <button
+            type="button"
             onClick={() => handleExportMasterCatalog('articles')}
             className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
           >
@@ -460,6 +526,7 @@ export const ImportExportModule: React.FC<{
               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
             >
               <option value="customers">Clientes</option>
+              <option value="suppliers">Proveedores</option>
               <option value="articles">Artículos</option>
               <option value="reviews">Revisiones periódicas</option>
               <option value="work_orders">Partes de trabajo (Flujo Admin)</option>

@@ -416,7 +416,7 @@ export interface AuditLogEntry {
 
 export interface ImportJob {
   id: string;
-  entity_type: 'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
+  entity_type: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
   file_name: string;
   conflict_policy: 'insert_only' | 'update_existing' | 'reject_duplicates';
   total_rows: number;

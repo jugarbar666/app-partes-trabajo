@@ -54,7 +54,7 @@ export function exportRowsToExcel(params: {
  * Descarga una plantilla Excel oficial para importación de la entidad seleccionada
  */
 export function downloadImportTemplateExcel(
-  entityType: 'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
 ): void {
   const templates: Record<
     typeof entityType,
@@ -71,6 +71,19 @@ export function downloadImportTemplateExcel(
           Email: 'contacto@ejemplo.es',
           Direccion_Principal: 'Calle Mayor 10, 28013 Madrid',
           Observaciones: 'Cliente de plantilla',
+        },
+      ],
+    },
+    suppliers: {
+      sheet: 'Plantilla_Proveedores',
+      sample: [
+        {
+          Nombre_Razon_Social: 'Suministros Térmicos Levante S.L. [FICTICIO]',
+          NIF_CIF: 'B12345678',
+          Telefono: '+34 961 223 344',
+          Email: 'pedidos@suministrostermicos-ficticio.es',
+          Persona_Contacto: 'Carlos Vendedor',
+          Notas: 'Plazo de entrega habitual 24 horas',
         },
       ],
     },
@@ -155,7 +168,7 @@ export interface ImportPreviewResult {
 
 export function validateAndPreviewImport(params: {
   backend: InstallationBackendEngine;
-  entityType: 'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
   rawRows: Array<Record<string, unknown>>;
   columnMapping: Record<string, string>;
 }): ImportPreviewResult {
@@ -191,6 +204,20 @@ export function validateAndPreviewImport(params: {
         (c) =>
           (mapped.code && c.code.toUpperCase() === mapped.code.toUpperCase()) ||
           (mapped.tax_id && c.tax_id && c.tax_id.toUpperCase() === mapped.tax_id.toUpperCase())
+      );
+      if (match) {
+        isDuplicate = true;
+        existingId = match.id;
+      }
+    } else if (params.entityType === 'suppliers') {
+      const suppliers = params.backend.getSuppliers(true);
+      if (!mapped.name) errors.push({ field: 'name', message: 'Nombre o razón social del proveedor obligatorio' });
+      const cleanNif = (mapped.tax_id || '').trim().toUpperCase();
+      const cleanName = (mapped.name || '').trim().toLowerCase();
+      const match = suppliers.find(
+        (s) =>
+          (cleanNif && s.tax_id && s.tax_id.trim().toUpperCase() === cleanNif) ||
+          (cleanName && s.name.trim().toLowerCase() === cleanName)
       );
       if (match) {
         isDuplicate = true;
@@ -275,7 +302,7 @@ export function validateAndPreviewImport(params: {
 
 export function executeValidatedImport(params: {
   backend: InstallationBackendEngine;
-  entityType: 'customers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
   fileName: string;
   conflictPolicy: 'insert_only' | 'update_existing' | 'reject_duplicates';
   preview: ImportPreviewResult;
@@ -326,6 +353,19 @@ export function executeValidatedImport(params: {
           phones: row.mapped.phone ? [row.mapped.phone] : [],
           emails: row.mapped.email ? [row.mapped.email] : [],
           main_address: row.mapped.main_address || '',
+          notes: row.mapped.notes || '',
+          is_active: true,
+        });
+        if (row.isDuplicate) updated++;
+        else inserted++;
+      } else if (params.entityType === 'suppliers') {
+        params.backend.saveSupplier({
+          id: row.isDuplicate ? row.existingId : undefined,
+          name: row.mapped.name,
+          tax_id: row.mapped.tax_id || '',
+          phone: row.mapped.phone || '',
+          email: row.mapped.email || '',
+          contact_person: row.mapped.contact_person || '',
           notes: row.mapped.notes || '',
           is_active: true,
         });
