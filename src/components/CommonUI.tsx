@@ -15,6 +15,8 @@ import {
   normalizeEmailLink,
   formatPhoneWithPrefix34,
   cleanLocalPhone,
+  parsePhoneAndPrefix,
+  COUNTRY_PHONE_PREFIXES,
 } from '../utils/formatters';
 import { WorkOrderStatus } from '../types/domain';
 
@@ -403,8 +405,8 @@ export const PhoneActionLinks: React.FC<{ phone: string | null | undefined }> = 
 };
 
 /**
- * Campo de entrada de teléfono con prefijo internacional +34 integrado automáticamente.
- * El usuario solo introduce el número de teléfono local sin tener que escribir +34 a mano.
+ * Campo de entrada de teléfono con selector de prefijo internacional (+34 predeterminado).
+ * Permite seleccionar prefijos de otros países desde un desplegable o introducir directamente el número.
  */
 export const PhoneInputField: React.FC<{
   value: string;
@@ -425,28 +427,60 @@ export const PhoneInputField: React.FC<{
   name,
   'data-testid': testId,
 }) => {
-  const localVal = cleanLocalPhone(value);
+  const parsed = parsePhoneAndPrefix(value, '+34');
+  const [currentPrefix, setCurrentPrefix] = useState<string>(parsed.prefix || '+34');
+
+  // Si el valor externo cambia y contiene un prefijo internacional diferente, sincronizar el selector
+  useEffect(() => {
+    if (parsed.prefix && parsed.prefix !== currentPrefix) {
+      setCurrentPrefix(parsed.prefix);
+    }
+  }, [parsed.prefix]);
 
   return (
     <div className="flex rounded-lg shadow-2xs w-full">
-      <span className="inline-flex items-center px-2.5 py-1.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-700 font-extrabold text-xs select-none shrink-0">
-        +34
-      </span>
+      <select
+        aria-label="Prefijo internacional"
+        value={currentPrefix}
+        onChange={(e) => {
+          const newPrefix = e.target.value;
+          setCurrentPrefix(newPrefix);
+          if (parsed.localNumber.trim()) {
+            onChange(`${newPrefix} ${parsed.localNumber.trim()}`);
+          }
+        }}
+        className="inline-flex items-center px-2 py-1.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs select-none shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer max-w-[125px] sm:max-w-[155px] truncate"
+      >
+        {!COUNTRY_PHONE_PREFIXES.some((cp) => cp.code === currentPrefix) && (
+          <option value={currentPrefix}>🌐 {currentPrefix}</option>
+        )}
+        {COUNTRY_PHONE_PREFIXES.map((cp) => (
+          <option key={cp.code} value={cp.code}>
+            {cp.flag} {cp.code} · {cp.country}
+          </option>
+        ))}
+      </select>
       <input
         id={id}
         name={name}
         type="tel"
         required={required}
         data-testid={testId}
-        value={localVal}
+        value={parsed.localNumber}
         onChange={(e) => {
           const raw = e.target.value;
           if (!raw.trim()) {
             onChange('');
             return;
           }
-          const cleaned = cleanLocalPhone(raw);
-          onChange(cleaned ? `+34 ${cleaned}` : '');
+          if (raw.trim().startsWith('+')) {
+            const pasted = parsePhoneAndPrefix(raw.trim(), currentPrefix);
+            setCurrentPrefix(pasted.prefix);
+            onChange(pasted.localNumber ? `${pasted.prefix} ${pasted.localNumber}` : '');
+            return;
+          }
+          const cleaned = raw.replace(/[^\d\s\-\.]/g, '');
+          onChange(cleaned ? `${currentPrefix} ${cleaned}` : '');
         }}
         placeholder={placeholder}
         className={`w-full px-3 py-1.5 rounded-r-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${className}`}

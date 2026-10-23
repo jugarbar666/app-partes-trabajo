@@ -559,19 +559,95 @@ export function formatPhoneWithPrefix34(input: string | null | undefined): strin
   return formatSinglePhoneWithPrefix34(trimmed);
 }
 
+export interface CountryPhonePrefix {
+  code: string;
+  country: string;
+  flag: string;
+}
+
+export const COUNTRY_PHONE_PREFIXES: CountryPhonePrefix[] = [
+  { code: '+34', country: 'España', flag: '🇪🇸' },
+  { code: '+351', country: 'Portugal', flag: '🇵🇹' },
+  { code: '+33', country: 'Francia', flag: '🇫🇷' },
+  { code: '+44', country: 'Reino Unido', flag: '🇬🇧' },
+  { code: '+49', country: 'Alemania', flag: '🇩🇪' },
+  { code: '+39', country: 'Italia', flag: '🇮🇹' },
+  { code: '+376', country: 'Andorra', flag: '🇦🇩' },
+  { code: '+212', country: 'Marruecos', flag: '🇲🇦' },
+  { code: '+1', country: 'EE. UU. / Canadá', flag: '🇺🇸' },
+  { code: '+52', country: 'México', flag: '🇲🇽' },
+  { code: '+54', country: 'Argentina', flag: '🇦🇷' },
+  { code: '+57', country: 'Colombia', flag: '🇨🇴' },
+  { code: '+56', country: 'Chile', flag: '🇨🇱' },
+  { code: '+51', country: 'Perú', flag: '🇵🇪' },
+  { code: '+58', country: 'Venezuela', flag: '🇻🇪' },
+  { code: '+593', country: 'Ecuador', flag: '🇪🇨' },
+  { code: '+55', country: 'Brasil', flag: '🇧🇷' },
+  { code: '+598', country: 'Uruguay', flag: '🇺🇾' },
+  { code: '+591', country: 'Bolivia', flag: '🇧🇴' },
+  { code: '+595', country: 'Paraguay', flag: '🇵🇾' },
+  { code: '+41', country: 'Suiza', flag: '🇨🇭' },
+  { code: '+32', country: 'Bélgica', flag: '🇧🇪' },
+  { code: '+31', country: 'Países Bajos', flag: '🇳🇱' },
+  { code: '+40', country: 'Rumanía', flag: '🇷🇴' },
+  { code: '+48', country: 'Polonia', flag: '🇵🇱' },
+  { code: '+380', country: 'Ucrania', flag: '🇺🇦' },
+  { code: '+353', country: 'Irlanda', flag: '🇮🇪' },
+  { code: '+43', country: 'Austria', flag: '🇦🇹' },
+  { code: '+46', country: 'Suecia', flag: '🇸🇪' },
+  { code: '+47', country: 'Noruega', flag: '🇳🇴' },
+  { code: '+45', country: 'Dinamarca', flag: '🇩🇰' },
+  { code: '+358', country: 'Finlandia', flag: '🇫🇮' },
+  { code: '+30', country: 'Grecia', flag: '🇬🇷' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+81', country: 'Japón', flag: '🇯🇵' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+];
+
+const PREFIXES_SORTED_BY_LENGTH = [...COUNTRY_PHONE_PREFIXES].sort(
+  (a, b) => b.code.length - a.code.length
+);
+
+export function parsePhoneAndPrefix(
+  fullPhone: string | null | undefined,
+  defaultPrefix = '+34'
+): { prefix: string; localNumber: string } {
+  if (!fullPhone) {
+    return { prefix: defaultPrefix, localNumber: '' };
+  }
+  let trimmed = fullPhone.trim();
+  if (trimmed.startsWith('00')) {
+    trimmed = '+' + trimmed.slice(2);
+  }
+  if (trimmed.startsWith('+')) {
+    const matched = PREFIXES_SORTED_BY_LENGTH.find((p) => trimmed.startsWith(p.code));
+    if (matched) {
+      return {
+        prefix: matched.code,
+        localNumber: trimmed.slice(matched.code.length).trim(),
+      };
+    }
+    const generic = trimmed.match(/^(\+\d{1,4})\s*(.*)$/);
+    if (generic) {
+      return {
+        prefix: generic[1],
+        localNumber: generic[2].trim(),
+      };
+    }
+  }
+  return {
+    prefix: defaultPrefix,
+    localNumber: trimmed,
+  };
+}
+
 /**
- * Devuelve el número de teléfono local sin el prefijo +34 ni 0034
- * para mostrarlo limpiamente en un campo que ya incluye la insignia fija "+34".
+ * Devuelve el número de teléfono local sin el prefijo internacional
+ * para mostrarlo limpiamente en un campo que incluye selector de prefijo.
  */
 export function cleanLocalPhone(phone: string | null | undefined): string {
   if (!phone) return '';
-  let trimmed = phone.trim();
-  if (trimmed.startsWith('+34')) {
-    trimmed = trimmed.slice(3).trim();
-  } else if (trimmed.startsWith('0034')) {
-    trimmed = trimmed.slice(4).trim();
-  }
-  return trimmed;
+  return parsePhoneAndPrefix(phone).localNumber;
 }
 
 export function normalizePhoneLinks(rawPhone: string | null | undefined): {
