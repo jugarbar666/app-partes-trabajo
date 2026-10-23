@@ -129,12 +129,17 @@ const WorkOrderMobileCard: React.FC<{
     >
       <div className="space-y-2.5">
         {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
-        <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white shadow-sm space-y-2">
-          {/* Fila superior: etiqueta de fecha y código de parte */}
-          <div className="flex items-center justify-between gap-2 border-b border-white/15 pb-2">
-            <div className="flex items-center gap-1.5 text-blue-100 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider min-w-0">
-              <Calendar className="w-3.5 h-3.5 text-blue-200 shrink-0" />
-              <span className="truncate">Fecha y Hora Prevista</span>
+        <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white shadow-sm space-y-2.5">
+          {/* Fila superior: etiqueta de fecha en dos líneas y código de parte */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-blue-100 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider leading-tight text-blue-100">
+                <div>Fecha y Hora</div>
+                <div>Prevista</div>
+              </div>
             </div>
             <span className="font-mono font-extrabold text-xs px-3 py-1 rounded-md bg-white/15 border border-white/25 text-white shadow-2xs shrink-0 whitespace-nowrap tracking-wide">
               {wo.code}
