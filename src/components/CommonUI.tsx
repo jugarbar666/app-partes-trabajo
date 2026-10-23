@@ -9,6 +9,7 @@ import {
   Columns,
   ArrowLeft,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import {
   normalizePhoneLinks,
@@ -437,29 +438,43 @@ export const PhoneInputField: React.FC<{
     }
   }, [parsed.prefix]);
 
+  const selectedCountry = COUNTRY_PHONE_PREFIXES.find((cp) => cp.code === currentPrefix);
+  const displayFlag = selectedCountry?.flag || '🌐';
+
   return (
-    <div className="flex rounded-lg shadow-2xs w-full">
-      <select
-        aria-label="Prefijo internacional"
-        value={currentPrefix}
-        onChange={(e) => {
-          const newPrefix = e.target.value;
-          setCurrentPrefix(newPrefix);
-          if (parsed.localNumber.trim()) {
-            onChange(`${newPrefix} ${parsed.localNumber.trim()}`);
-          }
-        }}
-        className="inline-flex items-center px-2 py-1.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs select-none shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer max-w-[125px] sm:max-w-[155px] truncate"
-      >
-        {!COUNTRY_PHONE_PREFIXES.some((cp) => cp.code === currentPrefix) && (
-          <option value={currentPrefix}>🌐 {currentPrefix}</option>
-        )}
-        {COUNTRY_PHONE_PREFIXES.map((cp) => (
-          <option key={cp.code} value={cp.code}>
-            {cp.flag} {cp.code} · {cp.country}
-          </option>
-        ))}
-      </select>
+    <div className="flex rounded-lg shadow-2xs w-full focus-within:ring-2 focus-within:ring-blue-500">
+      {/* Selector de prefijo con insignia cerrada mostrando SOLO bandera y prefijo (sin nombre de país) */}
+      <div className="relative inline-flex items-center shrink-0 group">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 group-hover:bg-slate-200 text-slate-800 font-extrabold text-xs select-none transition h-full">
+          <span>{displayFlag}</span>
+          <span>{currentPrefix}</span>
+          <ChevronDown className="w-3 h-3 text-slate-500 shrink-0 ml-0.5" />
+        </div>
+
+        {/* Select nativo superpuesto transparente: al hacer clic se abre el menú nativo mostrando los países */}
+        <select
+          aria-label="Prefijo internacional"
+          value={currentPrefix}
+          onChange={(e) => {
+            const newPrefix = e.target.value;
+            setCurrentPrefix(newPrefix);
+            if (parsed.localNumber.trim()) {
+              onChange(`${newPrefix} ${parsed.localNumber.trim()}`);
+            }
+          }}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        >
+          {!COUNTRY_PHONE_PREFIXES.some((cp) => cp.code === currentPrefix) && (
+            <option value={currentPrefix}>🌐 {currentPrefix}</option>
+          )}
+          {COUNTRY_PHONE_PREFIXES.map((cp) => (
+            <option key={cp.code} value={cp.code}>
+              {cp.flag} {cp.code} · {cp.country}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <input
         id={id}
         name={name}
@@ -483,7 +498,7 @@ export const PhoneInputField: React.FC<{
           onChange(cleaned ? `${currentPrefix} ${cleaned}` : '');
         }}
         placeholder={placeholder}
-        className={`w-full px-3 py-1.5 rounded-r-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+        className={`w-full px-3 py-1.5 rounded-r-lg border border-slate-300 text-sm bg-white focus:outline-none ${className}`}
       />
     </div>
   );
