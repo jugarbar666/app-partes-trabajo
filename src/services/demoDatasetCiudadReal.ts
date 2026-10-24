@@ -19,6 +19,7 @@ import {
 } from '../types/domain';
 import { DatabaseState } from './seedData';
 import { computeWorkOrderContentHash } from '../utils/formatters';
+import { REAL_SUPPLIERS_FROM_FILE } from './realSuppliersData';
 
 export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState {
   const nowIso = '2026-10-24T18:00:00.000Z';
@@ -388,62 +389,41 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
     otherCustomers.unshift({ customer: c, addressId: addr.id, alias: addr.alias });
   });
 
-  // 3. PROVEEDORES DE FONTANERÍA
-  let suppliers = [...state.suppliers];
-  if (suppliers.length === 0) {
-    suppliers = [
-      {
-        id: 'sup-1',
-        name: 'Suministros Hidráulicos y Fontanería Manchega S.L.',
-        tax_id: 'B13445566',
-        contact_person: 'Vicente Muñoz (Comercial)',
-        phone: '+34 926 251 122',
-        email: 'pedidos@fontaneriamanchega.es',
-        address: 'Polígono Industrial Avanzado, Calle Gutenberg 14',
-        postal_code: '13005',
-        city: 'Ciudad Real',
-        province: 'Ciudad Real',
-        notes: 'Proveedor principal de tubería, valvulería, desagües y material de fontanería general.',
-        is_active: true,
-        created_at: '2026-01-10T08:00:00.000Z',
-        updated_at: '2026-01-10T08:00:00.000Z',
-      },
-      {
-        id: 'sup-2',
-        name: 'Salvador Escoda S.A. - Delegación La Mancha',
-        tax_id: 'A08250000',
-        contact_person: 'Javier Ramos (Ventas)',
-        phone: '+34 926 273 000',
-        email: 'ciudadreal@salvadorescoda.com',
-        address: 'Calle Industria 8, Polígono Larache',
-        postal_code: '13005',
-        city: 'Ciudad Real',
-        province: 'Ciudad Real',
-        notes: 'Distribuidor oficial termos eléctricos, ánodos de magnesio, grifería y sanitarios.',
-        is_active: true,
-        created_at: '2026-01-10T08:00:00.000Z',
-        updated_at: '2026-01-10T08:00:00.000Z',
-      },
-      {
-        id: 'sup-3',
-        name: 'Distribuciones Térmicas y Clima Ciudad Real S.L.',
-        tax_id: 'B13998877',
-        contact_person: 'Elena Santos',
-        phone: '+34 926 214 567',
-        email: 'repuestos@climaciudadreal.es',
-        address: 'Carretera de Fuensanta km 1',
-        postal_code: '13004',
-        city: 'Ciudad Real',
-        province: 'Ciudad Real',
-        notes: 'Especialistas en repuestos de calderas, bombas circuladoras y grupos de presión.',
-        is_active: true,
-        created_at: '2026-01-10T08:00:00.000Z',
-        updated_at: '2026-01-10T08:00:00.000Z',
-      },
-    ];
-  }
+  // 3. PROVEEDORES DEL FICHERO REAL DE PROVEEDORES (Plantilla_Proveedores.xlsx)
+  const fakeNames = [
+    'suministros hidráulicos y fontanería manchega',
+    'salvador escoda s.a. - delegación la mancha',
+    'distribuciones térmicas y clima ciudad real',
+    'suministros manchega',
+    'clima ciudad real',
+  ];
+  let suppliers = (state.suppliers || []).filter(
+    (s) => !fakeNames.some((fake) => s.name.toLowerCase().includes(fake))
+  );
 
-  // 4. 25 ARTÍCULOS DE FONTANERÍA
+  // Cargamos los 186 proveedores del fichero real de proveedores
+  REAL_SUPPLIERS_FROM_FILE.forEach((realSup) => {
+    if (!suppliers.some((s) => s.tax_id === realSup.tax_id || s.name.toLowerCase() === realSup.name.toLowerCase())) {
+      suppliers.push(realSup);
+    }
+  });
+
+  const getRealSup = (namePart: string, fallbackIdx = 0): string => {
+    const found = suppliers.find((s) => s.name.toLowerCase().includes(namePart.toLowerCase()));
+    return found ? found.id : (suppliers[fallbackIdx]?.id || suppliers[0]?.id || 'sup-1');
+  };
+
+  const supAquagrif = getRealSup('Aquagrif');
+  const supTeyma = getRealSup('TEYMA');
+  const supHidrofil = getRealSup('HIDROFIL');
+  const supTradesa = getRealSup('TRADESA');
+  const supTecnifrio = getRealSup('TECNIFRIO');
+  const supAlfesa = getRealSup('ALFESA');
+  const supConducciones = getRealSup('CONDUCCIONES Y SANEAMIENTOS');
+  const supFluidra = getRealSup('FLUIDRA');
+  const supAguaMaq = getRealSup('AGUA Y MAQUINARIA');
+
+  // 4. 25 ARTÍCULOS DE FONTANERÍA (ASOCIADOS A PROVEEDORES REALES DEL FICHERO)
   const plumbingCatalog = [
     {
       code: 'MAT-001',
@@ -452,7 +432,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 2200,
       sale: 4500,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supAquagrif,
     },
     {
       code: 'MAT-002',
@@ -461,7 +441,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 2850,
       sale: 5800,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supAquagrif,
     },
     {
       code: 'MAT-003',
@@ -470,7 +450,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 3400,
       sale: 6900,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supAquagrif,
     },
     {
       code: 'MAT-004',
@@ -479,7 +459,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 8900,
       sale: 16500,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supAquagrif,
     },
     {
       code: 'MAT-005',
@@ -488,7 +468,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 950,
       sale: 2200,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-006',
@@ -497,7 +477,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 5200,
       sale: 9800,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supAquagrif,
     },
     {
       code: 'MAT-007',
@@ -506,7 +486,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 420,
       sale: 1100,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-008',
@@ -515,7 +495,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 310,
       sale: 850,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supAlfesa,
     },
     {
       code: 'MAT-009',
@@ -524,7 +504,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 220,
       sale: 600,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supAlfesa,
     },
     {
       code: 'MAT-010',
@@ -533,7 +513,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 1250,
       sale: 2600,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supConducciones,
     },
     {
       code: 'MAT-011',
@@ -542,7 +522,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 580,
       sale: 1450,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supConducciones,
     },
     {
       code: 'MAT-012',
@@ -551,7 +531,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 4800,
       sale: 8900,
       unit: 'rollo',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-013',
@@ -560,7 +540,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 1450,
       sale: 2650,
       unit: 'barra',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-014',
@@ -569,7 +549,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 1820,
       sale: 3250,
       unit: 'barra',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-015',
@@ -578,7 +558,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 2350,
       sale: 4100,
       unit: 'barra',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
     {
       code: 'MAT-016',
@@ -587,7 +567,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 590,
       sale: 1350,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supFluidra,
     },
     {
       code: 'MAT-017',
@@ -596,7 +576,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 890,
       sale: 1950,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supFluidra,
     },
     {
       code: 'MAT-018',
@@ -605,7 +585,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 3100,
       sale: 6400,
       unit: 'ud',
-      supplier_id: suppliers[2]?.id || suppliers[0].id,
+      supplier_id: supAguaMaq,
     },
     {
       code: 'MAT-019',
@@ -614,7 +594,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 780,
       sale: 1750,
       unit: 'ud',
-      supplier_id: suppliers[2]?.id || suppliers[0].id,
+      supplier_id: supTradesa,
     },
     {
       code: 'MAT-020',
@@ -623,7 +603,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 920,
       sale: 2400,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supHidrofil,
     },
     {
       code: 'MAT-021',
@@ -632,7 +612,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 1650,
       sale: 3600,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supTecnifrio,
     },
     {
       code: 'MAT-022',
@@ -641,7 +621,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 1100,
       sale: 2500,
       unit: 'ud',
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      supplier_id: supTecnifrio,
     },
     {
       code: 'MAT-023',
@@ -650,7 +630,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 9200,
       sale: 17500,
       unit: 'ud',
-      supplier_id: suppliers[2]?.id || suppliers[0].id,
+      supplier_id: supTradesa,
     },
     {
       code: 'MAT-024',
@@ -659,7 +639,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 460,
       sale: 1150,
       unit: 'ud',
-      supplier_id: suppliers[2]?.id || suppliers[0].id,
+      supplier_id: supHidrofil,
     },
     {
       code: 'MAT-025',
@@ -668,14 +648,21 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       purchase: 780,
       sale: 1800,
       unit: 'ud',
-      supplier_id: suppliers[0].id,
+      supplier_id: supTeyma,
     },
   ];
 
   let articles: Article[] = [...state.articles];
   plumbingCatalog.forEach((art, idx) => {
     let existing = articles.find((a) => a.code === art.code);
-    if (!existing) {
+    if (existing) {
+      existing.supplier_id = art.supplier_id;
+      existing.name = art.name;
+      existing.description = art.description;
+      existing.purchase_price_cents = art.purchase;
+      existing.sale_price_cents = art.sale;
+      existing.unit = art.unit;
+    } else {
       articles.push({
         id: `art-font-${idx + 1}`,
         code: art.code,
@@ -970,10 +957,10 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
   const shopping_requests: ShoppingRequest[] = [
     {
       id: 'shop-cr-1',
-      article_id: articles.find((a) => a.code === 'MAT-011')?.id || articles[10].id,
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
-      purchase_price_cents: 890,
-      sale_price_cents: 2200,
+      article_id: articles.find((a) => a.code === 'MAT-020')?.id || articles[19].id, // Ánodo de sacrificio
+      supplier_id: supHidrofil,
+      purchase_price_cents: 920,
+      sale_price_cents: 2400,
       quantity: 6,
       status: 'pending_purchase',
       requested_by: oper1Id,
@@ -987,15 +974,15 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       ],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Reposición urgente para vehículos taller: sustitución en termos programada para la próxima semana',
+      notes: 'Reposición urgente para vehículos taller: sustitución en termos programada para la próxima semana (HIDROFIL)',
       updated_at: '2026-10-23T09:10:00.000Z',
     },
     {
       id: 'shop-cr-2',
-      article_id: articles.find((a) => a.code === 'MAT-008')?.id || articles[7].id,
-      supplier_id: suppliers[0]?.id,
+      article_id: articles.find((a) => a.code === 'MAT-005')?.id || articles[4].id, // Mecanismo cisterna
+      supplier_id: supTeyma,
       purchase_price_cents: 950,
-      sale_price_cents: 2250,
+      sale_price_cents: 2200,
       quantity: 8,
       status: 'pending_purchase',
       requested_by: oper2Id,
@@ -1003,13 +990,13 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Averías reiteradas de cisternas que no cierran en aseos de ESI y Politécnico',
+      notes: 'Averías reiteradas de cisternas que no cierran en aseos de ESI y Politécnico (TEYMA)',
       updated_at: '2026-10-22T16:20:00.000Z',
     },
     {
       id: 'shop-cr-3',
-      article_id: articles.find((a) => a.code === 'MAT-001')?.id || articles[0].id,
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
+      article_id: articles.find((a) => a.code === 'MAT-001')?.id || articles[0].id, // Grifo lavabo
+      supplier_id: supAquagrif,
       purchase_price_cents: 2200,
       sale_price_cents: 4500,
       quantity: null,
@@ -1019,15 +1006,15 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Solicitado sobre la marcha en intervención por cuerpo agrietado en lavabo. Pendiente de fijar cantidad.',
+      notes: 'Solicitado sobre la marcha en intervención por cuerpo agrietado en lavabo (Aquagrif SL). Pendiente fijar cantidad.',
       updated_at: '2026-10-24T11:15:00.000Z',
     },
     {
       id: 'shop-cr-4',
-      article_id: articles.find((a) => a.code === 'MAT-017')?.id || articles[16].id,
-      supplier_id: suppliers[0]?.id,
-      purchase_price_cents: 240,
-      sale_price_cents: 650,
+      article_id: articles.find((a) => a.code === 'MAT-009')?.id || articles[8].id, // Latiguillo / flexo
+      supplier_id: supAlfesa,
+      purchase_price_cents: 220,
+      sale_price_cents: 600,
       quantity: 20,
       status: 'pending_purchase',
       requested_by: 'usr-admin-1',
@@ -1035,31 +1022,31 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Lote de reposición general para almacén central (Suministros Manchega)',
+      notes: 'Lote de reposición general para almacén central (ALFESA Ferretería Industrial)',
       updated_at: '2026-10-21T18:00:00.000Z',
     },
     {
       id: 'shop-cr-5',
-      article_id: articles.find((a) => a.code === 'MAT-013')?.id || articles[12].id,
-      supplier_id: suppliers[2]?.id || suppliers[0].id,
-      purchase_price_cents: 3400,
-      sale_price_cents: 6900,
-      quantity: 2,
+      article_id: articles.find((a) => a.code === 'MAT-019')?.id || articles[18].id, // Válvula seguridad
+      supplier_id: supTradesa,
+      purchase_price_cents: 780,
+      sale_price_cents: 1750,
+      quantity: 3,
       status: 'pending_purchase',
       requested_by: oper2Id,
       requested_at: '2026-10-23T14:30:00.000Z',
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Membrana picada en caldera de calefacción de Mesón Octavio y Residencial Puerta de Toledo',
+      notes: 'Válvulas de seguridad y sobrepresión para salas de calderas (TRADESA)',
       updated_at: '2026-10-23T14:30:00.000Z',
     },
     {
       id: 'shop-cr-6',
-      article_id: articles.find((a) => a.code === 'MAT-020')?.id || articles[19].id,
-      supplier_id: suppliers[1]?.id || suppliers[0].id,
-      purchase_price_cents: 110,
-      sale_price_cents: 280,
+      article_id: articles.find((a) => a.code === 'MAT-008')?.id || articles[7].id, // Llaves escuadra
+      supplier_id: supAlfesa,
+      purchase_price_cents: 310,
+      sale_price_cents: 850,
       quantity: 15,
       status: 'pending_purchase',
       requested_by: oper1Id,
@@ -1067,14 +1054,14 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Pack de consumibles para sellado de roscas en racorería y valvulería',
+      notes: 'Pack de llaves de corte de escuadra antical para vehículos de asistencia (ALFESA)',
       updated_at: '2026-10-20T08:00:00.000Z',
     },
     {
       id: 'shop-cr-7',
-      article_id: articles.find((a) => a.code === 'MAT-004')?.id || articles[3].id,
-      supplier_id: suppliers[0]?.id,
-      purchase_price_cents: 8200,
+      article_id: articles.find((a) => a.code === 'MAT-004')?.id || articles[3].id, // Inodoro
+      supplier_id: supAquagrif,
+      purchase_price_cents: 8900,
       sale_price_cents: 16500,
       quantity: null,
       status: 'pending_quantity',
@@ -1083,15 +1070,15 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: null,
       purchased_at: null,
-      notes: 'Taza rota por impacto en aseo de Facultad de Medicina. Pendiente de confirmación de modelo.',
+      notes: 'Taza rota por impacto en aseo de Facultad de Medicina (Aquagrif SL). Pendiente de confirmación de modelo.',
       updated_at: '2026-10-24T09:40:00.000Z',
     },
     {
       id: 'shop-cr-8',
-      article_id: articles.find((a) => a.code === 'MAT-022')?.id || articles[21].id,
-      supplier_id: suppliers[0]?.id,
-      purchase_price_cents: 3200,
-      sale_price_cents: 6400,
+      article_id: articles.find((a) => a.code === 'MAT-012')?.id || articles[11].id, // Tubo multicapa
+      supplier_id: supTeyma,
+      purchase_price_cents: 4800,
+      sale_price_cents: 8900,
       quantity: 2,
       status: 'purchased',
       requested_by: oper1Id,
@@ -1099,7 +1086,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       additional_requesters: [],
       purchased_by: 'usr-admin-1',
       purchased_at: '2026-10-24T10:15:00.000Z',
-      notes: 'Comprado esta mañana en mostrador de Suministros Manchega para batería de contadores',
+      notes: 'Comprado esta mañana en mostrador de TEYMA para batería de contadores',
       updated_at: '2026-10-24T10:15:00.000Z',
     },
   ];

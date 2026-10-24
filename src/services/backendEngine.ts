@@ -121,13 +121,24 @@ export class InstallationBackendEngine {
               !wo.snapshot_customer_name.toLowerCase().includes('gesyre')
           );
           const hasShoppingRequests = (this.state.shopping_requests?.length || 0) > 0;
+          const hasFakeSuppliers = this.state.suppliers?.some(
+            (s) =>
+              s.name.toLowerCase().includes('manchega') ||
+              s.name.toLowerCase().includes('escoda') ||
+              s.name.toLowerCase().includes('clima ciudad real')
+          );
+          const hasRealSuppliersFromFile = this.state.suppliers?.some(
+            (s) => s.name.toLowerCase().includes('teyma') || s.name.toLowerCase().includes('aquagrif')
+          );
 
           if (
             installationId === 'instalaciones-climalux-demo' &&
             (!this.state.work_orders ||
               this.state.work_orders.length < 25 ||
               !hasDiverseCustomers ||
-              !hasShoppingRequests)
+              !hasShoppingRequests ||
+              hasFakeSuppliers ||
+              !hasRealSuppliersFromFile)
           ) {
             this.state = populateCiudadRealDemoData(this.state);
             this.persist();
@@ -149,13 +160,24 @@ export class InstallationBackendEngine {
         !wo.snapshot_customer_name.toLowerCase().includes('gesyre')
     );
     const hasSeedShoppingRequests = (this.state.shopping_requests?.length || 0) > 0;
+    const hasSeedFakeSuppliers = this.state.suppliers?.some(
+      (s) =>
+        s.name.toLowerCase().includes('manchega') ||
+        s.name.toLowerCase().includes('escoda') ||
+        s.name.toLowerCase().includes('clima ciudad real')
+    );
+    const hasSeedRealSuppliers = this.state.suppliers?.some(
+      (s) => s.name.toLowerCase().includes('teyma') || s.name.toLowerCase().includes('aquagrif')
+    );
 
     if (
       installationId === 'instalaciones-climalux-demo' &&
       (!this.state.work_orders ||
         this.state.work_orders.length < 25 ||
         !hasDiverseSeedCustomers ||
-        !hasSeedShoppingRequests)
+        !hasSeedShoppingRequests ||
+        hasSeedFakeSuppliers ||
+        !hasSeedRealSuppliers)
     ) {
       this.state = populateCiudadRealDemoData(this.state);
     }

@@ -1788,5 +1788,24 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       expect(fecha.getFullYear()).toBe(2026);
       expect(fecha.getMonth()).toBeGreaterThanOrEqual(9); // Octubre (9) o Noviembre (10)
     });
+
+    // 6. Proveedores del fichero real de proveedores y artículos vinculados
+    const proveedores = crBackend.getSuppliers();
+    expect(proveedores.length).toBeGreaterThanOrEqual(20);
+    expect(proveedores.some((s) => s.name.toLowerCase().includes('aquagrif'))).toBe(true);
+    expect(proveedores.some((s) => s.name.toLowerCase().includes('teyma'))).toBe(true);
+
+    const articulosConProveedorReal = articulos.filter((a) => {
+      const sup = proveedores.find((s) => s.id === a.supplier_id);
+      return (
+        sup &&
+        (sup.name.toLowerCase().includes('aquagrif') ||
+          sup.name.toLowerCase().includes('teyma') ||
+          sup.name.toLowerCase().includes('alfesa') ||
+          sup.name.toLowerCase().includes('hidrofil') ||
+          sup.name.toLowerCase().includes('tradesa'))
+      );
+    });
+    expect(articulosConProveedorReal.length).toBeGreaterThanOrEqual(15);
   });
 });
