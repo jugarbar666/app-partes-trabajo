@@ -1661,4 +1661,61 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(clienteGuardado.city).toBe('Madrid');
     expect(clienteGuardado.province).toBe('Madrid');
   });
+
+  it('Escenario 32: La plantilla y el proceso de importación/exportación de proveedores incluyen Dirección, Código Postal, Población y Provincia', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    const rawRow = {
+      Nombre_Razon_Social: 'Tuberías y Válvulas del Sur S.A.',
+      NIF_CIF: 'A41889900',
+      Persona_Contacto: 'Manuel Comercial',
+      Telefono: '954112233',
+      Email: 'pedidos@tubvalvulas.es',
+      Direccion: 'Polígono Calonge, Calle Metal 8',
+      Codigo_Postal: '41007',
+      Poblacion: 'Sevilla',
+      Provincia: 'Sevilla',
+      Notas: 'Condición de pago a 30 días',
+    };
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'suppliers',
+      rawRows: [rawRow],
+      columnMapping: {
+        name: 'Nombre_Razon_Social',
+        tax_id: 'NIF_CIF',
+        contact_person: 'Persona_Contacto',
+        phone: 'Telefono',
+        email: 'Email',
+        address: 'Direccion',
+        postal_code: 'Codigo_Postal',
+        city: 'Poblacion',
+        province: 'Provincia',
+        notes: 'Notas',
+      },
+    });
+
+    expect(preview.validNewCount).toBe(1);
+    expect(preview.errorCount).toBe(0);
+
+    const exec = executeValidatedImport({
+      backend,
+      entityType: 'suppliers',
+      fileName: 'Plantilla_Proveedores.xlsx',
+      conflictPolicy: 'reject_duplicates',
+      preview,
+    });
+
+    expect(exec.inserted).toBe(1);
+
+    const proveedorGuardado = backend.getSuppliers(true).find((s) => s.tax_id === 'A41889900')!;
+    expect(proveedorGuardado).toBeDefined();
+    expect(proveedorGuardado.name).toBe('Tuberías y Válvulas del Sur S.A.');
+    expect(proveedorGuardado.contact_person).toBe('Manuel Comercial');
+    expect(proveedorGuardado.address).toBe('Polígono Calonge, Calle Metal 8');
+    expect(proveedorGuardado.postal_code).toBe('41007');
+    expect(proveedorGuardado.city).toBe('Sevilla');
+    expect(proveedorGuardado.province).toBe('Sevilla');
+  });
 });

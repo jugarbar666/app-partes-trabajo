@@ -850,7 +850,16 @@ export class InstallationBackendEngine {
       const idx = this.state.suppliers.findIndex((s) => s.id === data.id);
       if (idx === -1) throw new ValidationError('Proveedor no encontrado.');
       const prev = this.state.suppliers[idx];
-      const updated: Supplier = { ...prev, ...data, id: prev.id, updated_at: now };
+      const updated: Supplier = {
+        ...prev,
+        ...data,
+        address: (data.address ?? prev.address ?? '').trim(),
+        postal_code: (data.postal_code ?? prev.postal_code ?? '').trim(),
+        city: (data.city ?? prev.city ?? '').trim(),
+        province: (data.province ?? prev.province ?? '').trim(),
+        id: prev.id,
+        updated_at: now,
+      };
       this.state.suppliers[idx] = updated;
       this.recordAudit(admin, 'maestros', 'supplier', updated.id, 'MODIFICAR_PROVEEDOR', {
         before: prev,
@@ -859,7 +868,16 @@ export class InstallationBackendEngine {
       this.persist();
       return { ...updated };
     } else {
-      const created: Supplier = { ...data, id: genId('sup'), created_at: now, updated_at: now };
+      const created: Supplier = {
+        ...data,
+        address: (data.address || '').trim(),
+        postal_code: (data.postal_code || '').trim(),
+        city: (data.city || '').trim(),
+        province: (data.province || '').trim(),
+        id: genId('sup'),
+        created_at: now,
+        updated_at: now,
+      };
       this.state.suppliers.push(created);
       this.recordAudit(admin, 'maestros', 'supplier', created.id, 'ALTA_PROVEEDOR', { created });
       this.persist();

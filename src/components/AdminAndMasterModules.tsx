@@ -113,9 +113,14 @@ export const MasterDataAndUsersModule: React.FC<{
   // Estado formulario Proveedor
   const [supName, setSupName] = useState('');
   const [supTaxId, setSupTaxId] = useState('');
+  const [supContact, setSupContact] = useState('');
   const [supPhone, setSupPhone] = useState('');
   const [supEmail, setSupEmail] = useState('');
-  const [supContact, setSupContact] = useState('');
+  const [supAddress, setSupAddress] = useState('');
+  const [supPostalCode, setSupPostalCode] = useState('');
+  const [supCity, setSupCity] = useState('');
+  const [supProvince, setSupProvince] = useState('');
+  const [supNotes, setSupNotes] = useState('');
 
   // Estado formulario Tipo Revisión
   const [rtName, setRtName] = useState('');
@@ -242,18 +247,26 @@ export const MasterDataAndUsersModule: React.FC<{
       columns: [
         { key: 'name', header: 'Nombre / Razón Social' },
         { key: 'tax_id', header: 'NIF / CIF' },
+        { key: 'contact_person', header: 'Persona de Contacto' },
         { key: 'phone', header: 'Teléfono' },
         { key: 'email', header: 'Email' },
-        { key: 'contact_person', header: 'Persona de Contacto' },
+        { key: 'address', header: 'Dirección / Domicilio' },
+        { key: 'postal_code', header: 'Código Postal' },
+        { key: 'city', header: 'Población' },
+        { key: 'province', header: 'Provincia' },
         { key: 'notes', header: 'Notas' },
         { key: 'active', header: 'Estado' },
       ],
       rows: suppliers.map((s) => ({
         name: s.name,
         tax_id: s.tax_id || '',
+        contact_person: s.contact_person || '',
         phone: s.phone || '',
         email: s.email || '',
-        contact_person: s.contact_person || '',
+        address: s.address || '',
+        postal_code: s.postal_code || '',
+        city: s.city || '',
+        province: s.province || '',
         notes: s.notes || '',
         active: s.is_active ? 'Activo' : 'Inactivo',
       })),
@@ -667,6 +680,18 @@ export const MasterDataAndUsersModule: React.FC<{
                       NIF: {s.tax_id || '—'} · Contacto: {s.contact_person || '—'}{' '}
                       {s.phone ? `· Tel: ${s.phone}` : ''} {s.email ? `· Email: ${s.email}` : ''}
                     </div>
+                    {(s.address || s.postal_code || s.city || s.province) && (
+                      <div className="text-slate-600">
+                        Dirección: {s.address || '—'}
+                        {(s.postal_code || s.city || s.province) && (
+                          <>
+                            {', '}
+                            {[s.postal_code, s.city].filter(Boolean).join(' ')}
+                            {s.province ? ` (${s.province})` : ''}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1384,22 +1409,36 @@ export const MasterDataAndUsersModule: React.FC<{
                     changes: [
                       { label: 'Proveedor', value: supName },
                       { label: 'NIF/CIF', value: supTaxId || '—' },
+                      { label: 'Contacto', value: supContact || '—' },
+                      { label: 'Dirección', value: supAddress || '—' },
+                      { label: 'C.P.', value: supPostalCode || '—' },
+                      { label: 'Población', value: supCity || '—' },
+                      { label: 'Provincia', value: supProvince || '—' },
                     ],
                     onConfirm: () => {
                       backend.saveSupplier({
                         name: supName,
                         tax_id: supTaxId,
+                        contact_person: supContact,
                         phone: supPhone,
                         email: supEmail,
-                        contact_person: supContact,
-                        notes: '',
+                        address: supAddress,
+                        postal_code: supPostalCode,
+                        city: supCity,
+                        province: supProvince,
+                        notes: supNotes,
                         is_active: true,
                       });
                       setSupName('');
                       setSupTaxId('');
+                      setSupContact('');
                       setSupPhone('');
                       setSupEmail('');
-                      setSupContact('');
+                      setSupAddress('');
+                      setSupPostalCode('');
+                      setSupCity('');
+                      setSupProvince('');
+                      setSupNotes('');
                       refresh();
                     },
                   });
@@ -1414,17 +1453,72 @@ export const MasterDataAndUsersModule: React.FC<{
                   placeholder="Nombre del proveedor *"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                 />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={supTaxId}
+                    onChange={(e) => setSupTaxId(e.target.value)}
+                    placeholder="NIF / CIF"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={supContact}
+                    onChange={(e) => setSupContact(e.target.value)}
+                    placeholder="Persona de Contacto"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <PhoneInputField
+                    value={supPhone}
+                    onChange={setSupPhone}
+                    placeholder="Teléfono contacto"
+                  />
+                  <input
+                    type="email"
+                    value={supEmail}
+                    onChange={(e) => setSupEmail(e.target.value)}
+                    placeholder="Email comercial"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                </div>
                 <input
                   type="text"
-                  value={supTaxId}
-                  onChange={(e) => setSupTaxId(e.target.value)}
-                  placeholder="NIF / CIF opcional"
+                  value={supAddress}
+                  onChange={(e) => setSupAddress(e.target.value)}
+                  placeholder="Dirección / Domicilio social o almacén"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                 />
-                <PhoneInputField
-                  value={supPhone}
-                  onChange={setSupPhone}
-                  placeholder="Teléfono contacto"
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="text"
+                    value={supPostalCode}
+                    onChange={(e) => setSupPostalCode(e.target.value)}
+                    placeholder="C. Postal"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={supCity}
+                    onChange={(e) => setSupCity(e.target.value)}
+                    placeholder="Población"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={supProvince}
+                    onChange={(e) => setSupProvince(e.target.value)}
+                    placeholder="Provincia"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={supNotes}
+                  onChange={(e) => setSupNotes(e.target.value)}
+                  placeholder="Observaciones / Condiciones comerciales"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
                 />
                 <div className="flex justify-end gap-2 pt-2">
                   <button

@@ -102,6 +102,10 @@ export interface Supplier {
   phone: string;
   email: string;
   contact_person: string;
+  address?: string;
+  postal_code?: string;
+  city?: string;
+  province?: string;
   notes: string;
   is_active: boolean;
   created_at: string;
