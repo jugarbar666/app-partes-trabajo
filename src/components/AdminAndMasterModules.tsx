@@ -14,6 +14,10 @@ import {
   FileSpreadsheet,
   FileDown,
   Upload,
+  Key,
+  Copy,
+  Check,
+  Send,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -122,6 +126,36 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
   const [usrRole, setUsrRole] = useState<'operario' | 'admin'>('operario');
+  const [usrTempPassword, setUsrTempPassword] = useState('Clima-2026!');
+
+  // Modal de resumen con enlace y credenciales tras invitar
+  const [invitationSummaryModal, setInvitationSummaryModal] = useState<{
+    open: boolean;
+    fullName: string;
+    email: string;
+    tempPass: string;
+    link: string;
+  } | null>(null);
+
+  // Modal de restablecimiento de contraseña por administrador
+  const [adminResetPassModal, setAdminResetPassModal] = useState<{
+    open: boolean;
+    userId: string;
+    fullName: string;
+    email: string;
+    customPassword: string;
+  } | null>(null);
+
+  // Modal de credenciales restablecidas para copiar
+  const [resetSuccessModal, setResetSuccessModal] = useState<{
+    open: boolean;
+    fullName: string;
+    email: string;
+    tempPass: string;
+  } | null>(null);
+
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [copiedReset, setCopiedReset] = useState(false);
 
   const handleSupplierFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -554,10 +588,11 @@ export const MasterDataAndUsersModule: React.FC<{
                 className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
                 <div>
-                  <div className="font-bold text-sm text-slate-900">
-                    {u.full_name} ({u.email}){' '}
+                  <div className="font-bold text-sm text-slate-900 flex flex-wrap items-center gap-1.5">
+                    <span>{u.full_name}</span>
+                    <span className="text-slate-500 font-normal">({u.email})</span>
                     <span
-                      className={`ml-1.5 px-2 py-0.5 rounded font-bold text-[11px] ${
+                      className={`px-2 py-0.5 rounded font-bold text-[11px] ${
                         u.role === 'admin'
                           ? 'bg-purple-100 text-purple-900'
                           : 'bg-blue-100 text-blue-900'
@@ -565,8 +600,13 @@ export const MasterDataAndUsersModule: React.FC<{
                     >
                       {u.role.toUpperCase()}
                     </span>
+                    {u.must_change_password && (
+                      <span className="px-2 py-0.5 rounded bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-bold">
+                        🔑 Clave temporal (Cambio pendiente)
+                      </span>
+                    )}
                     {!u.is_active && (
-                      <span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-800 text-[11px] font-bold">
+                      <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 text-[11px] font-bold">
                         INACTIVO (Sesión revocada)
                       </span>
                     )}
@@ -576,7 +616,25 @@ export const MasterDataAndUsersModule: React.FC<{
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminResetPassModal({
+                        open: true,
+                        userId: u.id,
+                        fullName: u.full_name,
+                        email: u.email,
+                        customPassword: `Clima-${Math.floor(1000 + Math.random() * 9000)}!`,
+                      });
+                    }}
+                    className="px-3 py-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                    title="Asignar contraseña temporal decidida por el administrador (obligará al usuario a cambiarla)"
+                  >
+                    <Key className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Restablecer Clave</span>
+                  </button>
+
                   <button
                     type="button"
                     disabled={isSelf}
@@ -1268,20 +1326,34 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
                       { label: 'Rol asignado', value: usrRole },
+                      { label: 'Contraseña temporal', value: usrTempPassword },
                     ],
                     onConfirm: () => {
-                      backend.inviteAndCreateUser({
-                        full_name: usrName,
-                        dni: usrDni,
-                        email: usrEmail,
-                        phone: usrPhone,
-                        role: usrRole,
-                      });
-                      setUsrName('');
-                      setUsrDni('');
-                      setUsrEmail('');
-                      setUsrPhone('');
-                      refresh();
+                      try {
+                        const res = backend.inviteAndCreateUser({
+                          full_name: usrName,
+                          dni: usrDni,
+                          email: usrEmail,
+                          phone: usrPhone,
+                          role: usrRole,
+                          initial_password: usrTempPassword,
+                        });
+                        setInvitationSummaryModal({
+                          open: true,
+                          fullName: res.full_name,
+                          email: res.email,
+                          tempPass: res.temporaryPassword,
+                          link: res.invitationLink,
+                        });
+                        setUsrName('');
+                        setUsrDni('');
+                        setUsrEmail('');
+                        setUsrPhone('');
+                        setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
+                        refresh();
+                      } catch (err: any) {
+                        notifyError(err?.message || 'Error al invitar al usuario.');
+                      }
                     },
                   });
                 }}
@@ -1325,23 +1397,318 @@ export const MasterDataAndUsersModule: React.FC<{
                   <option value="operario">Rol: Operario</option>
                   <option value="admin">Rol: Administrador</option>
                 </select>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="block font-bold text-slate-700">
+                    Contraseña temporal fijada por el Administrador *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={usrTempPassword}
+                      onChange={(e) => setUsrTempPassword(e.target.value)}
+                      placeholder="Contraseña temporal"
+                      className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono font-semibold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`)
+                      }
+                      className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer whitespace-nowrap shadow-2xs"
+                    >
+                      🎲 Generar
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-amber-950 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <Key className="w-3.5 h-3.5" />
+                      <span>Cambio obligatorio de contraseña:</span>
+                    </div>
+                    <p>
+                      El usuario estará <strong>obligado a cambiar esta contraseña temporal</strong> la primera vez que entre al sistema antes de poder continuar.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
                     Enviar Invitación
                   </button>
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: RESUMEN DE INVITACIÓN CREADA CON ENLACE Y DATOS DE ACCESO PARA COPIAR */}
+      {invitationSummaryModal?.open && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-xs border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                  <Check className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    Invitación Generada con Éxito
+                  </h3>
+                  <p className="text-slate-500 text-[11px]">
+                    Envía estos datos de acceso al nuevo usuario
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvitationSummaryModal(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+              <div>
+                <span className="text-slate-500 font-medium">Usuario:</span>{' '}
+                <strong className="text-slate-900">{invitationSummaryModal.fullName}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 font-medium">Email / Usuario:</span>{' '}
+                <strong className="text-slate-900 font-mono">{invitationSummaryModal.email}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 font-medium">Contraseña temporal:</span>{' '}
+                <strong className="text-blue-700 font-mono font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  {invitationSummaryModal.tempPass}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 font-medium">Enlace de acceso:</span>
+                <input
+                  type="text"
+                  readOnly
+                  value={invitationSummaryModal.link}
+                  className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-[11px] text-slate-700"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed text-[11px]">
+              ℹ️ <strong>Seguridad garantizada:</strong> La primera vez que{' '}
+              <strong>{invitationSummaryModal.fullName}</strong> inicie sesión con esta clave temporal, el sistema le obligará a definir su contraseña definitiva.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  const messageText = `Hola ${invitationSummaryModal.fullName},\nHas sido invitado/a a la aplicación de Gestión de Partes de Trabajo.\n\nEnlace de acceso: ${invitationSummaryModal.link}\nUsuario: ${invitationSummaryModal.email}\nContraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
+                  navigator.clipboard.writeText(messageText);
+                  setCopiedInvite(true);
+                  setTimeout(() => setCopiedInvite(false), 3000);
+                  notifySuccessGreen('Datos de invitación y credenciales copiados al portapapeles.');
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                {copiedInvite ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-200" />
+                    <span>¡Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copiar Datos para WhatsApp / Correo</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInvitationSummaryModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: RESTABLECIMIENTO DE CONTRASEÑA POR PARTE DEL ADMINISTRADOR */}
+      {adminResetPassModal?.open && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              try {
+                const res = backend.resetUserPasswordByAdmin(
+                  adminResetPassModal.userId,
+                  adminResetPassModal.customPassword
+                );
+                setAdminResetPassModal(null);
+                setResetSuccessModal({
+                  open: true,
+                  fullName: res.user.full_name,
+                  email: res.user.email,
+                  tempPass: res.temporaryPassword,
+                });
+                notifySuccessGreen('Contraseña restablecida. El usuario deberá cambiarla al iniciar sesión.');
+                refresh();
+              } catch (err: any) {
+                notifyError(err?.message || 'Error al restablecer la contraseña.');
+              }
+            }}
+            className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs border border-slate-200"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                  <Key className="w-5 h-5" />
+                </div>
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Restablecer Contraseña (Administrador)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminResetPassModal(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-600">
+              Vas a asignar una nueva contraseña para{' '}
+              <strong>{adminResetPassModal.fullName}</strong> ({adminResetPassModal.email}). Puedes escribir la contraseña que tú decidas o generar una automática:
+            </p>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Nueva Contraseña que tú decides *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  value={adminResetPassModal.customPassword}
+                  onChange={(e) =>
+                    setAdminResetPassModal({
+                      ...adminResetPassModal,
+                      customPassword: e.target.value,
+                    })
+                  }
+                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono font-semibold"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAdminResetPassModal({
+                      ...adminResetPassModal,
+                      customPassword: `Clima-${Math.floor(1000 + Math.random() * 9000)}!`,
+                    })
+                  }
+                  className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer whitespace-nowrap shadow-2xs"
+                >
+                  🎲 Generar
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-[11px] leading-relaxed">
+              ⚠️ <strong>Obligación de cambio:</strong> Cuando el usuario acceda con esta contraseña, el sistema le obligará a definir su contraseña personal antes de continuar.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setAdminResetPassModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+              >
+                Confirmar y Asignar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL 3: CREDENCIALES RESTABLECIDAS LISTAS PARA ENVIAR */}
+      {resetSuccessModal?.open && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs border border-slate-200">
+            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                <Check className="w-5 h-5" />
+              </div>
+              <h3 className="font-extrabold text-sm text-slate-900">
+                Contraseña Restablecida con Éxito
+              </h3>
+            </div>
+
+            <p className="text-slate-600 leading-relaxed">
+              La contraseña temporal para <strong>{resetSuccessModal.fullName}</strong> ya está activa. Puedes copiar el siguiente mensaje para enviárselo:
+            </p>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono space-y-1 text-[11px]">
+              <div>Usuario: <strong>{resetSuccessModal.email}</strong></div>
+              <div>Contraseña temporal: <strong className="text-blue-700">{resetSuccessModal.tempPass}</strong></div>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              El usuario tendrá que cambiarla obligatoriamente nada más iniciar sesión.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  const msg = `Hola ${resetSuccessModal.fullName},\nTu contraseña de acceso a la aplicación ha sido restablecida.\n\nUsuario: ${resetSuccessModal.email}\nContraseña temporal: ${resetSuccessModal.tempPass}\n\n(Al iniciar sesión deberás cambiarla por tu contraseña definitiva).`;
+                  navigator.clipboard.writeText(msg);
+                  setCopiedReset(true);
+                  setTimeout(() => setCopiedReset(false), 3000);
+                  notifySuccessGreen('Mensaje copiado al portapapeles.');
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                {copiedReset ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-200" />
+                    <span>¡Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copiar Credenciales</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetSuccessModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+              >
+                Aceptar
+              </button>
+            </div>
           </div>
         </div>
       )}

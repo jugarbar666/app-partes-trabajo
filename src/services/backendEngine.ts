@@ -317,7 +317,7 @@ export class InstallationBackendEngine {
     phone: string;
     role: UserRole;
     initial_password?: string;
-  }): UserProfile {
+  }): UserProfile & { invitationLink: string; temporaryPassword: string } {
     this.assertOnline();
     const admin = this.requireAdmin();
     const cleanEmail = params.email.trim().toLowerCase();
@@ -328,6 +328,11 @@ export class InstallationBackendEngine {
       throw new ValidationError('Ya existe un usuario con ese correo electrónico en esta instalación.');
     }
 
+    const tempPassword =
+      params.initial_password?.trim() || `Clima-${Math.floor(1000 + Math.random() * 9000)}!`;
+    const inviteToken = genId('inv');
+    const now = new Date().toISOString();
+
     const newUser: UserProfile = {
       id: genId('usr'),
       full_name: params.full_name.trim(),
@@ -336,19 +341,141 @@ export class InstallationBackendEngine {
       phone: params.phone.trim(),
       role: params.role,
       is_active: true,
+      must_change_password: true, // Obligado a cambiar la contraseña temporal la primera vez que entre
       column_preferences: {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     };
 
     this.state.profiles.push(newUser);
-    this.state.passwords[cleanEmail] = params.initial_password || 'TempPass2026!';
-    this.recordAudit(admin, 'usuarios', 'profile', newUser.id, 'ALTA_POR_INVITACIÓN', {
+    this.state.passwords[cleanEmail] = tempPassword;
+    this.state.invitations.push({
+      token: inviteToken,
+      email: cleanEmail,
+      full_name: params.full_name.trim(),
+      dni: params.dni.trim(),
+      phone: params.phone.trim(),
+      role: params.role,
+      invited_by: admin.id,
+      created_at: now,
+      used: false,
+    });
+
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://app-partes-trabajo.es';
+    const invitationLink = `${origin}/?invite=${inviteToken}&email=${encodeURIComponent(cleanEmail)}`;
+
+    this.recordAudit(admin, 'usuarios', 'profile', newUser.id, 'INVITACION_USUARIO', {
       email: newUser.email,
       role: newUser.role,
+      must_change_password: true,
+      invitation_token: inviteToken,
     });
     this.persist();
-    return { ...newUser };
+    return {
+      ...newUser,
+      invitationLink,
+      temporaryPassword: tempPassword,
+    };
+  }
+
+  /**
+   * Cambio de contraseña de usuario (obligatorio en primer acceso o voluntario).
+   */
+  public changePassword(userId: string, newPassword: string): UserProfile {
+    this.assertOnline();
+    const actor = this.getCurrentUser();
+    if (actor.id !== userId && actor.role !== 'admin') {
+      throw new AuthorizationError('No tienes permisos para modificar la contraseña de otro usuario.');
+    }
+    const targetUser = this.state.profiles.find((p) => p.id === userId);
+    if (!targetUser) throw new ValidationError('Usuario no encontrado.');
+
+    if (!newPassword || newPassword.trim().length < 6) {
+      throw new ValidationError('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+
+    const cleanEmail = targetUser.email.toLowerCase();
+    this.state.passwords[cleanEmail] = newPassword.trim();
+    targetUser.must_change_password = false;
+    targetUser.updated_at = new Date().toISOString();
+
+    this.recordAudit(actor, 'usuarios', 'profile', targetUser.id, 'CAMBIO_CONTRASENA', {
+      email: targetUser.email,
+    });
+    this.persist();
+    return { ...targetUser };
+  }
+
+  /**
+   * Restablecimiento de contraseña por parte del Administrador con la clave que él decida.
+   * El usuario estará obligado a cambiarla en cuanto entre.
+   */
+  public resetUserPasswordByAdmin(
+    targetUserId: string,
+    customPassword?: string
+  ): { temporaryPassword: string; user: UserProfile } {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const target = this.state.profiles.find((p) => p.id === targetUserId);
+    if (!target) throw new ValidationError('Usuario no encontrado.');
+
+    const tempPass =
+      customPassword?.trim() || `Clima-${Math.floor(1000 + Math.random() * 9000)}!`;
+    if (tempPass.length < 6) {
+      throw new ValidationError('La contraseña temporal debe tener al menos 6 caracteres.');
+    }
+
+    const cleanEmail = target.email.toLowerCase();
+    this.state.passwords[cleanEmail] = tempPass;
+    target.must_change_password = true; // Obligado a cambiarla en su siguiente acceso
+    target.updated_at = new Date().toISOString();
+
+    this.recordAudit(admin, 'usuarios', 'profile', target.id, 'RESTABLECER_CONTRASENA_ADMIN', {
+      email: target.email,
+      must_change_password: true,
+    });
+    this.persist();
+    return { temporaryPassword: tempPass, user: { ...target } };
+  }
+
+  /**
+   * Autoservicio: el usuario ha olvidado su contraseña en la pantalla de acceso.
+   * El sistema genera automáticamente una contraseña temporal y la envía a su correo.
+   * Al acceder, estará obligado a cambiarla.
+   */
+  public requestPasswordRecovery(email: string): {
+    success: boolean;
+    temporaryPassword?: string;
+    message: string;
+  } {
+    this.assertOnline();
+    const cleanEmail = email.trim().toLowerCase();
+    const target = this.state.profiles.find((p) => p.email.toLowerCase() === cleanEmail);
+    if (!target || !target.is_active) {
+      return {
+        success: false,
+        message: 'Si el correo electrónico existe y está activo, se ha enviado una nueva contraseña temporal.',
+      };
+    }
+
+    const autoTempPassword = `Auto-${Math.floor(1000 + Math.random() * 9000)}!`;
+    this.state.passwords[cleanEmail] = autoTempPassword;
+    target.must_change_password = true;
+    target.updated_at = new Date().toISOString();
+
+    this.recordAudit(target, 'usuarios', 'profile', target.id, 'RECUPERACION_AUTOSERVICIO_CONTRASENA', {
+      email: target.email,
+      must_change_password: true,
+    });
+    this.persist();
+    return {
+      success: true,
+      temporaryPassword: autoTempPassword,
+      message: 'El sistema ha generado automáticamente una contraseña temporal para tu cuenta. Deberás cambiarla en tu primer acceso.',
+    };
   }
 
   public updateUserProfile(

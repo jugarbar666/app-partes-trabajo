@@ -54,6 +54,7 @@ export interface UserProfile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  must_change_password?: boolean;
   column_preferences: Record<string, string[]>;
   created_at: string;
   updated_at: string;

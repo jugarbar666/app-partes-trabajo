@@ -1139,4 +1139,68 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const finalWo = backend.getWorkOrderById(wo.id);
     expect(finalWo.status).toBe('terminado');
   });
+
+  it('Escenario 25: Gestión de usuarios - Invitación con clave temporal, cambio obligatorio en primer acceso, recuperación automática y reseteo por admin', () => {
+    // 1. Admin invita a un nuevo operario con una contraseña temporal decidida por el admin
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const tempClaveAdmin = 'TempRoma2026!';
+    const invited = backend.inviteAndCreateUser({
+      full_name: 'Marcos Fontanero',
+      dni: '99887766M',
+      email: 'marcos@roma-fontaneria.es',
+      phone: '+34 699 888 777',
+      role: 'operario',
+      initial_password: tempClaveAdmin,
+    });
+
+    expect(invited.email).toBe('marcos@roma-fontaneria.es');
+    expect(invited.must_change_password).toBe(true);
+    expect(invited.temporaryPassword).toBe(tempClaveAdmin);
+    expect(invited.invitationLink).toContain('marcos%40roma-fontaneria.es');
+
+    // 2. Marcos inicia sesión con la contraseña temporal decidida por el admin
+    backend.logout();
+    const loginUser = backend.login('marcos@roma-fontaneria.es', tempClaveAdmin);
+    expect(loginUser.must_change_password).toBe(true);
+
+    // 3. Marcos cambia obligatoriamente su contraseña temporal por su clave definitiva
+    const nuevaClaveDefinitiva = 'MiClaveSecreta99!';
+    const userUpdated = backend.changePassword(loginUser.id, nuevaClaveDefinitiva);
+    expect(userUpdated.must_change_password).toBe(false);
+
+    // Comprobar que la clave anterior ya no funciona y la nueva sí
+    backend.logout();
+    expect(() => backend.login('marcos@roma-fontaneria.es', tempClaveAdmin)).toThrow(
+      'Credenciales incorrectas'
+    );
+    const reLogin = backend.login('marcos@roma-fontaneria.es', nuevaClaveDefinitiva);
+    expect(reLogin.must_change_password).toBe(false);
+
+    // 4. Caso olvido de contraseña: El sistema le manda automáticamente una nueva contraseña
+    backend.logout();
+    const recoveryRes = backend.requestPasswordRecovery('marcos@roma-fontaneria.es');
+    expect(recoveryRes.success).toBe(true);
+    expect(recoveryRes.temporaryPassword).toBeDefined();
+
+    const autoTempPass = recoveryRes.temporaryPassword!;
+    const loginWithAuto = backend.login('marcos@roma-fontaneria.es', autoTempPass);
+    // Vuelve a estar obligado a cambiarla
+    expect(loginWithAuto.must_change_password).toBe(true);
+
+    // Marcos vuelve a cambiarla
+    const segundaClave = 'ClaveDefinitiva2!';
+    backend.changePassword(loginWithAuto.id, segundaClave);
+
+    // 5. Opción Administrador: El admin restablece la contraseña con la clave que él decida
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const adminChosenPass = 'ClaveFijadaPorAdmin1!';
+    const resetRes = backend.resetUserPasswordByAdmin(loginWithAuto.id, adminChosenPass);
+    expect(resetRes.temporaryPassword).toBe(adminChosenPass);
+    expect(resetRes.user.must_change_password).toBe(true);
+
+    // Marcos entra con la clave que decidió el admin y comprueba que está obligado a cambiarla
+    backend.logout();
+    const loginAfterAdminReset = backend.login('marcos@roma-fontaneria.es', adminChosenPass);
+    expect(loginAfterAdminReset.must_change_password).toBe(true);
+  });
 });

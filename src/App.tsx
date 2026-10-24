@@ -281,7 +281,16 @@ const MainApplicationContent: React.FC = () => {
   const [loginPass, setLoginPass] = useState('Admin1234!');
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [recoverySent, setRecoverySent] = useState(false);
+  const [recoveryResult, setRecoveryResult] = useState<{
+    success: boolean;
+    temporaryPassword?: string;
+    message: string;
+  } | null>(null);
+
+  // Estados para pantalla de cambio forzoso de contraseña en primer acceso o reseteo
+  const [forcedNewPass, setForcedNewPass] = useState('');
+  const [forcedConfirmPass, setForcedConfirmPass] = useState('');
+  const [forcedPassError, setForcedPassError] = useState('');
 
   const [routeStack, setRouteStack] = useState<ActiveRoute[]>(['dashboard']);
   const currentRoute = routeStack[routeStack.length - 1] || 'dashboard';
@@ -431,7 +440,7 @@ const MainApplicationContent: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setRecoveryMode(true);
-                    setRecoverySent(false);
+                    setRecoveryResult(null);
                   }}
                   className="text-blue-600 hover:underline font-medium"
                 >
@@ -479,44 +488,196 @@ const MainApplicationContent: React.FC = () => {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                setRecoverySent(true);
+                try {
+                  const res = backend.requestPasswordRecovery(recoveryEmail);
+                  setRecoveryResult(res);
+                } catch (err: any) {
+                  notifyError(err?.message || 'Error al solicitar recuperación de contraseña.');
+                }
               }}
-              className="space-y-3 text-xs"
+              className="space-y-3.5 text-xs"
             >
-              <h2 className="font-bold text-sm text-slate-900">Recuperación de Acceso</h2>
-              <p className="text-slate-600">
-                Introduce tu correo corporativo para recibir el enlace de restablecimiento de contraseña.
+              <h2 className="font-extrabold text-sm text-slate-900">
+                Recuperación Automática de Contraseña
+              </h2>
+              <p className="text-slate-600 leading-relaxed">
+                Si has olvidado tu contraseña, introduce tu correo corporativo. El sistema generará automáticamente una nueva clave temporal de acceso:
               </p>
               <input
                 type="email"
                 required
                 value={recoveryEmail}
-                onChange={(e) => setRecoveryEmail(e.target.value)}
+                onChange={(e) => {
+                  setRecoveryEmail(e.target.value);
+                  setRecoveryResult(null);
+                }}
                 placeholder="tu-correo@empresa.es"
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
               />
-              {recoverySent && (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">
-                  Si el correo corresponde a un usuario activo, se ha enviado la solicitud de recuperación.
+
+              {recoveryResult && (
+                <div
+                  className={`p-3.5 rounded-xl border space-y-2 leading-relaxed ${
+                    recoveryResult.success
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-amber-50 border-amber-300 text-amber-950'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1.5">
+                    {recoveryResult.success
+                      ? '✅ Contraseña Temporal Generada por el Sistema'
+                      : 'ℹ️ Información'}
+                  </div>
+                  <p>{recoveryResult.message}</p>
+                  {recoveryResult.temporaryPassword && (
+                    <div className="p-2.5 bg-white rounded-lg border border-emerald-300 font-mono text-center text-sm font-black text-emerald-800 shadow-2xs">
+                      {recoveryResult.temporaryPassword}
+                    </div>
+                  )}
+                  {recoveryResult.temporaryPassword && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginEmail(recoveryEmail);
+                        setLoginPass(recoveryResult.temporaryPassword || '');
+                        setRecoveryMode(false);
+                        setRecoveryResult(null);
+                        notifySuccessGreen('Credenciales preparadas para iniciar sesión.');
+                      }}
+                      className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer"
+                    >
+                      Iniciar Sesión con esta Contraseña →
+                    </button>
+                  )}
                 </div>
               )}
-              <div className="flex justify-between pt-2">
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setRecoveryMode(false)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300"
+                  onClick={() => {
+                    setRecoveryMode(false);
+                    setRecoveryResult(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold"
                 >
                   Volver al acceso
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-blue-600 text-white font-bold"
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
                 >
-                  Enviar enlace
+                  Generar Clave Automática
                 </button>
               </div>
             </form>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // PANTALLA OBLIGATORIA DE CAMBIO DE CONTRASEÑA EN PRIMER ACCESO / CLAVE TEMPORAL
+  if (loggedUser.must_change_password) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 shadow-2xl border border-slate-200">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 mx-auto flex items-center justify-center text-2xl shadow-inner font-bold">
+              🔑
+            </div>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+              Cambio Obligatorio de Contraseña
+            </h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Hola, <strong>{loggedUser.full_name}</strong>. Has accedido con una{' '}
+              <strong className="text-amber-900">contraseña temporal</strong>. Por política de seguridad, es obligatorio que introduzcas tu nueva contraseña personal antes de continuar.
+            </p>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setForcedPassError('');
+              if (forcedNewPass.trim().length < 6) {
+                setForcedPassError('La nueva contraseña debe tener al menos 6 caracteres.');
+                return;
+              }
+              if (forcedNewPass !== forcedConfirmPass) {
+                setForcedPassError('Las contraseñas no coinciden. Por favor, revísalas.');
+                return;
+              }
+              try {
+                const updated = backend.changePassword(loggedUser.id, forcedNewPass);
+                setLoggedUser(updated);
+                setForcedNewPass('');
+                setForcedConfirmPass('');
+                notifySuccessGreen('Contraseña actualizada correctamente. ¡Bienvenido/a al sistema!');
+              } catch (err: any) {
+                setForcedPassError(err?.message || 'Error al cambiar la contraseña.');
+              }
+            }}
+            className="space-y-4 text-xs"
+          >
+            {forcedPassError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-300 text-red-800 font-semibold text-xs">
+                ⚠️ {forcedPassError}
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Nueva Contraseña Personal *
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={forcedNewPass}
+                onChange={(e) => setForcedNewPass(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Confirmar Nueva Contraseña *
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={forcedConfirmPass}
+                onChange={(e) => setForcedConfirmPass(e.target.value)}
+                placeholder="Repite la nueva contraseña"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none font-medium"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm shadow-sm transition cursor-pointer"
+            >
+              Guardar Contraseña y Acceder →
+            </button>
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  backend.logout();
+                  setLoggedUser(null);
+                  setForcedNewPass('');
+                  setForcedConfirmPass('');
+                  setForcedPassError('');
+                }}
+                className="text-slate-500 hover:text-slate-800 font-semibold cursor-pointer text-xs"
+              >
+                Cerrar sesión / Salir
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     );
