@@ -10,6 +10,7 @@ import {
   Settings,
   Plus,
   RotateCcw,
+  Edit3,
   X,
   FileSpreadsheet,
   FileDown,
@@ -67,8 +68,9 @@ export const MasterDataAndUsersModule: React.FC<{
     onRefresh();
   };
 
-  // Control de ventana emergente de alta para la pestaña actual
+  // Control de ventana emergente de alta/edición para la pestaña actual
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const currentUser = backend.getCurrentUser();
   const customers = useMemo(() => backend.getCustomers(true), [backend, tick]);
@@ -319,6 +321,64 @@ export const MasterDataAndUsersModule: React.FC<{
     users: '+ Invitar Usuario',
   };
 
+  const handleOpenCreate = () => {
+    setEditingId(null);
+    if (activeTab === 'customers') {
+      setCustCode('');
+      setCustName('');
+      setCustTaxId('');
+      setCustContactName('');
+      setCustPhone('');
+      setCustEmail('');
+      setCustAddress('');
+      setCustPostalCode('28000');
+      setCustCity('Madrid');
+      setCustProvince('Madrid');
+      setCustNotes('');
+    } else if (activeTab === 'addresses') {
+      setAddrCustomerId(customers[0]?.id || '');
+      setAddrAlias('');
+      setAddrLine('');
+      setAddrPostal('28000');
+      setAddrCity('Madrid');
+      setAddrProvince('Madrid');
+      setAddrContact('');
+      setAddrPhone('');
+    } else if (activeTab === 'articles') {
+      setArtCode('');
+      setArtName('');
+      setArtDesc('');
+      setArtSupplierId(suppliers[0]?.id || '');
+      setArtBuyPrice('');
+      setArtSalePrice('');
+      setArtUnit('ud');
+    } else if (activeTab === 'suppliers') {
+      setSupName('');
+      setSupTaxId('');
+      setSupContact('');
+      setSupPhone('');
+      setSupEmail('');
+      setSupAddress('');
+      setSupPostalCode('');
+      setSupCity('');
+      setSupProvince('');
+      setSupNotes('');
+    } else if (activeTab === 'review_types') {
+      setRtName('');
+      setRtPrice('150,00');
+      setRtUnit('months');
+      setRtValue('12');
+    } else if (activeTab === 'users') {
+      setUsrName('');
+      setUsrDni('');
+      setUsrEmail('');
+      setUsrPhone('');
+      setUsrRole('operario');
+      setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
+    }
+    setShowCreateModal(true);
+  };
+
   return (
     <div className="space-y-5">
       <ScreenHeaderBar
@@ -330,8 +390,8 @@ export const MasterDataAndUsersModule: React.FC<{
         actions={
           <button
             type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
+            onClick={handleOpenCreate}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
           </button>
@@ -365,6 +425,7 @@ export const MasterDataAndUsersModule: React.FC<{
               onClick={() => {
                 setActiveTab(tab.key as typeof activeTab);
                 setShowCreateModal(false);
+                setEditingId(null);
               }}
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition ${
                 active
@@ -451,6 +512,30 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    data-testid={`btn-edit-customer-${c.id}`}
+                    onClick={() => {
+                      setEditingId(c.id);
+                      setCustCode(c.code);
+                      setCustName(c.name);
+                      setCustTaxId(c.tax_id || '');
+                      setCustContactName(c.contact_name || '');
+                      setCustPhone(c.phones[0] || '');
+                      setCustEmail(c.emails[0] || '');
+                      setCustAddress(c.main_address || '');
+                      setCustPostalCode(c.postal_code || '');
+                      setCustCity(c.city || '');
+                      setCustProvince(c.province || '');
+                      setCustNotes(c.notes || '');
+                      setShowCreateModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded font-semibold border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1 shadow-2xs cursor-pointer"
+                    title="Editar cliente"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Editar</span>
+                  </button>
+                  <button
+                    type="button"
                     data-testid={`btn-toggle-customer-${c.id}`}
                     onClick={() => {
                       backend.saveCustomer({ ...c, is_active: !c.is_active });
@@ -515,6 +600,27 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    data-testid={`btn-edit-address-${a.id}`}
+                    onClick={() => {
+                      setEditingId(a.id);
+                      setAddrCustomerId(a.customer_id);
+                      setAddrAlias(a.alias);
+                      setAddrLine(a.address_line);
+                      setAddrPostal(a.postal_code || '');
+                      setAddrCity(a.city || '');
+                      setAddrProvince(a.province || '');
+                      setAddrContact(a.contact_name || '');
+                      setAddrPhone(a.contact_phone || '');
+                      setShowCreateModal(true);
+                    }}
+                    className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                    title="Editar domicilio"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Editar</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       backend.saveCustomerAddress({ ...a, is_active: !a.is_active });
                       refresh();
@@ -577,6 +683,26 @@ export const MasterDataAndUsersModule: React.FC<{
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid={`btn-edit-article-${a.id}`}
+                    onClick={() => {
+                      setEditingId(a.id);
+                      setArtCode(a.code);
+                      setArtName(a.name);
+                      setArtDesc(a.description || '');
+                      setArtSupplierId(a.supplier_id || '');
+                      setArtBuyPrice(((a.purchase_price_cents || 0) / 100).toFixed(2).replace('.', ','));
+                      setArtSalePrice(((a.sale_price_cents || 0) / 100).toFixed(2).replace('.', ','));
+                      setArtUnit(a.unit || 'ud');
+                      setShowCreateModal(true);
+                    }}
+                    className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                    title="Editar artículo"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Editar</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -696,6 +822,29 @@ export const MasterDataAndUsersModule: React.FC<{
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      data-testid={`btn-edit-supplier-${s.id}`}
+                      onClick={() => {
+                        setEditingId(s.id);
+                        setSupName(s.name);
+                        setSupTaxId(s.tax_id || '');
+                        setSupContact(s.contact_person || '');
+                        setSupPhone(s.phone || '');
+                        setSupEmail(s.email || '');
+                        setSupAddress(s.address || '');
+                        setSupPostalCode(s.postal_code || '');
+                        setSupCity(s.city || '');
+                        setSupProvince(s.province || '');
+                        setSupNotes(s.notes || '');
+                        setShowCreateModal(true);
+                      }}
+                      className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                      title="Editar proveedor"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         backend.saveSupplier({ ...s, is_active: !s.is_active });
                         refresh();
@@ -758,6 +907,23 @@ export const MasterDataAndUsersModule: React.FC<{
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid={`btn-edit-review-type-${rt.id}`}
+                  onClick={() => {
+                    setEditingId(rt.id);
+                    setRtName(rt.name);
+                    setRtPrice(((rt.suggested_price_cents || 0) / 100).toFixed(2).replace('.', ','));
+                    setRtUnit(rt.periodicity_unit);
+                    setRtValue(String(rt.periodicity_value));
+                    setShowCreateModal(true);
+                  }}
+                  className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                  title="Editar tipo de revisión"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -837,6 +1003,25 @@ export const MasterDataAndUsersModule: React.FC<{
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    data-testid={`btn-edit-user-${u.id}`}
+                    onClick={() => {
+                      setEditingId(u.id);
+                      setUsrName(u.full_name);
+                      setUsrEmail(u.email);
+                      setUsrDni(u.dni || '');
+                      setUsrPhone(u.phone || '');
+                      setUsrRole(u.role);
+                      setShowCreateModal(true);
+                    }}
+                    className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                    title="Editar datos del usuario"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Editar</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -933,11 +1118,25 @@ export const MasterDataAndUsersModule: React.FC<{
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">{createButtonLabel[activeTab]}</h3>
+              <h3 className="font-bold text-base">
+                {editingId
+                  ? {
+                      customers: 'Modificar Cliente',
+                      addresses: 'Modificar Domicilio / Instalación',
+                      articles: 'Modificar Artículo',
+                      suppliers: 'Modificar Proveedor',
+                      review_types: 'Modificar Tipo de Revisión',
+                      users: 'Modificar Datos de Usuario',
+                    }[activeTab]
+                  : createButtonLabel[activeTab]}
+              </h3>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="p-1 rounded hover:bg-white/10"
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setEditingId(null);
+                }}
+                className="p-1 rounded hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -948,8 +1147,9 @@ export const MasterDataAndUsersModule: React.FC<{
                 onSubmit={(e) => {
                   e.preventDefault();
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Ficha Completa de Cliente',
+                    title: isEdit ? 'Modificar Ficha de Cliente' : 'Alta de Ficha Completa de Cliente',
                     changes: [
                       { label: 'Código', value: custCode || 'Automático' },
                       { label: 'Nombre / Razón Social', value: custName },
@@ -963,7 +1163,9 @@ export const MasterDataAndUsersModule: React.FC<{
                       },
                     ],
                     onConfirm: () => {
-                      const created = backend.saveCustomer({
+                      const existing = editingId ? customers.find((c) => c.id === editingId) : null;
+                      const saved = backend.saveCustomer({
+                        ...(editingId ? { id: editingId } : {}),
                         code: custCode,
                         name: custName,
                         tax_id: custTaxId,
@@ -975,20 +1177,26 @@ export const MasterDataAndUsersModule: React.FC<{
                         city: custCity,
                         province: custProvince,
                         notes: custNotes,
-                        is_active: true,
+                        is_active: existing ? existing.is_active : true,
                       });
-                      const createdAddrs = backend.getCustomerAddresses(created.id, false);
-                      if (createdAddrs[0]) {
-                        backend.saveCustomerAddress({
-                          ...createdAddrs[0],
-                          postal_code: custPostalCode,
-                          city: custCity,
-                          province: custProvince,
-                          contact_name: custContactName || created.name,
-                          contact_phone: custPhone,
-                          contact_email: custEmail,
-                        });
+                      if (!isEdit) {
+                        const createdAddrs = backend.getCustomerAddresses(saved.id, false);
+                        if (createdAddrs[0]) {
+                          backend.saveCustomerAddress({
+                            ...createdAddrs[0],
+                            postal_code: custPostalCode,
+                            city: custCity,
+                            province: custProvince,
+                            contact_name: custContactName || saved.name,
+                            contact_phone: custPhone,
+                            contact_email: custEmail,
+                          });
+                        }
                       }
+                      notifySuccessGreen(
+                        isEdit ? 'Cliente modificado correctamente.' : 'Cliente creado correctamente.'
+                      );
+                      setEditingId(null);
                       setCustCode('');
                       setCustName('');
                       setCustTaxId('');
@@ -1150,16 +1358,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Guardar Cliente
+                    {editingId ? 'Guardar Cambios' : 'Guardar Cliente'}
                   </button>
                 </div>
               </form>
@@ -1170,14 +1381,17 @@ export const MasterDataAndUsersModule: React.FC<{
                 onSubmit={(e) => {
                   e.preventDefault();
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Domicilio / Instalación de Cliente',
+                    title: isEdit ? 'Modificar Domicilio / Instalación' : 'Alta de Domicilio / Instalación de Cliente',
                     changes: [
                       { label: 'Alias', value: addrAlias },
                       { label: 'Dirección', value: `${addrLine}, ${addrPostal} ${addrCity}` },
                     ],
                     onConfirm: () => {
+                      const existing = editingId ? addresses.find((a) => a.id === editingId) : null;
                       backend.saveCustomerAddress({
+                        ...(editingId ? { id: editingId } : {}),
                         customer_id: addrCustomerId,
                         alias: addrAlias,
                         address_line: addrLine,
@@ -1188,8 +1402,12 @@ export const MasterDataAndUsersModule: React.FC<{
                         contact_phone: addrPhone,
                         contact_email: '',
                         notes: '',
-                        is_active: true,
+                        is_active: existing ? existing.is_active : true,
                       });
+                      notifySuccessGreen(
+                        isEdit ? 'Domicilio modificado correctamente.' : 'Domicilio guardado correctamente.'
+                      );
+                      setEditingId(null);
                       setAddrAlias('');
                       setAddrLine('');
                       refresh();
@@ -1240,16 +1458,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Guardar Domicilio
+                    {editingId ? 'Guardar Cambios' : 'Guardar Domicilio'}
                   </button>
                 </div>
               </form>
@@ -1266,8 +1487,9 @@ export const MasterDataAndUsersModule: React.FC<{
                     return;
                   }
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Artículo en Catálogo',
+                    title: isEdit ? 'Modificar Artículo' : 'Alta de Artículo en Catálogo',
                     changes: [
                       { label: 'Código único', value: artCode },
                       { label: 'Nombre', value: artName },
@@ -1276,7 +1498,9 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Unidad de medida', value: artUnit },
                     ],
                     onConfirm: () => {
+                      const existing = editingId ? articles.find((a) => a.id === editingId) : null;
                       backend.saveArticle({
+                        ...(editingId ? { id: editingId } : {}),
                         code: artCode,
                         name: artName,
                         description: artDesc,
@@ -1284,8 +1508,12 @@ export const MasterDataAndUsersModule: React.FC<{
                         purchase_price_cents: buyCents,
                         sale_price_cents: saleCents,
                         unit: artUnit,
-                        is_active: true,
+                        is_active: existing ? existing.is_active : true,
                       });
+                      notifySuccessGreen(
+                        isEdit ? 'Artículo modificado correctamente.' : 'Artículo creado correctamente.'
+                      );
+                      setEditingId(null);
                       setArtCode('');
                       setArtName('');
                       setArtDesc('');
@@ -1384,16 +1612,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Guardar Artículo
+                    {editingId ? 'Guardar Cambios' : 'Guardar Artículo'}
                   </button>
                 </div>
               </form>
@@ -1404,8 +1635,9 @@ export const MasterDataAndUsersModule: React.FC<{
                 onSubmit={(e) => {
                   e.preventDefault();
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Proveedor',
+                    title: isEdit ? 'Modificar Proveedor' : 'Alta de Proveedor',
                     changes: [
                       { label: 'Proveedor', value: supName },
                       { label: 'NIF/CIF', value: supTaxId || '—' },
@@ -1416,7 +1648,9 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Provincia', value: supProvince || '—' },
                     ],
                     onConfirm: () => {
+                      const existing = editingId ? suppliers.find((s) => s.id === editingId) : null;
                       backend.saveSupplier({
+                        ...(editingId ? { id: editingId } : {}),
                         name: supName,
                         tax_id: supTaxId,
                         contact_person: supContact,
@@ -1427,8 +1661,12 @@ export const MasterDataAndUsersModule: React.FC<{
                         city: supCity,
                         province: supProvince,
                         notes: supNotes,
-                        is_active: true,
+                        is_active: existing ? existing.is_active : true,
                       });
+                      notifySuccessGreen(
+                        isEdit ? 'Proveedor modificado correctamente.' : 'Proveedor guardado correctamente.'
+                      );
+                      setEditingId(null);
                       setSupName('');
                       setSupTaxId('');
                       setSupContact('');
@@ -1523,16 +1761,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Guardar Proveedor
+                    {editingId ? 'Guardar Cambios' : 'Guardar Proveedor'}
                   </button>
                 </div>
               </form>
@@ -1544,21 +1785,28 @@ export const MasterDataAndUsersModule: React.FC<{
                   e.preventDefault();
                   const cents = parseEurosToCents(rtPrice) || 0;
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Tipo de Revisión Periódica',
+                    title: isEdit ? 'Modificar Tipo de Revisión' : 'Alta de Tipo de Revisión Periódica',
                     changes: [
                       { label: 'Nombre', value: rtName },
                       { label: 'Precio orientativo', value: formatCentsToEUR(cents) },
                       { label: 'Periodicidad', value: `${rtValue} ${rtUnit}` },
                     ],
                     onConfirm: () => {
+                      const existing = editingId ? reviewTypes.find((rt) => rt.id === editingId) : null;
                       backend.saveReviewType({
+                        ...(editingId ? { id: editingId } : {}),
                         name: rtName,
                         suggested_price_cents: cents,
                         periodicity_unit: rtUnit,
                         periodicity_value: parseInt(rtValue, 10) || 12,
-                        is_active: true,
+                        is_active: existing ? existing.is_active : true,
                       });
+                      notifySuccessGreen(
+                        isEdit ? 'Tipo de revisión modificado correctamente.' : 'Tipo de revisión guardado.'
+                      );
+                      setEditingId(null);
                       setRtName('');
                       refresh();
                     },
@@ -1602,16 +1850,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold"
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Guardar Tipo
+                    {editingId ? 'Guardar Cambios' : 'Guardar Tipo'}
                   </button>
                 </div>
               </form>
@@ -1622,31 +1873,43 @@ export const MasterDataAndUsersModule: React.FC<{
                 onSubmit={(e) => {
                   e.preventDefault();
                   setShowCreateModal(false);
+                  const isEdit = !!editingId;
                   requestSaveConfirmation({
-                    title: 'Alta de Usuario por Invitación Administrativa',
+                    title: isEdit ? 'Modificar Datos de Usuario' : 'Alta de Usuario por Invitación Administrativa',
                     changes: [
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
                       { label: 'Rol asignado', value: usrRole },
-                      { label: 'Contraseña temporal', value: usrTempPassword },
+                      ...(isEdit ? [] : [{ label: 'Contraseña temporal', value: usrTempPassword }]),
                     ],
                     onConfirm: () => {
                       try {
-                        const res = backend.inviteAndCreateUser({
-                          full_name: usrName,
-                          dni: usrDni,
-                          email: usrEmail,
-                          phone: usrPhone,
-                          role: usrRole,
-                          initial_password: usrTempPassword,
-                        });
-                        setInvitationSummaryModal({
-                          open: true,
-                          fullName: res.full_name,
-                          email: res.email,
-                          tempPass: res.temporaryPassword,
-                          link: res.invitationLink,
-                        });
+                        if (isEdit) {
+                          backend.updateUserProfile(editingId, {
+                            full_name: usrName,
+                            dni: usrDni,
+                            phone: usrPhone,
+                            role: usrRole,
+                          });
+                          notifySuccessGreen('Datos del usuario actualizados correctamente.');
+                          setEditingId(null);
+                        } else {
+                          const res = backend.inviteAndCreateUser({
+                            full_name: usrName,
+                            dni: usrDni,
+                            email: usrEmail,
+                            phone: usrPhone,
+                            role: usrRole,
+                            initial_password: usrTempPassword,
+                          });
+                          setInvitationSummaryModal({
+                            open: true,
+                            fullName: res.full_name,
+                            email: res.email,
+                            tempPass: res.temporaryPassword,
+                            link: res.invitationLink,
+                          });
+                        }
                         setUsrName('');
                         setUsrDni('');
                         setUsrEmail('');
@@ -1654,7 +1917,7 @@ export const MasterDataAndUsersModule: React.FC<{
                         setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
                         refresh();
                       } catch (err: any) {
-                        notifyError(err?.message || 'Error al invitar al usuario.');
+                        notifyError(err?.message || 'Error al procesar el usuario.');
                       }
                     },
                   });
@@ -1672,11 +1935,19 @@ export const MasterDataAndUsersModule: React.FC<{
                 <input
                   type="email"
                   required
+                  disabled={!!editingId}
                   value={usrEmail}
                   onChange={(e) => setUsrEmail(e.target.value)}
                   placeholder="Correo electrónico *"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  className={`w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${
+                    editingId ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                  }`}
                 />
+                {editingId && (
+                  <p className="text-[11px] text-slate-500 italic">
+                    El correo electrónico identifica la cuenta y no puede modificarse.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
@@ -1700,44 +1971,53 @@ export const MasterDataAndUsersModule: React.FC<{
                   <option value="admin">Rol: Administrador</option>
                 </select>
 
-                <div className="space-y-1.5 pt-1">
-                  <label className="block font-bold text-slate-700">
-                    Contraseña temporal fijada por el Administrador *
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={usrTempPassword}
-                      onChange={(e) => setUsrTempPassword(e.target.value)}
-                      placeholder="Contraseña temporal"
-                      className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono font-semibold"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`)
-                      }
-                      className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer whitespace-nowrap shadow-2xs"
-                    >
-                      🎲 Generar
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-amber-950 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed space-y-1">
-                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                      <Key className="w-3.5 h-3.5" />
-                      <span>Cambio obligatorio de contraseña:</span>
+                {!editingId ? (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="block font-bold text-slate-700">
+                      Contraseña temporal fijada por el Administrador *
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        value={usrTempPassword}
+                        onChange={(e) => setUsrTempPassword(e.target.value)}
+                        placeholder="Contraseña temporal"
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono font-semibold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`)
+                        }
+                        className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer whitespace-nowrap shadow-2xs"
+                      >
+                        🎲 Generar
+                      </button>
                     </div>
-                    <p>
-                      El usuario estará <strong>obligado a cambiar esta contraseña temporal</strong> la primera vez que entre al sistema antes de poder continuar.
-                    </p>
+                    <div className="text-[11px] text-amber-950 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed space-y-1">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                        <Key className="w-3.5 h-3.5" />
+                        <span>Cambio obligatorio de contraseña:</span>
+                      </div>
+                      <p>
+                        El usuario estará <strong>obligado a cambiar esta contraseña temporal</strong> la primera vez que entre al sistema antes de poder continuar.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-2.5 leading-relaxed">
+                    💡 <em>Para cambiar la clave de este usuario, utiliza la opción «Restablecer Clave» directamente desde el listado de usuarios.</em>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreateModal(false)}
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingId(null);
+                    }}
                     className="px-4 py-2 rounded-xl border border-slate-300 font-semibold cursor-pointer"
                   >
                     Cancelar
@@ -1746,7 +2026,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     type="submit"
                     className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
                   >
-                    Enviar Invitación
+                    {editingId ? 'Guardar Cambios' : 'Enviar Invitación'}
                   </button>
                 </div>
               </form>

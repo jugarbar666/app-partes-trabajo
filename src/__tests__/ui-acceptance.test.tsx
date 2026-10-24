@@ -2,10 +2,11 @@ import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
-import { WorkOrderStatusBadge } from '../components/CommonUI';
+import { WorkOrderStatusBadge, UIConfirmationProvider } from '../components/CommonUI';
 import { isMobilePreviewEnabled } from '../config/branchConfig';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
+import { MasterDataAndUsersModule } from '../components/AdminAndMasterModules';
 
 describe('Verificación de Pantallas, Colores Obligatorios y Controles Persistentes (Escenarios 18, 19 y 20)', () => {
   beforeEach(() => {
@@ -151,6 +152,85 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       expect(htmlProd).not.toContain('header-mobile-view-link');
     } finally {
       (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = originalEnv;
+    }
+  });
+
+  it('Botones de edición y capacidad de modificar en todos los ficheros maestros (clientes, domicilios, artículos, proveedores, tipos de revisión y usuarios)', () => {
+    const html = renderToString(
+      <UIConfirmationProvider>
+        <MasterDataAndUsersModule backend={defaultBackend} onBack={() => {}} onRefresh={() => {}} />
+      </UIConfirmationProvider>
+    );
+    // Verificamos que se renderizan botones con la acción Editar
+    expect(html).toContain('Editar');
+    expect(html).toContain('btn-edit-customer-');
+
+    // 1. Edición de Cliente
+    const customer = defaultBackend.getCustomers()[0];
+    expect(customer).toBeDefined();
+    const updatedCust = defaultBackend.saveCustomer({
+      ...customer,
+      name: customer.name + ' - Modificado',
+      notes: 'Nota editada en test',
+    });
+    expect(updatedCust.id).toBe(customer.id);
+    expect(updatedCust.name).toContain('- Modificado');
+
+    // 2. Edición de Domicilio
+    const address = defaultBackend.getCustomerAddresses(customer.id)[0];
+    if (address) {
+      const updatedAddr = defaultBackend.saveCustomerAddress({
+        ...address,
+        alias: address.alias + ' (Editado)',
+      });
+      expect(updatedAddr.id).toBe(address.id);
+      expect(updatedAddr.alias).toContain('(Editado)');
+    }
+
+    // 3. Edición de Artículo
+    const article = defaultBackend.getArticles()[0];
+    expect(article).toBeDefined();
+    const updatedArt = defaultBackend.saveArticle({
+      ...article,
+      purchase_price_cents: article.purchase_price_cents ?? 0,
+      name: article.name + ' (Revisado)',
+      sale_price_cents: 9999,
+    });
+    expect(updatedArt.id).toBe(article.id);
+    expect(updatedArt.name).toContain('(Revisado)');
+    expect(updatedArt.sale_price_cents).toBe(9999);
+
+    // 4. Edición de Proveedor
+    const supplier = defaultBackend.getSuppliers()[0];
+    expect(supplier).toBeDefined();
+    const updatedSup = defaultBackend.saveSupplier({
+      ...supplier,
+      notes: 'Condiciones renegociadas 2026',
+    });
+    expect(updatedSup.id).toBe(supplier.id);
+    expect(updatedSup.notes).toBe('Condiciones renegociadas 2026');
+
+    // 5. Edición de Tipo de Revisión
+    const reviewType = defaultBackend.getReviewTypes()[0];
+    expect(reviewType).toBeDefined();
+    const updatedRt = defaultBackend.saveReviewType({
+      ...reviewType,
+      suggested_price_cents: 18500,
+    });
+    expect(updatedRt.id).toBe(reviewType.id);
+    expect(updatedRt.suggested_price_cents).toBe(18500);
+
+    // 6. Edición de Usuario
+    const operario = defaultBackend.getProfiles().find((p) => p.role === 'operario');
+    expect(operario).toBeDefined();
+    if (operario) {
+      const updatedUser = defaultBackend.updateUserProfile(operario.id, {
+        full_name: operario.full_name + ' Modificado',
+        phone: '600123456',
+      });
+      expect(updatedUser.id).toBe(operario.id);
+      expect(updatedUser.full_name).toContain('Modificado');
+      expect(updatedUser.phone).toBe('600123456');
     }
   });
 });
