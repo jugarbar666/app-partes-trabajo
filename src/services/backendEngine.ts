@@ -41,6 +41,7 @@ import {
   sanitizeTimezone,
 } from '../utils/formatters';
 import { createDemoSeedState, createCleanDatabaseState, DatabaseState } from './seedData';
+import { populateCiudadRealDemoData } from './demoDatasetCiudadReal';
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -113,6 +114,10 @@ export class InstallationBackendEngine {
             });
           }
           this.state = parsed;
+          if (installationId === 'instalaciones-climalux-demo' && (!this.state.work_orders || this.state.work_orders.length < 25)) {
+            this.state = populateCiudadRealDemoData(this.state);
+            this.persist();
+          }
           return;
         } catch {
           // fallback to seed
@@ -123,6 +128,9 @@ export class InstallationBackendEngine {
       effectiveMode === 'demo'
         ? createDemoSeedState(installationId)
         : createCleanDatabaseState(installationId);
+    if (installationId === 'instalaciones-climalux-demo' && (!this.state.work_orders || this.state.work_orders.length < 25)) {
+      this.state = populateCiudadRealDemoData(this.state);
+    }
     this.persist();
   }
 
@@ -149,6 +157,12 @@ export class InstallationBackendEngine {
   public clearAllDatabaseRecords(): void {
     this.requireAdmin();
     this.resetToCleanState();
+  }
+
+  public loadCiudadRealDemoDataset(): void {
+    this.requireAdmin();
+    this.state = populateCiudadRealDemoData(this.state);
+    this.persist();
   }
 
   public exportFullSnapshot(): DatabaseState {

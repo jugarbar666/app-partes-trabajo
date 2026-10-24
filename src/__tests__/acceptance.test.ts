@@ -1718,4 +1718,57 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(proveedorGuardado.city).toBe('Sevilla');
     expect(proveedorGuardado.province).toBe('Sevilla');
   });
+
+  it('Escenario 33: Generación del dataset real de Fontanería Ciudad Real (25 artículos, 20 revisiones, 25 partes UCLM con CAU y Gesyre en todos los estados)', () => {
+    const crBackend = new InstallationBackendEngine('test-ciudad-real-data', false, 'clean');
+    crBackend.login('admin@climalux-demo.es', 'Admin1234!');
+    crBackend.loadCiudadRealDemoDataset();
+
+    // 1. Exactamente 25 artículos de fontanería
+    const articulos = crBackend.getArticles(true);
+    expect(articulos.length).toBe(25);
+    expect(articulos.some((a) => a.name.toLowerCase().includes('grifo'))).toBe(true);
+    expect(articulos.some((a) => a.name.toLowerCase().includes('lavabo'))).toBe(true);
+    expect(articulos.some((a) => a.name.toLowerCase().includes('inodoro'))).toBe(true);
+    expect(articulos.some((a) => a.name.toLowerCase().includes('desagüe'))).toBe(true);
+    expect(articulos.some((a) => a.name.toLowerCase().includes('ánodo de sacrificio'))).toBe(true);
+
+    // 2. Exactamente 20 revisiones (con calderas y ánodos de magnesio)
+    const revisiones = crBackend.getInstallationReviews();
+    expect(revisiones.length).toBe(20);
+    const revsAnodos = revisiones.filter((r) => r.notes.toLowerCase().includes('ánodo') || r.notes.toLowerCase().includes('termo'));
+    const revsCalderas = revisiones.filter((r) => r.notes.toLowerCase().includes('caldera'));
+    expect(revsAnodos.length).toBeGreaterThanOrEqual(6);
+    expect(revsCalderas.length).toBeGreaterThanOrEqual(6);
+
+    // 3. Exactamente 25 partes de trabajo en todos los estados
+    const partes = crBackend.getWorkOrders({ includeArchived: true });
+    expect(partes.length).toBe(25);
+
+    const estados = new Set(partes.map((p) => p.status));
+    expect(estados.has('no_iniciado')).toBe(true);
+    expect(estados.has('en_curso')).toBe(true);
+    expect(estados.has('reabierto')).toBe(true);
+    expect(estados.has('terminado')).toBe(true);
+    expect(estados.has('cerrado')).toBe(true);
+
+    // 4. Clientes UCLM y Gesyre
+    const partesUclm = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('uclm') || p.snapshot_customer_name.toLowerCase().includes('castilla'));
+    const partesGesyre = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('gesyre'));
+
+    expect(partesUclm.length).toBeGreaterThanOrEqual(20);
+    expect(partesGesyre.length).toBeGreaterThanOrEqual(2);
+
+    // Cada parte de la UCLM debe contener en sus observaciones un ticket CAU y facultades/edificios reales
+    partesUclm.forEach((p) => {
+      expect(p.initial_notes).toMatch(/CAU-UCLM-2026-\d{4}/);
+    });
+
+    // 5. Fechas repartidas entre próxima semana (26 Oct - 1 Nov) y siguiente semana (2 Nov - 8 Nov)
+    partes.forEach((p) => {
+      const fecha = new Date(p.scheduled_at);
+      expect(fecha.getFullYear()).toBe(2026);
+      expect(fecha.getMonth()).toBeGreaterThanOrEqual(9); // Octubre (9) o Noviembre (10)
+    });
+  });
 });

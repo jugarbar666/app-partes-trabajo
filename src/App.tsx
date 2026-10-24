@@ -1855,6 +1855,23 @@ const MainApplicationContent: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            backend.loadCiudadRealDemoDataset();
+                            notifySuccessGreen(
+                              'Datos cargados con éxito: UCLM (Campus Ciudad Real con CAU), Gesyre, 25 artículos de fontanería, 20 revisiones y 25 partes.'
+                            );
+                            refresh();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition cursor-pointer shadow-2xs"
+                          title="Cargar catálogo de 25 artículos de fontanería, 20 revisiones (calderas y ánodos) y 25 partes (UCLM con CAU y Gesyre)"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Cargar datos UCLM / Gesyre</span>
+                        </button>
+                      )}
                       <select
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
