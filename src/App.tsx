@@ -1559,18 +1559,6 @@ const MainApplicationContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href="/Manual_Operario_App_Partes_Trabajo.pdf"
-              download="Manual_Operario_App_Partes_Trabajo.pdf"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 transition shadow-2xs"
-              title="Descargar Manual Completo de Uso para Operarios (PDF con capturas)"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span className="hidden sm:inline">Manual Operario (PDF)</span>
-              <span className="sm:hidden">Manual PDF</span>
-            </a>
             {/* Selector interactivo de versiones móviles (Solo visible en rama pruebas / desarrollo; omitido en producción Fontanería Roma) */}
             {isMobilePreviewEnabled() && (
               <div className="relative group" data-testid="header-mobile-view-container">
