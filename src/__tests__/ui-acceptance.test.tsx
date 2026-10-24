@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
 import { WorkOrderStatusBadge } from '../components/CommonUI';
+import { isMobilePreviewEnabled } from '../config/branchConfig';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
 
@@ -129,6 +130,28 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     expect(html3).toContain('Parte reabierto');
     expect(html3).toContain('bg-[#78350f]');
     expect(html3).toContain('font-bold');
+  });
+
+  it('Control de selector de versiones móviles por rama: activo en pruebas y deshabilitado en empresa-fontaneria-roma', () => {
+    // 1. En entorno de desarrollo / rama pruebas está activo
+    expect(isMobilePreviewEnabled()).toBe(true);
+
+    const htmlPruebas = renderToString(<App />);
+    expect(htmlPruebas).toContain('Vista Móvil');
+    expect(htmlPruebas).toContain('iPhone 15 Pro');
+
+    // 2. Comprobación de que si se fuerza desactivación (como en producción fontanería roma), no aparece en el DOM
+    const originalEnv = import.meta.env.VITE_SHOW_MOBILE_PREVIEW;
+    try {
+      (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = 'false';
+      expect(isMobilePreviewEnabled()).toBe(false);
+
+      const htmlProd = renderToString(<App />);
+      expect(htmlProd).not.toContain('header-mobile-view-container');
+      expect(htmlProd).not.toContain('header-mobile-view-link');
+    } finally {
+      (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = originalEnv;
+    }
   });
 });
 

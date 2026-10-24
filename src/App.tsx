@@ -29,6 +29,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Wrench,
   MapPin,
   BookOpen,
@@ -64,6 +65,7 @@ import {
   sanitizeTimezone,
   WeekDayInfo,
 } from './utils/formatters';
+import { isMobilePreviewEnabled } from './config/branchConfig';
 
 type ActiveRoute =
   | 'dashboard'
@@ -1412,13 +1414,64 @@ const MainApplicationContent: React.FC = () => {
               <span className="hidden sm:inline">Manual Operario (PDF)</span>
               <span className="sm:hidden">Manual PDF</span>
             </a>
-            <a
-              href="/movil.html"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              title="Abrir simulador con tamaño real de pantalla de móvil"
-            >
-              📱 Vista Móvil
-            </a>
+            {/* Selector interactivo de versiones móviles (Solo visible en rama pruebas / desarrollo; omitido en producción Fontanería Roma) */}
+            {isMobilePreviewEnabled() && (
+              <div className="relative group" data-testid="header-mobile-view-container">
+                <a
+                  href="/movil.html"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition shadow-2xs"
+                  title="Abrir simulador con tamaño real de pantalla de móvil y selector de modelos"
+                  data-testid="header-mobile-view-link"
+                >
+                  📱 Vista Móvil <ChevronDown className="w-3 h-3 opacity-60" />
+                </a>
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 hidden group-hover:block hover:block text-xs">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase text-slate-400">
+                    Versiones Móviles (Pruebas)
+                  </div>
+                  <a
+                    href="/movil.html"
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700"
+                  >
+                    <span>📱 Simulador Completo</span>
+                    <span className="text-[10px] text-blue-600 font-bold">Abrir ↗</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'mobile-iphone', 'width=430,height=890,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>🍎 iPhone 15 Pro</span>
+                    <span className="text-[10px] text-slate-400">390×844</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'mobile-android', 'width=450,height=960,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>🤖 Android / Pixel</span>
+                    <span className="text-[10px] text-slate-400">412×915</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'mobile-compact', 'width=390,height=790,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>📐 Móvil Compacto</span>
+                    <span className="text-[10px] text-slate-400">360×740</span>
+                  </a>
+                </div>
+              </div>
+            )}
             {/* Botón Simulación Red Online/Offline */}
             <button
               type="button"

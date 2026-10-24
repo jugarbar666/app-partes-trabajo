@@ -18,3 +18,12 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Configuración específica por rama para Netlify (persiste automáticamente en cualquier actualización)
+[context.empresa-fontaneria-roma.environment]
+  VITE_SHOW_MOBILE_PREVIEW = "false"
+  VITE_BRANCH = "empresa-fontaneria-roma"
+
+[context.pruebas.environment]
+  VITE_SHOW_MOBILE_PREVIEW = "true"
+  VITE_BRANCH = "pruebas"
