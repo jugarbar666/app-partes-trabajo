@@ -1752,17 +1752,35 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(estados.has('terminado')).toBe(true);
     expect(estados.has('cerrado')).toBe(true);
 
-    // 4. Clientes UCLM y Gesyre
+    // 4. Clientes UCLM, Gesyre y otros clientes diversos
     const partesUclm = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('uclm') || p.snapshot_customer_name.toLowerCase().includes('castilla'));
     const partesGesyre = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('gesyre'));
+    const partesOtros = partes.filter(
+      (p) =>
+        !p.snapshot_customer_name.toLowerCase().includes('uclm') &&
+        !p.snapshot_customer_name.toLowerCase().includes('castilla') &&
+        !p.snapshot_customer_name.toLowerCase().includes('gesyre')
+    );
 
-    expect(partesUclm.length).toBeGreaterThanOrEqual(20);
+    expect(partesUclm.length).toBeGreaterThanOrEqual(10);
     expect(partesGesyre.length).toBeGreaterThanOrEqual(2);
+    expect(partesOtros.length).toBeGreaterThanOrEqual(5);
+
+    // Múltiples clientes distintos en los partes
+    const clientesDistintos = new Set(partes.map((p) => p.snapshot_customer_name));
+    expect(clientesDistintos.size).toBeGreaterThanOrEqual(4);
 
     // Cada parte de la UCLM debe contener en sus observaciones un ticket CAU y facultades/edificios reales
     partesUclm.forEach((p) => {
       expect(p.initial_notes).toMatch(/CAU-UCLM-2026-\d{4}/);
     });
+
+    // 5. Cesta de la compra con artículos de fontanería en diversos estados
+    const shoppingRequests = crBackend.getShoppingRequests();
+    expect(shoppingRequests.length).toBeGreaterThanOrEqual(5);
+    expect(shoppingRequests.some((s) => s.status === 'pending_purchase')).toBe(true);
+    expect(shoppingRequests.some((s) => s.status === 'pending_quantity')).toBe(true);
+    expect(shoppingRequests.some((s) => s.status === 'purchased')).toBe(true);
 
     // 5. Fechas repartidas entre próxima semana (26 Oct - 1 Nov) y siguiente semana (2 Nov - 8 Nov)
     partes.forEach((p) => {

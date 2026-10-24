@@ -114,7 +114,21 @@ export class InstallationBackendEngine {
             });
           }
           this.state = parsed;
-          if (installationId === 'instalaciones-climalux-demo' && (!this.state.work_orders || this.state.work_orders.length < 25)) {
+          const hasDiverseCustomers = this.state.work_orders?.some(
+            (wo) =>
+              !wo.snapshot_customer_name.toLowerCase().includes('uclm') &&
+              !wo.snapshot_customer_name.toLowerCase().includes('castilla') &&
+              !wo.snapshot_customer_name.toLowerCase().includes('gesyre')
+          );
+          const hasShoppingRequests = (this.state.shopping_requests?.length || 0) > 0;
+
+          if (
+            installationId === 'instalaciones-climalux-demo' &&
+            (!this.state.work_orders ||
+              this.state.work_orders.length < 25 ||
+              !hasDiverseCustomers ||
+              !hasShoppingRequests)
+          ) {
             this.state = populateCiudadRealDemoData(this.state);
             this.persist();
           }
@@ -128,7 +142,21 @@ export class InstallationBackendEngine {
       effectiveMode === 'demo'
         ? createDemoSeedState(installationId)
         : createCleanDatabaseState(installationId);
-    if (installationId === 'instalaciones-climalux-demo' && (!this.state.work_orders || this.state.work_orders.length < 25)) {
+    const hasDiverseSeedCustomers = this.state.work_orders?.some(
+      (wo) =>
+        !wo.snapshot_customer_name.toLowerCase().includes('uclm') &&
+        !wo.snapshot_customer_name.toLowerCase().includes('castilla') &&
+        !wo.snapshot_customer_name.toLowerCase().includes('gesyre')
+    );
+    const hasSeedShoppingRequests = (this.state.shopping_requests?.length || 0) > 0;
+
+    if (
+      installationId === 'instalaciones-climalux-demo' &&
+      (!this.state.work_orders ||
+        this.state.work_orders.length < 25 ||
+        !hasDiverseSeedCustomers ||
+        !hasSeedShoppingRequests)
+    ) {
       this.state = populateCiudadRealDemoData(this.state);
     }
     this.persist();

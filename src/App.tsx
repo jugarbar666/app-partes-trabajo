@@ -1861,15 +1861,15 @@ const MainApplicationContent: React.FC = () => {
                           onClick={() => {
                             backend.loadCiudadRealDemoDataset();
                             notifySuccessGreen(
-                              'Datos cargados con éxito: UCLM (Campus Ciudad Real con CAU), Gesyre, 25 artículos de fontanería, 20 revisiones y 25 partes.'
+                              'Datos cargados con éxito: UCLM (Campus Ciudad Real con CAU), Gesyre, clientes adicionales, 25 artículos de fontanería, 20 revisiones, 25 partes y cesta de la compra.'
                             );
                             refresh();
                           }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition cursor-pointer shadow-2xs"
-                          title="Cargar catálogo de 25 artículos de fontanería, 20 revisiones (calderas y ánodos) y 25 partes (UCLM con CAU y Gesyre)"
+                          title="Cargar catálogo de 25 artículos de fontanería, 20 revisiones (calderas y ánodos), 25 partes diversos y cesta de la compra"
                         >
                           <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Cargar datos UCLM / Gesyre</span>
+                          <span>Cargar datos Ciudad Real (UCLM, Gesyre, Clientes, Cesta)</span>
                         </button>
                       )}
                       <select
