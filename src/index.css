@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Prevención de desbordamiento horizontal en dispositivos móviles */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 /* Escritorio: letra más grande para mejor legibilidad (escala todos los tamaños en rem) */
 @media (min-width: 1024px) {
   html {

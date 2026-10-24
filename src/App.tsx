@@ -1498,35 +1498,35 @@ const MainApplicationContent: React.FC = () => {
       {/* =====================================================================
           COLUMNA PRINCIPAL DERECHA (BARRA SUPERIOR BLANCA + CONTENIDO CENTRAL)
       ===================================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20">
+      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden pb-20">
         {/* Barra Superior Blanca (idéntica a la captura: insignia azul a la izquierda, metadatos de rol/moneda/zona horaria, botón recargar y CTA azul a la derecha) */}
-        <header className="sticky top-0 z-30 bg-white border-b border-slate-200/90 px-4 lg:px-7 py-2.5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
+        <header className="sticky top-0 z-30 bg-white border-b border-slate-200/90 px-3 sm:px-4 lg:px-7 py-2.5 flex items-center justify-between gap-2 max-w-full overflow-hidden">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full">
             {/* Botón de menú móvil */}
             <button
               type="button"
               data-testid="btn-toggle-mobile-menu"
               onClick={() => setMobileMenuOpen((o) => !o)}
-              className="lg:hidden p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
+              className="lg:hidden p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 shrink-0"
               aria-label="Abrir o cerrar menú de navegación"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
 
             {company.logo_url ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <img
                   src={company.logo_url}
                   alt={company.company_name}
                   data-testid="header-company-logo"
-                  className="h-8 max-w-[130px] object-contain shrink-0"
+                  className="h-7 sm:h-8 max-w-[100px] sm:max-w-[130px] object-contain shrink-0"
                 />
                 <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-extrabold tracking-wide uppercase">
                   {company.company_name.split(' ')[0]}
                 </span>
               </div>
             ) : (
-              <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-extrabold tracking-wide uppercase">
+              <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-extrabold tracking-wide uppercase shrink-0">
                 {company.company_name.split(' ')[0]}
               </span>
             )}
@@ -1538,7 +1538,7 @@ const MainApplicationContent: React.FC = () => {
               onChange={(e) => {
                 handleSwitchSessionRoleDemo(e.target.value);
               }}
-              className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none ${
+              className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none max-w-[145px] sm:max-w-none truncate shrink-0 ${
                 isAdmin
                   ? 'bg-amber-50 border-amber-300 text-amber-800'
                   : 'bg-blue-50 border-blue-300 text-blue-800'
@@ -1552,13 +1552,14 @@ const MainApplicationContent: React.FC = () => {
               ))}
             </select>
 
-            <span className="text-xs text-slate-500 hidden md:inline">
+            <span className="text-xs text-slate-500 hidden md:inline shrink-0">
               Moneda: <strong className="text-slate-700">{company.currency} (€)</strong> · Zona:{' '}
               <strong className="text-slate-700">{tz}</strong>
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
+          <div className="hidden md:flex items-center gap-2 shrink-0">
             {/* Selector interactivo de versiones móviles (Solo visible en rama pruebas / desarrollo; omitido en producción Fontanería Roma) */}
             {isMobilePreviewEnabled() && (
               <div className="relative group" data-testid="header-mobile-view-container">
