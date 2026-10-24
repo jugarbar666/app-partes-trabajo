@@ -1314,4 +1314,66 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       'No puedes borrar tu propio usuario administrador'
     );
   });
+
+  it('Escenario 27: Borrado de partes exclusivo de administrador con destrucción total sin huellas ni rastro', () => {
+    // 1. Admin crea un parte con materiales y entradas
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Hotel Puerta de Alcalá',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Director Hotel',
+      snapshot_contact_phone: '+34 600 111 222',
+      snapshot_contact_email: 'hotel@alcala.es',
+      snapshot_address_line: 'Calle Alcalá 1',
+      snapshot_postal_code: '28014',
+      snapshot_city: 'Madrid',
+      snapshot_province: 'Madrid',
+      planned_work: 'Reparación de tubería principal para prueba de borrado definitivo',
+      scheduled_at: '2026-10-25T09:00:00.000Z',
+      initial_notes: 'Parte que será purgado sin rastro',
+      origin_review_occurrence_id: null,
+      operator_ids: ['usr-oper-1'],
+    });
+
+    const woId = wo.id;
+    const woCode = wo.code;
+
+    backend.addWorkEntry(woId, 'Desmontaje de tubería', 'Sin fugas residuales');
+    backend.addWorkMaterial({
+      work_order_id: woId,
+      article_id: 'art-1',
+      article_name_snapshot: 'Tubo Cobre',
+      unit_snapshot: 'm',
+      quantity: 5,
+      unit_price_cents: 1200,
+      notes: 'Material de prueba',
+    });
+
+    expect(backend.getWorkEntries(woId).length).toBe(1);
+    expect(backend.getWorkMaterials(woId).length).toBe(1);
+
+    // 2. Un operario común NO PUEDE borrar el parte
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    expect(() => backend.permanentDeleteWorkOrder(woId)).toThrow();
+
+    // 3. El administrador ejecuta el borrado definitivo y purga total
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.permanentDeleteWorkOrder(woId);
+
+    // 4. El parte desaparece de work_orders
+    expect(() => backend.getWorkOrderById(woId)).toThrow();
+
+    const todosLosPartes = backend.getWorkOrders();
+    expect(todosLosPartes.some((w) => w.id === woId || w.code === woCode)).toBe(false);
+
+    // 5. Todos los materiales, entradas, eventos y huellas de auditoría se purgan sin rastro
+    expect(() => backend.getWorkEntries(woId)).toThrow();
+    expect(() => backend.getWorkMaterials(woId)).toThrow();
+    expect(() => backend.getWorkOrderEvents(woId)).toThrow();
+
+    const audit = backend.getAuditLog();
+    expect(audit.some((log) => log.entity_id === woId || log.entity_id === woCode)).toBe(false);
+  });
 });

@@ -20,6 +20,7 @@ import {
   Download,
   PenTool,
   ArrowLeft,
+  ArrowRight,
   X,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -983,6 +984,9 @@ export const WorkOrderDetailView: React.FC<{
   const [reopenReason, setReopenReason] = useState('');
   const [reopenTarget, setReopenTarget] = useState<'reabierto' | 'en_curso' | 'terminado'>('reabierto');
 
+  // Doble confirmación en fondo rojo para borrado irreversible de parte (Solo Admin)
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2 | null>(null);
+
   const handleAddEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEntryDesc.trim()) {
@@ -1406,23 +1410,13 @@ export const WorkOrderDetailView: React.FC<{
             </button>
           )}
 
-          {isAdmin && !wo.deleted_at && (
+          {isAdmin && (
             <button
               type="button"
-              data-testid="btn-soft-delete-wo"
-              onClick={() =>
-                requestDeleteConfirmation({
-                  recordName: `Parte ${wo.code} (${wo.snapshot_customer_name})`,
-                  consequence:
-                    'El parte pasará a la Papelera Administrativa (borrado lógico con deleted_at y deleted_by) sin destruir archivos ni historial.',
-                  requireReason: true,
-                  onConfirm: (reason) => {
-                    backend.softDeleteWorkOrder(wo.id, reason);
-                    refreshLocal();
-                  },
-                })
-              }
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-red-300/40 bg-red-600/80 hover:bg-red-600 text-white text-xs font-semibold transition"
+              data-testid="btn-delete-wo"
+              onClick={() => setDeleteConfirmStep(1)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-red-300/40 bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+              title="Borrar este parte de trabajo definitivamente (requiere doble confirmación)"
             >
               <Trash2 className="w-3.5 h-3.5" /> Borrar parte
             </button>
@@ -2376,6 +2370,142 @@ export const WorkOrderDetailView: React.FC<{
                 className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold"
               >
                 Confirmar Reapertura
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. VENTANA EMERGENTE 1 DE BORRADO DE PARTE (FONDO ROJO, CENTRADA EN PANTALLA) */}
+      {deleteConfirmStep === 1 && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4"
+          data-testid="modal-delete-wo-step1"
+        >
+          <div className="bg-red-700 text-white rounded-2xl shadow-2xl border-2 border-red-400 max-w-lg w-full overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3 border-b border-red-600 pb-3">
+              <div className="p-2.5 rounded-full bg-red-900/80 border border-red-400">
+                <AlertTriangle className="w-7 h-7 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-white">
+                  ADVERTENCIA DE PELIGRO (Paso 1 de 2)
+                </h3>
+                <p className="text-xs text-red-200">Solo administradores autorizados</p>
+              </div>
+            </div>
+
+            <div className="bg-red-900/70 border border-red-400/50 rounded-xl p-4 space-y-2.5 text-xs text-red-100">
+              <p className="font-extrabold text-sm text-white">
+                ¿Está seguro de que desea borrar este parte de trabajo?
+              </p>
+              <div className="space-y-1 bg-red-950/50 p-3 rounded-lg border border-red-500/30">
+                <div>
+                  <span className="text-red-300 font-semibold">Número de parte:</span>{' '}
+                  <strong className="text-white text-sm">{wo.code}</strong>
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Cliente:</span>{' '}
+                  <strong className="text-white">{wo.snapshot_customer_name}</strong>
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Dirección:</span>{' '}
+                  {wo.snapshot_address_line} ({wo.snapshot_city})
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Trabajo previsto:</span>{' '}
+                  {wo.planned_work}
+                </div>
+              </div>
+              <p className="text-red-200">
+                Para garantizar la seguridad de los datos, el sistema le solicitará una segunda confirmación antes de proceder a la destrucción completa.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                data-testid="btn-cancel-delete-wo-step1"
+                onClick={() => setDeleteConfirmStep(null)}
+                className="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-delete-wo-step1"
+                onClick={() => setDeleteConfirmStep(2)}
+                className="px-4 py-2 rounded-xl bg-white text-red-900 hover:bg-red-50 text-xs font-black shadow-lg transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Continuar con el borrado</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. VENTANA EMERGENTE 2 DE BORRADO DE PARTE (FONDO ROJO EXTREMO, DESTRUCCIÓN IRREVERSIBLE) */}
+      {deleteConfirmStep === 2 && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4"
+          data-testid="modal-delete-wo-step2"
+        >
+          <div className="bg-red-800 text-white rounded-2xl shadow-2xl border-4 border-red-500 max-w-lg w-full overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3 border-b border-red-700 pb-3">
+              <div className="p-3 rounded-full bg-red-950 border-2 border-red-400">
+                <AlertTriangle className="w-8 h-8 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-white uppercase">
+                  🚨 PELIGRO EXTREMO: CONFIRMACIÓN DEFINITIVA (Paso 2 de 2)
+                </h3>
+                <p className="text-xs text-red-200 font-semibold">Acción destructiva sin marcha atrás</p>
+              </div>
+            </div>
+
+            <div className="bg-red-950/80 border-2 border-red-400 rounded-xl p-4 space-y-3 text-xs leading-relaxed text-red-100">
+              <p className="text-sm font-black text-amber-200">
+                ⚠️ Los datos de este parte van a eliminarse definitivamente y no va a haber forma de recuperarlos.
+              </p>
+              <p>
+                Al confirmar, <strong>se borrarán todos los datos y huellas de este parte ({wo.code})</strong>:
+                trabajos realizados, materiales consumidos, jornadas de operarios, firmas manuscritas del cliente,
+                fotografías adjuntas y registros de auditoría.
+              </p>
+              <p className="font-extrabold text-red-100 bg-red-900/80 p-2.5 rounded-lg border border-red-500/50">
+                No quedará ningún rastro en las bases de datos. Los datos serán completamente irrecuperables aunque se intenten buscar internamente dentro de los ficheros de las bases de datos.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                data-testid="btn-cancel-delete-wo-step2"
+                onClick={() => setDeleteConfirmStep(null)}
+                className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar y Proteger Parte
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-delete-wo-step2"
+                onClick={() => {
+                  try {
+                    backend.permanentDeleteWorkOrder(wo.id);
+                    setDeleteConfirmStep(null);
+                    notifySuccessGreen(
+                      `Parte ${wo.code} y todos sus datos han sido destruidos y eliminados por completo sin dejar rastro.`
+                    );
+                    onBack();
+                  } catch (err: any) {
+                    notifyError(err?.message || 'Error al eliminar el parte de trabajo.');
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl bg-white text-red-950 hover:bg-red-100 text-xs font-black shadow-2xl transition cursor-pointer flex items-center gap-2 border-2 border-red-300"
+              >
+                <Trash2 className="w-4 h-4 text-red-700" />
+                <span>SÍ, ELIMINAR DEFINITIVAMENTE SIN RASTRO</span>
               </button>
             </div>
           </div>

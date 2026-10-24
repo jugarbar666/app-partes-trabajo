@@ -2208,6 +2208,69 @@ export class InstallationBackendEngine {
     return this.serializeWorkOrderForUser(admin, wo);
   }
 
+  /**
+   * Borrado definitivo e irrecuperable de un parte de trabajo (Solo Administrador).
+   * Elimina por completo todos los datos, intervenciones, materiales, jornadas, firmas,
+   * archivos, eventos, asignaciones y huellas del parte sin dejar rastro en la base de datos.
+   */
+  public permanentDeleteWorkOrder(workOrderId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const wo = this.state.work_orders.find((w) => w.id === workOrderId);
+    if (!wo) throw new ValidationError('Parte de trabajo no encontrado.');
+
+    const woCode = wo.code;
+
+    // 1. Eliminar de work_orders
+    this.state.work_orders = this.state.work_orders.filter((w) => w.id !== workOrderId);
+
+    // 2. Eliminar datos administrativos reservados
+    this.state.work_order_admin = this.state.work_order_admin.filter((a) => a.work_order_id !== workOrderId);
+
+    // 3. Eliminar asignaciones de operarios
+    this.state.work_order_assignments = this.state.work_order_assignments.filter((a) => a.work_order_id !== workOrderId);
+
+    // 4. Eliminar trabajos realizados / intervenciones
+    this.state.work_entries = this.state.work_entries.filter((e) => e.work_order_id !== workOrderId);
+
+    // 5. Eliminar jornadas registradas en el parte
+    this.state.work_sessions = this.state.work_sessions.filter((s) => s.work_order_id !== workOrderId);
+
+    // 6. Eliminar materiales consumidos
+    this.state.work_materials = this.state.work_materials.filter((m) => m.work_order_id !== workOrderId);
+
+    // 7. Eliminar archivos y fotografías adjuntas
+    this.state.work_files = this.state.work_files.filter((f) => f.work_order_id !== workOrderId);
+
+    // 8. Eliminar firmas manuscritas del cliente
+    this.state.work_signatures = this.state.work_signatures.filter((s) => s.work_order_id !== workOrderId);
+
+    // 9. Eliminar eventos de ciclo de vida del parte
+    this.state.work_order_events = this.state.work_order_events.filter((e) => e.work_order_id !== workOrderId);
+
+    // 10. Desvincular de revisiones periódicas
+    this.state.review_occurrences.forEach((occ) => {
+      if (occ.linked_work_order_id === workOrderId) {
+        occ.linked_work_order_id = null;
+      }
+    });
+    this.state.installation_reviews.forEach((rev) => {
+      if (rev.origin_work_order_id === workOrderId) {
+        rev.origin_work_order_id = null;
+      }
+    });
+
+    // 11. Eliminar cualquier huella o registro del parte en los logs para que no quede rastro
+    this.state.audit_log = this.state.audit_log.filter(
+      (entry) =>
+        entry.entity_id !== workOrderId &&
+        entry.entity_id !== woCode &&
+        JSON.stringify(entry.changes_json || {}).indexOf(woCode) === -1
+    );
+
+    this.persist();
+  }
+
   public getWorkOrderEvents(workOrderId: string): WorkOrderEvent[] {
     this.getWorkOrderById(workOrderId);
     return this.state.work_order_events
