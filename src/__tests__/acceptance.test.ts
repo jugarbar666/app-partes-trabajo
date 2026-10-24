@@ -1376,4 +1376,66 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const audit = backend.getAuditLog();
     expect(audit.some((log) => log.entity_id === woId || log.entity_id === woCode)).toBe(false);
   });
+
+  it('Escenario 28: Borrado de usuario con purga total de rastro y posterior alta con los mismos datos sin conflictos', () => {
+    // 1. Admin da de alta un operario
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const userEmail = 'antonio.fontanero@climalux-demo.es';
+    const userDni = '77889900X';
+    const userPhone = '+34 655 444 333';
+    const userName = 'Antonio Fontanero Reincidente';
+
+    const createdUser = backend.inviteAndCreateUser({
+      full_name: userName,
+      dni: userDni,
+      email: userEmail,
+      phone: userPhone,
+      role: 'operario',
+      initial_password: 'ClaveInicial1!',
+    });
+
+    expect(createdUser.email).toBe(userEmail);
+    expect(backend.getProfiles().some((p) => p.email === userEmail)).toBe(true);
+
+    // 2. El usuario inicia sesión y cambia su clave
+    backend.logout();
+    const loginUser = backend.login(userEmail, 'ClaveInicial1!');
+    expect(loginUser.must_change_password).toBe(true);
+    backend.changePassword(loginUser.id, 'ClaveNueva99!');
+
+    // 3. Admin borra completamente el usuario (purga total de huellas, contraseñas e invitaciones)
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.deleteUserProfile(createdUser.id);
+
+    // Comprobar que ya no figura en perfiles
+    expect(backend.getProfiles().some((p) => p.email === userEmail)).toBe(false);
+
+    // Comprobar que sus contraseñas no existen
+    backend.logout();
+    expect(() => backend.login(userEmail, 'ClaveNueva99!')).toThrow('Credenciales incorrectas');
+
+    // 4. Volver a dar de alta ese usuario con exactamente los mismos datos (mismo email, DNI, teléfono y nombre)
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const reAltaClave = 'SegundaAlta2026!';
+    const reAltaUser = backend.inviteAndCreateUser({
+      full_name: userName,
+      dni: userDni,
+      email: userEmail,
+      phone: userPhone,
+      role: 'operario',
+      initial_password: reAltaClave,
+    });
+
+    // Debe permitirse sin ningún tipo de conflicto de duplicidad ni bloqueo
+    expect(reAltaUser).toBeDefined();
+    expect(reAltaUser.email).toBe(userEmail);
+    expect(reAltaUser.temporaryPassword).toBe(reAltaClave);
+    expect(reAltaUser.must_change_password).toBe(true);
+
+    // Comprobar que el nuevo usuario puede entrar con la nueva clave temporal sin problemas
+    backend.logout();
+    const reLogin = backend.login(userEmail, reAltaClave);
+    expect(reLogin.id).toBe(reAltaUser.id);
+    expect(reLogin.must_change_password).toBe(true);
+  });
 });

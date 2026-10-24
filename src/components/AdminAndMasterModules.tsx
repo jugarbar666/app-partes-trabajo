@@ -20,6 +20,7 @@ import {
   Send,
   Trash2,
   AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -158,6 +159,12 @@ export const MasterDataAndUsersModule: React.FC<{
 
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [copiedReset, setCopiedReset] = useState(false);
+
+  // Doble confirmación con fondo rojo para borrado definitivo de usuario (igual que en partes)
+  const [userDeleteModal, setUserDeleteModal] = useState<{
+    step: 1 | 2;
+    user: (typeof profiles)[0];
+  } | null>(null);
 
   const handleSupplierFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -818,20 +825,9 @@ export const MasterDataAndUsersModule: React.FC<{
                     <button
                       type="button"
                       data-testid={`btn-delete-user-${u.id}`}
-                      onClick={() => {
-                        requestDeleteConfirmation({
-                          recordName: `Usuario «${u.full_name}» (${u.email})`,
-                          consequence:
-                            'Se eliminará definitivamente al usuario del sistema y sus claves de acceso. Esta acción puede influir en alguna acción o listado. En los partes de trabajo y asignaciones previas figurará como «Operario borrado».',
-                          requireReason: false,
-                          onConfirm: () => {
-                            backend.deleteUserProfile(u.id);
-                            refresh();
-                          },
-                        });
-                      }}
-                      className="px-3 py-1 rounded border border-red-300 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-semibold flex items-center gap-1 shadow-2xs"
-                      title="Borrar usuario definitivamente"
+                      onClick={() => setUserDeleteModal({ step: 1, user: u })}
+                      className="px-3 py-1 rounded border border-red-300 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                      title="Borrar usuario definitivamente (requiere doble confirmación)"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Borrar</span>
@@ -1858,6 +1854,144 @@ export const MasterDataAndUsersModule: React.FC<{
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
               >
                 Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 4. MODAL BORRADO DE USUARIO - PASO 1 (FONDO ROJO, CENTRADA EN PANTALLA) */}
+      {userDeleteModal?.step === 1 && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          data-testid="modal-delete-user-step1"
+        >
+          <div className="bg-red-700 text-white rounded-2xl shadow-2xl border-2 border-red-400 max-w-lg w-full overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3 border-b border-red-600 pb-3">
+              <div className="p-2.5 rounded-full bg-red-900/80 border border-red-400">
+                <AlertTriangle className="w-7 h-7 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-white">
+                  ADVERTENCIA DE PELIGRO: BORRADO DE USUARIO (Paso 1 de 2)
+                </h3>
+                <p className="text-xs text-red-200">Acción exclusiva para administradores</p>
+              </div>
+            </div>
+
+            <div className="bg-red-900/70 border border-red-400/50 rounded-xl p-4 space-y-2.5 text-xs text-red-100">
+              <p className="font-extrabold text-sm text-white">
+                ¿Está seguro de que desea borrar este usuario del sistema?
+              </p>
+              <div className="space-y-1 bg-red-950/50 p-3 rounded-lg border border-red-500/30">
+                <div>
+                  <span className="text-red-300 font-semibold">Nombre:</span>{' '}
+                  <strong className="text-white text-sm">{userDeleteModal.user.full_name}</strong>
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Email:</span>{' '}
+                  <strong className="text-white">{userDeleteModal.user.email}</strong>
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">DNI:</span>{' '}
+                  {userDeleteModal.user.dni || '—'}
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Teléfono:</span>{' '}
+                  {userDeleteModal.user.phone || '—'}
+                </div>
+                <div>
+                  <span className="text-red-300 font-semibold">Rol actual:</span>{' '}
+                  <span className="uppercase font-bold text-white">{userDeleteModal.user.role}</span>
+                </div>
+              </div>
+              <p className="text-red-200">
+                Al igual que en el borrado de partes, el sistema le solicitará una segunda confirmación de seguridad antes de proceder a la eliminación definitiva.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                data-testid="btn-cancel-delete-user-step1"
+                onClick={() => setUserDeleteModal(null)}
+                className="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-delete-user-step1"
+                onClick={() => setUserDeleteModal({ ...userDeleteModal, step: 2 })}
+                className="px-4 py-2 rounded-xl bg-white text-red-900 hover:bg-red-50 text-xs font-black shadow-lg transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Continuar con el borrado</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL BORRADO DE USUARIO - PASO 2 (FONDO ROJO EXTREMO, PURGA TOTAL SIN HUELLAS) */}
+      {userDeleteModal?.step === 2 && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          data-testid="modal-delete-user-step2"
+        >
+          <div className="bg-red-800 text-white rounded-2xl shadow-2xl border-4 border-red-500 max-w-lg w-full overflow-hidden p-6 space-y-4 ring-8 ring-red-950/60">
+            <div className="flex items-center gap-3 border-b border-red-700 pb-3">
+              <div className="p-3 rounded-full bg-red-950 border-2 border-red-400">
+                <AlertTriangle className="w-8 h-8 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-white uppercase">
+                  🚨 PELIGRO EXTREMO: CONFIRMACIÓN DEFINITIVA DE USUARIO (Paso 2 de 2)
+                </h3>
+                <p className="text-xs text-red-200 font-semibold">Purga total de datos e invitaciones</p>
+              </div>
+            </div>
+
+            <div className="bg-red-950/80 border-2 border-red-400 rounded-xl p-4 space-y-3 text-xs leading-relaxed text-red-100">
+              <p className="text-sm font-black text-amber-200">
+                ⚠️ Los datos de este usuario van a eliminarse definitivamente y no va a haber forma de recuperarlos.
+              </p>
+              <p>
+                Al confirmar, <strong>se eliminará cualquier tipo de rastro o dato de «{userDeleteModal.user.full_name}» ({userDeleteModal.user.email})</strong>:
+                claves de acceso, invitaciones pendientes, fichajes, sesiones y registros de auditoría.
+              </p>
+              <p className="font-extrabold text-red-100 bg-red-900/80 p-2.5 rounded-lg border border-red-500/50">
+                Esta purga completa garantiza que si posteriormente se vuelve a dar de alta este usuario con los mismos datos (mismo email, DNI o nombre), no existirá ningún conflicto y el sistema permitirá registrarlo de nuevo con total normalidad.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                data-testid="btn-cancel-delete-user-step2"
+                onClick={() => setUserDeleteModal(null)}
+                className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar y Conservar Usuario
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-delete-user-step2"
+                onClick={() => {
+                  try {
+                    backend.deleteUserProfile(userDeleteModal.user.id);
+                    notifySuccessGreen(
+                      `Usuario «${userDeleteModal.user.full_name}» eliminado definitivamente y purgado sin dejar rastro.`
+                    );
+                    setUserDeleteModal(null);
+                    refresh();
+                  } catch (err: any) {
+                    notifyError(err?.message || 'Error al eliminar el usuario.');
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl bg-white text-red-950 hover:bg-red-100 text-xs font-black shadow-2xl transition cursor-pointer flex items-center gap-2 border-2 border-red-300"
+              >
+                <Trash2 className="w-4 h-4 text-red-700" />
+                <span>SÍ, ELIMINAR USUARIO DEFINITIVAMENTE SIN RASTRO</span>
               </button>
             </div>
           </div>

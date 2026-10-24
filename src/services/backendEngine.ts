@@ -532,6 +532,7 @@ export class InstallationBackendEngine {
     const idx = this.state.profiles.findIndex((p) => p.id === targetUserId);
     if (idx === -1) throw new ValidationError('Usuario no encontrado.');
     const current = this.state.profiles[idx];
+    const cleanEmail = current.email.toLowerCase().trim();
 
     if (current.role === 'admin') {
       const otherActiveAdmins = this.state.profiles.filter(
@@ -542,21 +543,54 @@ export class InstallationBackendEngine {
       }
     }
 
+    // 1. Eliminar perfil de la lista de usuarios
     this.state.profiles.splice(idx, 1);
-    if (this.state.passwords[current.email]) {
-      delete this.state.passwords[current.email];
-    }
 
-    // Inactivar asignaciones activas de partes
-    this.state.work_order_assignments.forEach((asg) => {
-      if (asg.operator_id === targetUserId) {
-        asg.is_active = false;
-      }
+    // 2. Eliminar contraseñas almacenadas
+    delete this.state.passwords[current.email];
+    delete this.state.passwords[cleanEmail];
+
+    // 3. Eliminar invitaciones previas de este email para que no haya conflicto al volver a darlo de alta
+    this.state.invitations = this.state.invitations.filter(
+      (inv) => inv.email.toLowerCase().trim() !== cleanEmail
+    );
+
+    // 4. Eliminar asignaciones de operario en partes
+    this.state.work_order_assignments = this.state.work_order_assignments.filter(
+      (asg) => asg.operator_id !== targetUserId
+    );
+
+    // 5. Eliminar fichajes y correcciones de presencia
+    const userSessionIds = new Set(
+      this.state.attendance_sessions
+        .filter((s) => s.user_id === targetUserId)
+        .map((s) => s.id)
+    );
+    this.state.attendance_sessions = this.state.attendance_sessions.filter(
+      (s) => s.user_id !== targetUserId
+    );
+    this.state.attendance_corrections = this.state.attendance_corrections.filter(
+      (c) => !userSessionIds.has(c.attendance_session_id) && c.corrected_by !== targetUserId
+    );
+
+    // 6. Limpiar solicitudes de compra solicitadas o aprobadas por este usuario
+    this.state.shopping_requests = this.state.shopping_requests.filter(
+      (r) => r.requested_by !== targetUserId && r.purchased_by !== targetUserId
+    );
+    this.state.shopping_requests.forEach((r) => {
+      r.additional_requesters = r.additional_requesters.filter(
+        (ar) => ar.user_id !== targetUserId
+      );
     });
 
-    this.recordAudit(admin, 'usuarios', 'profile', targetUserId, 'BORRADO_USUARIO', {
-      deleted: current,
-    });
+    // 7. Purga total de huellas de auditoría para evitar cualquier conflicto futuro
+    this.state.audit_log = this.state.audit_log.filter(
+      (log) =>
+        log.actor_id !== targetUserId &&
+        log.entity_id !== targetUserId &&
+        JSON.stringify(log.changes_json || {}).indexOf(cleanEmail) === -1
+    );
+
     this.persist();
   }
 
