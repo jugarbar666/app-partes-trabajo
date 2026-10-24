@@ -73,7 +73,6 @@ type ActiveRoute =
   | 'work_orders_list'
   | 'work_order_detail'
   | 'archived_work_orders'
-  | 'trash_work_orders'
   | 'reviews'
   | 'shopping'
   | 'attendance'
@@ -714,7 +713,6 @@ const MainApplicationContent: React.FC = () => {
   // Datos operativos según rol
   const activeWorkOrders = backend.getWorkOrders({ includeArchived: false });
   const archivedWorkOrders = isAdmin ? backend.getWorkOrders({ onlyArchived: true }) : [];
-  const trashWorkOrders = isAdmin ? backend.getWorkOrders({ onlyDeletedTrash: true }) : [];
   const assignments = backend.getWorkOrderAssignments();
   const shoppingRequests = backend.getShoppingRequests();
   const pendingShoppingCount = shoppingRequests.filter(
@@ -1423,19 +1421,6 @@ const MainApplicationContent: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => navigateTo('trash_work_orders')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-                  currentRoute === 'trash_work_orders'
-                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Trash2 className="w-4 h-4 shrink-0" />
-                <span>Papelera de partes</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
                   setAuditEntityFilter('');
                   setAdminInitialSection('audit');
@@ -1854,7 +1839,7 @@ const MainApplicationContent: React.FC = () => {
                         Panel de Control y Resumen Operativo de Partes
                       </h1>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Los partes archivados y en papelera quedan excluidos de los contadores operativos en curso.
+                        Los partes archivados quedan excluidos de los contadores operativos en curso.
                       </p>
                     </div>
 
@@ -2691,15 +2676,12 @@ const MainApplicationContent: React.FC = () => {
 
           {/* 3. LISTADO GENERAL FILTRABLE DE PARTES */}
           {(currentRoute === 'work_orders_list' ||
-            currentRoute === 'archived_work_orders' ||
-            currentRoute === 'trash_work_orders') && (
+            currentRoute === 'archived_work_orders') && (
             <div className="space-y-4">
               <ScreenHeaderBar
                 title={
                   currentRoute === 'archived_work_orders'
                     ? 'Archivo Histórico de Partes Cerrados'
-                    : currentRoute === 'trash_work_orders'
-                    ? 'Papelera Administrativa de Partes (Borrado Lógico)'
                     : 'Listado de Partes de Trabajo'
                 }
                 subtitle="Búsqueda, filtros conservados en sesión y selector de columnas visibles por usuario"
@@ -2771,8 +2753,6 @@ const MainApplicationContent: React.FC = () => {
                   <tbody className="divide-y divide-slate-200">
                     {(currentRoute === 'archived_work_orders'
                       ? archivedWorkOrders
-                      : currentRoute === 'trash_work_orders'
-                      ? trashWorkOrders
                       : dashboardSortedWorkOrders.filter((w) =>
                           woListFilterStatus === 'all' ? true : w.status === woListFilterStatus
                         )

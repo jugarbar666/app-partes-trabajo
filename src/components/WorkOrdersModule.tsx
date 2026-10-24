@@ -1421,20 +1421,6 @@ export const WorkOrderDetailView: React.FC<{
               <Trash2 className="w-3.5 h-3.5" /> Borrar parte
             </button>
           )}
-
-          {isAdmin && wo.deleted_at && (
-            <button
-              type="button"
-              onClick={() => {
-                backend.restoreSoftDeletedWorkOrder(wo.id, 'Restaurado desde detalle de parte');
-                notifySuccessGreen('Parte restaurado desde la papelera administrativa.');
-                refreshLocal();
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Restaurar de Papelera
-            </button>
-          )}
         </div>
       </div>
 

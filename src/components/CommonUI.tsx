@@ -323,18 +323,7 @@ export const WorkOrderStatusBadge: React.FC<{
   reopenedAt?: string | null;
   reopenReason?: string | null;
   closedAt?: string | null;
-}> = ({ status, archivedAt, deletedAt, compact, reopenedAt, reopenReason, closedAt }) => {
-  if (deletedAt) {
-    return (
-      <span
-        className={`inline-flex items-center justify-center text-center whitespace-nowrap rounded-full font-bold bg-red-100 text-red-800 border border-red-300 ${
-          compact ? 'px-2 py-0.5 text-[10px] gap-1' : 'px-3 py-1 text-xs gap-1.5'
-        }`}
-      >
-        ● {compact ? 'Papelera' : 'En Papelera'}
-      </span>
-    );
-  }
+}> = ({ status, archivedAt, compact, reopenedAt, reopenReason, closedAt }) => {
   if (archivedAt) {
     return (
       <span
