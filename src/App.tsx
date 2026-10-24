@@ -687,7 +687,7 @@ const MainApplicationContent: React.FC = () => {
   const tz = sanitizeTimezone(company.timezone);
 
   const allProfiles = useMemo(() => backend.getProfiles(), [backend, tick]);
-  const getUserName = (id: string) => allProfiles.find((p) => p.id === id)?.full_name || id;
+  const getUserName = (id: string) => allProfiles.find((p) => p.id === id)?.full_name || (id ? 'Operario borrado' : '—');
 
   const visibleWoColumns = useMemo(() => {
     const prefs = loggedUser.column_preferences?.work_orders_list || DEFAULT_WO_COLUMNS;

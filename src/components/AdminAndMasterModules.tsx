@@ -18,6 +18,8 @@ import {
   Copy,
   Check,
   Send,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -55,7 +57,7 @@ export const MasterDataAndUsersModule: React.FC<{
   onBack: () => void;
   onRefresh: () => void;
 }> = ({ backend, initialTab = 'customers', onBack, onRefresh }) => {
-  const { requestSaveConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
+  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [search, setSearch] = useState('');
   const [tick, setTick] = useState(0);
@@ -366,24 +368,49 @@ export const MasterDataAndUsersModule: React.FC<{
                     <EmailActionLink email={c.emails[0]} />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  data-testid={`btn-toggle-customer-${c.id}`}
-                  onClick={() => {
-                    backend.saveCustomer({ ...c, is_active: !c.is_active });
-                    notifySuccessGreen(
-                      `Cliente ${c.is_active ? 'inactivado' : 'reactivado'} (conservando histórico).`
-                    );
-                    refresh();
-                  }}
-                  className={`px-3 py-1.5 rounded font-semibold border ${
-                    c.is_active
-                      ? 'border-amber-300 bg-amber-50 text-amber-900'
-                      : 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                  }`}
-                >
-                  {c.is_active ? 'Inactivar' : 'Reactivar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid={`btn-toggle-customer-${c.id}`}
+                    onClick={() => {
+                      backend.saveCustomer({ ...c, is_active: !c.is_active });
+                      notifySuccessGreen(
+                        `Cliente ${c.is_active ? 'inactivado' : 'reactivado'} (conservando histórico).`
+                      );
+                      refresh();
+                    }}
+                    className={`px-3 py-1.5 rounded font-semibold border ${
+                      c.is_active
+                        ? 'border-amber-300 bg-amber-50 text-amber-900'
+                        : 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                    }`}
+                  >
+                    {c.is_active ? 'Inactivar' : 'Reactivar'}
+                  </button>
+                  {currentUser.role === 'admin' && (
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-customer-${c.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Cliente «${c.name}» (${c.code})`,
+                          consequence:
+                            'Se eliminará definitivamente al cliente del catálogo. Esta acción puede influir en alguna acción o listado. En los partes de trabajo donde figure, en el campo del cliente aparecerá «Cliente borrado».',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteCustomer(c.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded font-semibold border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 flex items-center gap-1 shadow-2xs"
+                      title="Borrar cliente definitivamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
         </div>
@@ -404,16 +431,41 @@ export const MasterDataAndUsersModule: React.FC<{
                     Cliente: <strong>{cust?.name}</strong> · Contacto: {a.contact_name || '—'}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    backend.saveCustomerAddress({ ...a, is_active: !a.is_active });
-                    refresh();
-                  }}
-                  className="px-3 py-1 rounded border border-slate-300 font-semibold"
-                >
-                  {a.is_active ? 'Inactivar' : 'Reactivar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      backend.saveCustomerAddress({ ...a, is_active: !a.is_active });
+                      refresh();
+                    }}
+                    className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                  >
+                    {a.is_active ? 'Inactivar' : 'Reactivar'}
+                  </button>
+                  {currentUser.role === 'admin' && (
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-address-${a.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Domicilio «${a.alias}» (${a.address_line})`,
+                          consequence:
+                            'Se eliminará definitivamente este domicilio. Esta acción puede influir en alguna acción o listado. En los partes asociados figurará como «Dirección borrada».',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteCustomerAddress(a.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3 py-1 rounded border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-semibold flex items-center gap-1 shadow-2xs"
+                      title="Borrar domicilio definitivamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -443,20 +495,45 @@ export const MasterDataAndUsersModule: React.FC<{
                     <strong>{formatCentsToEUR(a.sale_price_cents)}</strong>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    backend.saveArticle({
-                      ...a,
-                      purchase_price_cents: a.purchase_price_cents ?? 0,
-                      is_active: !a.is_active,
-                    });
-                    refresh();
-                  }}
-                  className="px-3 py-1 rounded border border-slate-300 font-semibold"
-                >
-                  {a.is_active ? 'Inactivar' : 'Reactivar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      backend.saveArticle({
+                        ...a,
+                        purchase_price_cents: a.purchase_price_cents ?? 0,
+                        is_active: !a.is_active,
+                      });
+                      refresh();
+                    }}
+                    className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                  >
+                    {a.is_active ? 'Inactivar' : 'Reactivar'}
+                  </button>
+                  {currentUser.role === 'admin' && (
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-article-${a.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Artículo «${a.name}» (${a.code})`,
+                          consequence:
+                            'Se eliminará definitivamente el artículo del maestro. Esta acción puede influir en alguna acción o listado. En los partes de trabajo donde figure en las líneas de material consumido aparecerá como «Artículo borrado».',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteArticle(a.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3 py-1 rounded border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-semibold flex items-center gap-1 shadow-2xs"
+                      title="Borrar artículo definitivamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
         </div>
@@ -523,16 +600,41 @@ export const MasterDataAndUsersModule: React.FC<{
                       {s.phone ? `· Tel: ${s.phone}` : ''} {s.email ? `· Email: ${s.email}` : ''}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      backend.saveSupplier({ ...s, is_active: !s.is_active });
-                      refresh();
-                    }}
-                    className="px-3 py-1 rounded border border-slate-300 font-semibold"
-                  >
-                    {s.is_active ? 'Inactivar' : 'Reactivar'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        backend.saveSupplier({ ...s, is_active: !s.is_active });
+                        refresh();
+                      }}
+                      className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                    >
+                      {s.is_active ? 'Inactivar' : 'Reactivar'}
+                    </button>
+                    {currentUser.role === 'admin' && (
+                      <button
+                        type="button"
+                        data-testid={`btn-delete-supplier-${s.id}`}
+                        onClick={() => {
+                          requestDeleteConfirmation({
+                            recordName: `Proveedor «${s.name}»`,
+                            consequence:
+                              'Se eliminará definitivamente el proveedor del catálogo. Esta acción puede influir en alguna acción o listado. En las referencias de compras y artículos figurará como «Proveedor borrado».',
+                            requireReason: false,
+                            onConfirm: () => {
+                              backend.deleteSupplier(s.id);
+                              refresh();
+                            },
+                          });
+                        }}
+                        className="px-3 py-1 rounded border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-semibold flex items-center gap-1 shadow-2xs"
+                        title="Borrar proveedor definitivamente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Borrar</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             {suppliers.filter(
@@ -562,16 +664,41 @@ export const MasterDataAndUsersModule: React.FC<{
                   {rt.periodicity_value} {rt.periodicity_unit}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  backend.saveReviewType({ ...rt, is_active: !rt.is_active });
-                  refresh();
-                }}
-                className="px-3 py-1 rounded border border-slate-300 font-semibold"
-              >
-                {rt.is_active ? 'Inactivar' : 'Reactivar'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    backend.saveReviewType({ ...rt, is_active: !rt.is_active });
+                    refresh();
+                  }}
+                  className="px-3 py-1 rounded border border-slate-300 font-semibold"
+                >
+                  {rt.is_active ? 'Inactivar' : 'Reactivar'}
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid={`btn-delete-review-type-${rt.id}`}
+                    onClick={() => {
+                      requestDeleteConfirmation({
+                        recordName: `Tipo de Revisión «${rt.name}»`,
+                        consequence:
+                          'Se eliminará definitivamente este tipo de revisión. Esta acción puede influir en alguna acción o listado. En mantenimientos periódicos figurará como «Revisión borrada».',
+                        requireReason: false,
+                        onConfirm: () => {
+                          backend.deleteReviewType(rt.id);
+                          refresh();
+                        },
+                      });
+                    }}
+                    className="px-3 py-1 rounded border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-semibold flex items-center gap-1 shadow-2xs"
+                    title="Borrar tipo de revisión definitivamente"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Borrar</span>
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -686,6 +813,30 @@ export const MasterDataAndUsersModule: React.FC<{
                   >
                     {u.is_active ? 'Inactivar Usuario' : 'Reactivar Usuario'}
                   </button>
+
+                  {!isSelf && currentUser.role === 'admin' && (
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-user-${u.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Usuario «${u.full_name}» (${u.email})`,
+                          consequence:
+                            'Se eliminará definitivamente al usuario del sistema y sus claves de acceso. Esta acción puede influir en alguna acción o listado. En los partes de trabajo y asignaciones previas figurará como «Operario borrado».',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteUserProfile(u.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3 py-1 rounded border border-red-300 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                      title="Borrar usuario definitivamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -1726,7 +1877,7 @@ export const AdminSystemModule: React.FC<{
   onBack: () => void;
   onRefresh: () => void;
 }> = ({ backend, initialSection = 'audit', filterEntityId = '', onBack, onRefresh }) => {
-  const { requestSaveConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
+  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
   const [section, setSection] = useState(initialSection);
   const [tick, setTick] = useState(0);
   const refresh = () => {

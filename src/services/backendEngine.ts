@@ -523,6 +523,43 @@ export class InstallationBackendEngine {
     return { ...updated };
   }
 
+  public deleteUserProfile(targetUserId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    if (targetUserId === admin.id) {
+      throw new ValidationError('No puedes borrar tu propio usuario administrador en sesión activa.');
+    }
+    const idx = this.state.profiles.findIndex((p) => p.id === targetUserId);
+    if (idx === -1) throw new ValidationError('Usuario no encontrado.');
+    const current = this.state.profiles[idx];
+
+    if (current.role === 'admin') {
+      const otherActiveAdmins = this.state.profiles.filter(
+        (p) => p.id !== current.id && p.role === 'admin' && p.is_active
+      );
+      if (otherActiveAdmins.length === 0) {
+        throw new ValidationError('No se puede borrar al único administrador activo de la instalación.');
+      }
+    }
+
+    this.state.profiles.splice(idx, 1);
+    if (this.state.passwords[current.email]) {
+      delete this.state.passwords[current.email];
+    }
+
+    // Inactivar asignaciones activas de partes
+    this.state.work_order_assignments.forEach((asg) => {
+      if (asg.operator_id === targetUserId) {
+        asg.is_active = false;
+      }
+    });
+
+    this.recordAudit(admin, 'usuarios', 'profile', targetUserId, 'BORRADO_USUARIO', {
+      deleted: current,
+    });
+    this.persist();
+  }
+
   public saveUserColumnPreferences(screenKey: string, visibleColumns: string[]): UserProfile {
     const user = this.getCurrentUser();
     const idx = this.state.profiles.findIndex((p) => p.id === user.id);
@@ -627,6 +664,45 @@ export class InstallationBackendEngine {
     }
   }
 
+  public deleteCustomer(customerId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.customers.findIndex((c) => c.id === customerId);
+    if (idx === -1) throw new ValidationError('Cliente no encontrado.');
+    const deletedCustomer = this.state.customers[idx];
+
+    // Eliminar del array de clientes
+    this.state.customers.splice(idx, 1);
+
+    // En los partes de trabajo donde figuraba este cliente:
+    // en el campo del cliente debe figurar 'Cliente borrado'
+    this.state.work_orders.forEach((wo) => {
+      if (wo.customer_id === customerId) {
+        wo.snapshot_customer_name = 'Cliente borrado';
+        wo.snapshot_customer_tax_id = '';
+        wo.updated_at = new Date().toISOString();
+        wo.version += 1;
+      }
+    });
+
+    // Eliminar domicilios vinculados al cliente
+    this.state.customer_addresses = this.state.customer_addresses.filter(
+      (a) => a.customer_id !== customerId
+    );
+
+    // En revisiones periódicas
+    this.state.installation_reviews.forEach((rev) => {
+      if (rev.customer_id === customerId) {
+        rev.notes = rev.notes ? `${rev.notes} [Cliente borrado]` : '[Cliente borrado]';
+      }
+    });
+
+    this.recordAudit(admin, 'maestros', 'customer', customerId, 'BORRADO_CLIENTE', {
+      deleted: deletedCustomer,
+    });
+    this.persist();
+  }
+
   public getCustomerAddresses(customerId?: string, includeInactive = true): CustomerAddress[] {
     const user = this.getCurrentUser();
     return this.state.customer_addresses
@@ -679,6 +755,30 @@ export class InstallationBackendEngine {
     }
   }
 
+  public deleteCustomerAddress(addressId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.customer_addresses.findIndex((a) => a.id === addressId);
+    if (idx === -1) throw new ValidationError('Domicilio no encontrado.');
+    const deletedAddress = this.state.customer_addresses[idx];
+
+    this.state.customer_addresses.splice(idx, 1);
+
+    // En partes de trabajo donde figuraba este domicilio
+    this.state.work_orders.forEach((wo) => {
+      if (wo.customer_address_id === addressId) {
+        wo.snapshot_address_line = 'Dirección borrada';
+        wo.updated_at = new Date().toISOString();
+        wo.version += 1;
+      }
+    });
+
+    this.recordAudit(admin, 'maestros', 'customer_address', addressId, 'BORRADO_DOMICILIO', {
+      deleted: deletedAddress,
+    });
+    this.persist();
+  }
+
   public getSuppliers(includeInactive = true): Supplier[] {
     const user = this.getCurrentUser();
     return this.state.suppliers
@@ -712,6 +812,38 @@ export class InstallationBackendEngine {
       this.persist();
       return { ...created };
     }
+  }
+
+  public deleteSupplier(supplierId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.suppliers.findIndex((s) => s.id === supplierId);
+    if (idx === -1) throw new ValidationError('Proveedor no encontrado.');
+    const deletedSupplier = this.state.suppliers[idx];
+
+    this.state.suppliers.splice(idx, 1);
+
+    // En artículos desvincular proveedor
+    this.state.articles.forEach((a) => {
+      if (a.supplier_id === supplierId) {
+        a.supplier_id = null;
+      }
+    });
+
+    // En compras pendientes
+    this.state.shopping_requests.forEach((req) => {
+      if (req.supplier_id === supplierId) {
+        req.supplier_id = null;
+        if (!req.notes.includes('borrado')) {
+          req.notes = req.notes ? `${req.notes} (Proveedor borrado)` : '(Proveedor borrado)';
+        }
+      }
+    });
+
+    this.recordAudit(admin, 'maestros', 'supplier', supplierId, 'BORRADO_PROVEEDOR', {
+      deleted: deletedSupplier,
+    });
+    this.persist();
   }
 
   public getArticles(includeInactive = true): Article[] {
@@ -784,6 +916,36 @@ export class InstallationBackendEngine {
   // ===========================================================================
   // PARTES DE TRABAJO: PLANIFICACIÓN, ASIGNACIONES, APORTACIONES Y FLUJO DE ESTADOS
   // ===========================================================================
+  public deleteArticle(articleId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.articles.findIndex((a) => a.id === articleId);
+    if (idx === -1) throw new ValidationError('Artículo no encontrado.');
+    const deletedArticle = this.state.articles[idx];
+
+    // Eliminar del catálogo
+    this.state.articles.splice(idx, 1);
+
+    // En los partes de trabajo: en las líneas de material donde aparezca este artículo, figurará 'Artículo borrado'
+    this.state.work_materials.forEach((m) => {
+      if (m.article_id === articleId) {
+        m.article_name_snapshot = 'Artículo borrado';
+        m.article_id = null;
+        m.updated_at = new Date().toISOString();
+      }
+    });
+
+    // Eliminar solicitudes de compra del artículo borrado
+    this.state.shopping_requests = this.state.shopping_requests.filter(
+      (req) => req.article_id !== articleId
+    );
+
+    this.recordAudit(admin, 'maestros', 'article', articleId, 'BORRADO_ARTÍCULO', {
+      deleted: deletedArticle,
+    });
+    this.persist();
+  }
+
   private isOperatorAssignedAndActive(workOrderId: string, operatorId: string): boolean {
     return this.state.work_order_assignments.some(
       (asg) => asg.work_order_id === workOrderId && asg.operator_id === operatorId && asg.is_active
@@ -2231,6 +2393,19 @@ export class InstallationBackendEngine {
     }
   }
 
+  public deleteReviewType(reviewTypeId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.review_types.findIndex((r) => r.id === reviewTypeId);
+    if (idx === -1) throw new ValidationError('Tipo de revisión no encontrado.');
+    const prev = this.state.review_types[idx];
+    this.state.review_types.splice(idx, 1);
+    this.recordAudit(admin, 'revisiones', 'review_type', reviewTypeId, 'BORRADO_TIPO_REVISIÓN', {
+      deleted: prev,
+    });
+    this.persist();
+  }
+
   public getInstallationReviews(): InstallationReview[] {
     this.getCurrentUser();
     return this.state.installation_reviews.map((r) => ({ ...r }));
@@ -2428,6 +2603,22 @@ export class InstallationBackendEngine {
    * Permite reprogramar la fecha de vencimiento de un vencimiento de revisión específico,
    * recalculando la cola de avisos y sincronizando el parte vinculado en caso de existir.
    */
+  public deleteInstallationReview(reviewId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.installation_reviews.findIndex((r) => r.id === reviewId);
+    if (idx === -1) throw new ValidationError('Revisión periódica no encontrada.');
+    const prev = this.state.installation_reviews[idx];
+    this.state.installation_reviews.splice(idx, 1);
+    this.state.review_occurrences = this.state.review_occurrences.filter(
+      (o) => o.installation_review_id !== reviewId
+    );
+    this.recordAudit(admin, 'revisiones', 'installation_review', reviewId, 'BORRADO_REVISIÓN', {
+      deleted: prev,
+    });
+    this.persist();
+  }
+
   public rescheduleReviewOccurrence(params: {
     occurrence_id: string;
     new_due_date: string;
@@ -2790,6 +2981,19 @@ export class InstallationBackendEngine {
   // ===========================================================================
   // 13. FICHAJE Y CONTROL HORARIO
   // ===========================================================================
+  public deleteShoppingRequest(requestId: string): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const idx = this.state.shopping_requests.findIndex((r) => r.id === requestId);
+    if (idx === -1) throw new ValidationError('Solicitud de compra no encontrada.');
+    const prev = this.state.shopping_requests[idx];
+    this.state.shopping_requests.splice(idx, 1);
+    this.recordAudit(admin, 'compras', 'shopping_request', requestId, 'BORRADO_COMPRA', {
+      deleted: prev,
+    });
+    this.persist();
+  }
+
   public getAttendanceSessions(includeDeleted = false): AttendanceSession[] {
     const user = this.getCurrentUser();
     return this.state.attendance_sessions

@@ -237,13 +237,26 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
                 </div>
                 <div>
                   <h3 className="text-lg font-bold">Confirmación de Eliminación</h3>
-                  <p className="text-xs text-red-100">Acción protegida con trazabilidad en auditoría</p>
+                  <p className="text-xs text-red-100">Acción protegida con fondo rojo para administradores</p>
                 </div>
+              </div>
+
+              <div className="bg-red-950/60 border border-red-300/60 rounded-xl p-3.5 space-y-1.5 text-xs text-red-100">
+                <div className="font-bold text-sm text-amber-200 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>Aviso Importante: Influencia en Acciones y Listados</span>
+                </div>
+                <p>
+                  Eliminar este elemento <strong>puede influir en alguna acción o listado del sistema</strong> (partes de trabajo, albaranes, mantenimientos o compras).
+                </p>
+                <p>
+                  Si este elemento aparece en algún parte de trabajo u otro registro, en el campo en el que se haya borrado figurará como <strong>«[Elemento] borrado»</strong> (p. ej. «Cliente borrado», «Artículo borrado»).
+                </p>
               </div>
 
               <div className="bg-red-900/50 border border-red-400/40 rounded-xl p-3.5 space-y-1.5 text-sm">
                 <p>
-                  <span className="font-semibold text-red-200">Registro afectado:</span>{' '}
+                  <span className="font-semibold text-red-200">Registro a eliminar:</span>{' '}
                   <strong className="underline">{deleteModal.recordName}</strong>
                 </p>
                 <p>

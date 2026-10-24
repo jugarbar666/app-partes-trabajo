@@ -865,7 +865,7 @@ export const WorkOrderDetailView: React.FC<{
   const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
   const companySettings = useMemo(() => backend.getCompanySettings(), [backend, tick]);
   const getUserName = (id: string | null) =>
-    profiles.find((p) => p.id === id)?.full_name || id || '—';
+    profiles.find((p) => p.id === id)?.full_name || (id ? 'Operario borrado' : '—');
 
   if (accessError || !wo) {
     return (
@@ -1196,8 +1196,14 @@ export const WorkOrderDetailView: React.FC<{
         </div>
 
         {/* Segunda línea: Nombre del cliente */}
-        <div className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-          {wo.snapshot_customer_name}
+        <div className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          {wo.snapshot_customer_name === 'Cliente borrado' || wo.snapshot_customer_name.includes('borrado') ? (
+            <span className="text-red-700 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-lg text-base inline-flex items-center gap-1.5 font-bold">
+              <AlertTriangle className="w-4 h-4 text-red-600" /> Cliente borrado
+            </span>
+          ) : (
+            wo.snapshot_customer_name
+          )}
         </div>
 
         {/* Tercera línea (abajo en la misma línea): Botón Volver a la izquierda y Situación a la derecha */}
@@ -1817,8 +1823,15 @@ export const WorkOrderDetailView: React.FC<{
                   className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between gap-2 text-xs"
                 >
                   <div>
-                    <div className="font-semibold text-slate-900">
-                      {m.article_name_snapshot} —{' '}
+                    <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                      {m.article_name_snapshot === 'Artículo borrado' ? (
+                        <span className="text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-xs font-bold inline-flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-red-600" /> Artículo borrado
+                        </span>
+                      ) : (
+                        <span>{m.article_name_snapshot}</span>
+                      )}
+                      <span>—</span>
                       <span className="text-blue-700">
                         {m.quantity} {m.unit_snapshot}
                       </span>{' '}

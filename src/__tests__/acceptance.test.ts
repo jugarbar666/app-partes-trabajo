@@ -1203,4 +1203,115 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const loginAfterAdminReset = backend.login('marcos@roma-fontaneria.es', adminChosenPass);
     expect(loginAfterAdminReset.must_change_password).toBe(true);
   });
+
+  it('Escenario 26: Borrado administrativo con influencia en listados y sustitución por «[Elemento] borrado» en partes', () => {
+    // 1. Admin da de alta un cliente, un domicilio, un proveedor y un artículo
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    const clienteTest = backend.saveCustomer({
+      code: 'CLI-BORR',
+      name: 'Comunidad Residencial Borrable',
+      tax_id: 'B99988877',
+      phones: ['+34 600 999 888'],
+      emails: ['borrable@comunidad.es'],
+      main_address: 'Calle Desaparición 12',
+      postal_code: '28001',
+      city: 'Madrid',
+      province: 'Madrid',
+      contact_name: 'Presidente Borrable',
+      notes: 'Cliente para prueba de borrado',
+      is_active: true,
+    });
+
+    const proveedorTest = backend.saveSupplier({
+      name: 'Suministros Borrables S.L.',
+      tax_id: 'B11223344',
+      phone: '+34 912 345 678',
+      email: 'suministros@borrables.es',
+      contact_person: 'Agente Borrable',
+      notes: 'Proveedor de prueba',
+      is_active: true,
+    });
+
+    const articuloTest = backend.saveArticle({
+      code: 'ART-BORR-1',
+      name: 'Válvula Descatalogable 3/4',
+      description: 'Válvula de prueba para borrado',
+      supplier_id: proveedorTest.id,
+      purchase_price_cents: 1500,
+      sale_price_cents: 3500,
+      unit: 'ud',
+      is_active: true,
+    });
+
+    // 2. Se crea un parte de trabajo asignado al cliente con ese artículo consumido
+    const wo = backend.createWorkOrder({
+      customer_id: clienteTest.id,
+      customer_address_id: null,
+      snapshot_customer_name: clienteTest.name,
+      snapshot_customer_tax_id: clienteTest.tax_id,
+      snapshot_contact_name: clienteTest.contact_name || '',
+      snapshot_contact_phone: clienteTest.phones[0] || '',
+      snapshot_contact_email: clienteTest.emails[0] || '',
+      snapshot_address_line: clienteTest.main_address,
+      snapshot_postal_code: clienteTest.postal_code || '',
+      snapshot_city: clienteTest.city || '',
+      snapshot_province: clienteTest.province || '',
+      planned_work: 'Sustitución de válvula en cuarto de calderas',
+      scheduled_at: '2026-10-25T10:00:00.000Z',
+      initial_notes: 'Prueba de borrado maestro',
+      origin_review_occurrence_id: null,
+      operator_ids: ['usr-oper-1'],
+    });
+
+    // Se añade el material al parte
+    backend.addWorkMaterial({
+      work_order_id: wo.id,
+      article_id: articuloTest.id,
+      article_name_snapshot: articuloTest.name,
+      unit_snapshot: articuloTest.unit,
+      quantity: 2,
+      unit_price_cents: articuloTest.sale_price_cents,
+      notes: 'Línea de prueba',
+    });
+
+    expect(backend.getWorkOrderById(wo.id).snapshot_customer_name).toBe('Comunidad Residencial Borrable');
+    expect(backend.getWorkMaterials(wo.id)[0].article_name_snapshot).toBe('Válvula Descatalogable 3/4');
+
+    // 3. Un operario no puede borrar maestros
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    expect(() => backend.deleteCustomer(clienteTest.id)).toThrow();
+    expect(() => backend.deleteArticle(articuloTest.id)).toThrow();
+    expect(() => backend.deleteSupplier(proveedorTest.id)).toThrow();
+
+    // 4. Admin borra el cliente: desaparece de clientes y en el parte figura como 'Cliente borrado'
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.deleteCustomer(clienteTest.id);
+
+    const clientesRestantes = backend.getCustomers(true);
+    expect(clientesRestantes.some((c) => c.id === clienteTest.id)).toBe(false);
+
+    const woTrasBorrarCliente = backend.getWorkOrderById(wo.id);
+    expect(woTrasBorrarCliente.snapshot_customer_name).toBe('Cliente borrado');
+
+    // 5. Admin borra el artículo: desaparece de artículos y en la línea de material del parte figura 'Artículo borrado'
+    backend.deleteArticle(articuloTest.id);
+
+    const articulosRestantes = backend.getArticles(true);
+    expect(articulosRestantes.some((a) => a.id === articuloTest.id)).toBe(false);
+
+    const materialesTrasBorrarArt = backend.getWorkMaterials(wo.id);
+    expect(materialesTrasBorrarArt[0].article_name_snapshot).toBe('Artículo borrado');
+
+    // 6. Admin borra el proveedor
+    backend.deleteSupplier(proveedorTest.id);
+    const proveedoresRestantes = backend.getSuppliers(true);
+    expect(proveedoresRestantes.some((s) => s.id === proveedorTest.id)).toBe(false);
+
+    // 7. Admin no puede borrarse a sí mismo
+    const adminActual = backend.getCurrentUser();
+    expect(() => backend.deleteUserProfile(adminActual.id)).toThrow(
+      'No puedes borrar tu propio usuario administrador'
+    );
+  });
 });

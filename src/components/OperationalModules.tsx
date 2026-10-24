@@ -45,7 +45,7 @@ export const ReviewsAndNotificationsModule: React.FC<{
     amountCents?: number | null;
   }) => void;
 }> = ({ backend, onBack, onRefresh, onOpenCreateWorkOrderFromReview }) => {
-  const { requestSaveConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
+  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
   const [tick, setTick] = useState(0);
   const refresh = () => {
     setTick((t) => t + 1);
@@ -442,6 +442,30 @@ export const ReviewsAndNotificationsModule: React.FC<{
                     </button>
                   )}
 
+                  {rev && (
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-review-${rev.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Mantenimiento «${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}»`,
+                          consequence:
+                            'Se eliminará este plan de mantenimiento periódico y todos sus vencimientos asociados. Esta acción puede influir en alguna acción o listado.',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteInstallationReview(rev.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs"
+                      title="Borrar mantenimiento periódico definitivamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
+
                   {occ.status !== 'realizada' && !occ.linked_work_order_id && rev && (
                     <button
                       type="button"
@@ -802,7 +826,7 @@ export const ShoppingListModule: React.FC<{
   onBack: () => void;
   onRefresh: () => void;
 }> = ({ backend, onBack, onRefresh }) => {
-  const { requestSaveConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
+  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
   const [tick, setTick] = useState(0);
   const refresh = () => {
     setTick((t) => t + 1);
@@ -1292,7 +1316,7 @@ export const ShoppingListModule: React.FC<{
                         requestSaveConfirmation({
                           title: 'Marcar Producto como Comprado',
                           changes: [
-                            { label: 'Artículo', value: art?.name || item.article_id },
+                            { label: 'Artículo', value: art?.name || item.article_id || 'Artículo' },
                             { label: 'Unidades compradas', value: String(q) },
                           ],
                           onConfirm: () => {
@@ -1307,6 +1331,26 @@ export const ShoppingListModule: React.FC<{
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                     >
                       <Check className="w-3.5 h-3.5" /> Marcar Comprado
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`btn-delete-shopping-${item.id}`}
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Solicitud de compra «${art?.name || 'Material'}»`,
+                          consequence:
+                            'Se eliminará definitivamente esta solicitud de la lista de compra.',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteShoppingRequest(item.id);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
+                      title="Eliminar solicitud de compra"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Borrar
                     </button>
                   </div>
                 ) : (
