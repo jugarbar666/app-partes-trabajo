@@ -260,6 +260,41 @@ export const MasterDataAndUsersModule: React.FC<{
     });
   };
 
+  const handleExportCustomers = () => {
+    exportRowsToExcel({
+      fileName: 'Exportacion_Clientes.xlsx',
+      sheetName: 'Clientes',
+      columns: [
+        { key: 'code', header: 'Código' },
+        { key: 'name', header: 'Nombre / Razón Social' },
+        { key: 'tax_id', header: 'NIF / CIF' },
+        { key: 'contact_name', header: 'Persona de Contacto' },
+        { key: 'phone', header: 'Teléfono' },
+        { key: 'email', header: 'Email' },
+        { key: 'main_address', header: 'Domicilio / Dirección' },
+        { key: 'postal_code', header: 'Código Postal' },
+        { key: 'city', header: 'Población' },
+        { key: 'province', header: 'Provincia' },
+        { key: 'notes', header: 'Observaciones' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: customers.map((c) => ({
+        code: c.code,
+        name: c.name,
+        tax_id: c.tax_id || '',
+        contact_name: c.contact_name || '',
+        phone: c.phones.join(', ') || '',
+        email: c.emails.join(', ') || '',
+        main_address: c.main_address || '',
+        postal_code: c.postal_code || '',
+        city: c.city || '',
+        province: c.province || '',
+        notes: c.notes || '',
+        active: c.is_active ? 'Activo' : 'Inactivo',
+      })),
+    });
+  };
+
   const q = search.trim().toLowerCase();
 
   const createButtonLabel: Record<typeof activeTab, string> = {
@@ -333,7 +368,32 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 1. LISTADO DE CLIENTES */}
       {activeTab === 'customers' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Clientes:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => downloadImportTemplateExcel('customers')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
+                title="Descargar archivo Excel con plantilla oficial de clientes (incluye código postal, población y provincia)"
+              >
+                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCustomers}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                title="Exportar catálogo completo de clientes a Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Clientes (Excel)
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
           {customers
             .filter(
               (c) =>
@@ -420,6 +480,7 @@ export const MasterDataAndUsersModule: React.FC<{
                 </div>
               </div>
             ))}
+          </div>
         </div>
       )}
 

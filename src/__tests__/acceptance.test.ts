@@ -1562,6 +1562,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
 
     // 3. Crear el primer cliente real
     const nuevoCliente = cleanBackend.saveCustomer({
+      code: 'CLI-0001',
       name: 'Comunidad Propietarios Roma 24',
       tax_id: 'H28001122',
       phones: ['655112233'],
@@ -1583,13 +1584,13 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       customer_address_id: null,
       snapshot_customer_name: nuevoCliente.name,
       snapshot_customer_tax_id: nuevoCliente.tax_id,
-      snapshot_contact_name: nuevoCliente.contact_name,
+      snapshot_contact_name: nuevoCliente.contact_name || '',
       snapshot_contact_phone: '655112233',
       snapshot_contact_email: 'roma24@comunidad.es',
       snapshot_address_line: nuevoCliente.main_address,
-      snapshot_postal_code: nuevoCliente.postal_code,
-      snapshot_city: nuevoCliente.city,
-      snapshot_province: nuevoCliente.province,
+      snapshot_postal_code: nuevoCliente.postal_code || '',
+      snapshot_city: nuevoCliente.city || '',
+      snapshot_province: nuevoCliente.province || '',
       planned_work: 'Revisión y cambio de bajante general',
       scheduled_at: '2026-11-01T08:00:00Z',
       initial_notes: 'Llamar antes de ir',
@@ -1598,5 +1599,66 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(primerParte.number_seq).toBe(1);
     expect(primerParte.code).toBe('PT-2026-0001');
     expect(cleanBackend.getWorkOrders().length).toBe(1);
+  });
+
+  it('Escenario 31: La plantilla y el proceso de importación/exportación de clientes incluyen Código Postal, Población, Provincia y Contacto coincidentes con la ficha', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Simular importación con fila que contiene CP, Población, Provincia y Contacto
+    const rawRow = {
+      Codigo_Cliente: 'CLI-5500',
+      Nombre_Razon_Social: 'Comunidad Plaza Mayor 15',
+      NIF_CIF: 'H28555666',
+      Persona_Contacto: 'Fernando Administrador',
+      Telefono: '611222333',
+      Email: 'fincas@plazamayor.es',
+      Direccion_Principal: 'Plaza Mayor 15, Escalera B',
+      Codigo_Postal: '28012',
+      Poblacion: 'Madrid',
+      Provincia: 'Madrid',
+      Observaciones: 'Entrada por zaguán lateral',
+    };
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'customers',
+      rawRows: [rawRow],
+      columnMapping: {
+        code: 'Codigo_Cliente',
+        name: 'Nombre_Razon_Social',
+        tax_id: 'NIF_CIF',
+        contact_name: 'Persona_Contacto',
+        phone: 'Telefono',
+        email: 'Email',
+        main_address: 'Direccion_Principal',
+        postal_code: 'Codigo_Postal',
+        city: 'Poblacion',
+        province: 'Provincia',
+        notes: 'Observaciones',
+      },
+    });
+
+    expect(preview.validNewCount).toBe(1);
+    expect(preview.errorCount).toBe(0);
+
+    const exec = executeValidatedImport({
+      backend,
+      entityType: 'customers',
+      fileName: 'Plantilla_Clientes.xlsx',
+      conflictPolicy: 'reject_duplicates',
+      preview,
+    });
+
+    expect(exec.inserted).toBe(1);
+
+    // 2. Comprobar que en la ficha del cliente guardado en base de datos figuran todos estos datos
+    const clienteGuardado = backend.getCustomers().find((c) => c.code === 'CLI-5500')!;
+    expect(clienteGuardado).toBeDefined();
+    expect(clienteGuardado.name).toBe('Comunidad Plaza Mayor 15');
+    expect(clienteGuardado.contact_name).toBe('Fernando Administrador');
+    expect(clienteGuardado.main_address).toBe('Plaza Mayor 15, Escalera B');
+    expect(clienteGuardado.postal_code).toBe('28012');
+    expect(clienteGuardado.city).toBe('Madrid');
+    expect(clienteGuardado.province).toBe('Madrid');
   });
 });
