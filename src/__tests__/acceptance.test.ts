@@ -1539,4 +1539,64 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(trasBorrarPrimero.find((w) => w.id === 'wo-2')?.number_seq).toBe(1);
     expect(trasBorrarPrimero.find((w) => w.id === 'wo-2')?.code).toBe('PT-2026-0001');
   });
+
+  it('Escenario 30: Base de datos limpia de registros para inicio de empresa (0 clientes, 0 proveedores, 0 partes, 0 artículos, 1 administrador inicial)', () => {
+    const cleanBackend = new InstallationBackendEngine('fontaneria-roma-limpia', false, 'clean');
+    const admin = cleanBackend.login('admin@climalux-demo.es', 'Admin1234!');
+    expect(admin.role).toBe('admin');
+
+    // 1. Todas las colecciones maestras y operativas deben estar vacías de registros
+    expect(cleanBackend.getCustomers().length).toBe(0);
+    expect(cleanBackend.getSuppliers().length).toBe(0);
+    expect(cleanBackend.getArticles().length).toBe(0);
+    expect(cleanBackend.getWorkOrders().length).toBe(0);
+    expect(cleanBackend.getShoppingRequests().length).toBe(0);
+    expect(cleanBackend.getAttendanceSessions().length).toBe(0);
+    expect(cleanBackend.getAuditLog().length).toBe(0);
+
+    // 2. Únicamente existe 1 usuario registrado (la cuenta de administrador para arrancar)
+    const perfiles = cleanBackend.getProfiles();
+    expect(perfiles.length).toBe(1);
+    expect(perfiles[0].id).toBe('usr-admin-1');
+    expect(perfiles[0].role).toBe('admin');
+
+    // 3. Crear el primer cliente real
+    const nuevoCliente = cleanBackend.saveCustomer({
+      name: 'Comunidad Propietarios Roma 24',
+      tax_id: 'H28001122',
+      phones: ['655112233'],
+      emails: ['roma24@comunidad.es'],
+      main_address: 'Calle Roma 24',
+      postal_code: '28028',
+      city: 'Madrid',
+      province: 'Madrid',
+      contact_name: 'Presidente Roma 24',
+      notes: 'Llaves en el portal',
+      is_active: true,
+    });
+    expect(cleanBackend.getCustomers().length).toBe(1);
+    expect(nuevoCliente.code).toBe('CLI-0001');
+
+    // 4. Crear el primer parte de trabajo: debe recibir la secuencia 1 y código PT-2026-0001
+    const primerParte = cleanBackend.createWorkOrder({
+      customer_id: nuevoCliente.id,
+      customer_address_id: null,
+      snapshot_customer_name: nuevoCliente.name,
+      snapshot_customer_tax_id: nuevoCliente.tax_id,
+      snapshot_contact_name: nuevoCliente.contact_name,
+      snapshot_contact_phone: '655112233',
+      snapshot_contact_email: 'roma24@comunidad.es',
+      snapshot_address_line: nuevoCliente.main_address,
+      snapshot_postal_code: nuevoCliente.postal_code,
+      snapshot_city: nuevoCliente.city,
+      snapshot_province: nuevoCliente.province,
+      planned_work: 'Revisión y cambio de bajante general',
+      scheduled_at: '2026-11-01T08:00:00Z',
+      initial_notes: 'Llamar antes de ir',
+      operator_ids: [admin.id],
+    });
+    expect(primerParte.number_seq).toBe(1);
+    expect(primerParte.code).toBe('PT-2026-0001');
+    expect(cleanBackend.getWorkOrders().length).toBe(1);
+  });
 });

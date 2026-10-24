@@ -999,3 +999,92 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
     import_jobs: [],
   };
 }
+
+/**
+ * Estado limpio sin registros para arranque de nueva empresa en producción o pruebas reales.
+ * Deja todas las bases de datos vacías (clientes, proveedores, artículos, partes, revisiones, compras, fichajes, etc.)
+ * conservando únicamente la cuenta inicial de Administración para poder iniciar sesión y gestionar el alta de datos.
+ */
+export function createCleanDatabaseState(installationId = 'instalaciones-climalux-demo'): DatabaseState {
+  const nowIso = new Date().toISOString();
+
+  const profiles: UserProfile[] = [
+    {
+      id: 'usr-admin-1',
+      full_name: 'Administrador (Gestión)',
+      dni: '12345678A',
+      email: 'admin@climalux-demo.es',
+      phone: '+34 600 111 222',
+      role: 'admin',
+      is_active: true,
+      column_preferences: {},
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
+  ];
+
+  return {
+    installationId,
+    company_settings: {
+      id: 1,
+      company_name: 'Fontanería Roma',
+      tax_id: 'B28991100',
+      contact_phone: '+34 910 001 122',
+      contact_email: 'administracion@climalux-demo.es',
+      address: 'Calle Mayor 1',
+      postal_code: '28001',
+      city: 'Madrid',
+      province: 'Madrid',
+      notification_email: 'avisos@climalux-demo.es',
+      work_order_prefix: 'PT',
+      work_order_next_seq: 1,
+      timezone: 'Europe/Madrid',
+      default_work_start_time: '08:00',
+      default_work_end_time: '18:00',
+      locale: 'es-ES',
+      currency: 'EUR',
+      date_format: 'dd/mm/aaaa',
+      time_format: '24h',
+      updated_at: nowIso,
+    },
+    profiles,
+    passwords: {
+      'admin@climalux-demo.es': 'Admin1234!',
+    },
+    invitations: [],
+    customers: [],
+    customer_addresses: [],
+    suppliers: [],
+    articles: [],
+    work_orders: [],
+    work_order_admin: [],
+    work_order_assignments: [],
+    work_entries: [],
+    work_sessions: [],
+    work_materials: [],
+    work_files: [],
+    work_signatures: [],
+    work_order_events: [],
+    review_types: [
+      {
+        id: 'rt-1',
+        name: 'Mantenimiento Preventivo Fontanería y Redes de Agua',
+        suggested_price_cents: 12000,
+        periodicity_unit: 'months',
+        periodicity_value: 12,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    ],
+    installation_reviews: [],
+    review_occurrences: [],
+    notification_outbox: [],
+    shopping_requests: [],
+    attendance_sessions: [],
+    attendance_corrections: [],
+    backup_jobs: [],
+    audit_log: [],
+    import_jobs: [],
+  };
+}

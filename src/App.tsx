@@ -875,13 +875,24 @@ const MainApplicationContent: React.FC = () => {
     }
   };
 
-  const handleSwitchSessionRoleDemo = (email: string, pass: string) => {
+  const handleSwitchSessionRoleDemo = (email: string, pass?: string) => {
     try {
-      const u = backend.login(email, pass);
-      setLoggedUser(u);
-      setRouteStack(['dashboard']);
-      setSelectedWorkOrderId(null);
-      setMobileMenuOpen(false);
+      const target = backend.getProfiles().find((p) => p.email.toLowerCase() === email.toLowerCase());
+      if (target) {
+        backend.setSessionUser(target.id);
+        setLoggedUser(target);
+        setRouteStack(['dashboard']);
+        setSelectedWorkOrderId(null);
+        setMobileMenuOpen(false);
+        return;
+      }
+      if (pass) {
+        const u = backend.login(email, pass);
+        setLoggedUser(u);
+        setRouteStack(['dashboard']);
+        setSelectedWorkOrderId(null);
+        setMobileMenuOpen(false);
+      }
     } catch (err: any) {
       notifyError(err?.message);
     }
@@ -1232,16 +1243,16 @@ const MainApplicationContent: React.FC = () => {
               data-testid="select-active-session-user"
               value={loggedUser.email}
               onChange={(e) => {
-                const email = e.target.value;
-                const pass = email.startsWith('admin') ? 'Admin1234!' : 'Oper1234!';
-                handleSwitchSessionRoleDemo(email, pass);
+                handleSwitchSessionRoleDemo(e.target.value);
               }}
               className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b1120] border border-slate-700 text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
             >
-              <option value="admin@climalux-demo.es">Elena Martín (Admin)</option>
-              <option value="carlos@climalux-demo.es">Carlos Gómez (Operario 1)</option>
-              <option value="lucia@climalux-demo.es">Lucía Fernández (Operario 2)</option>
-              <option value="david@climalux-demo.es">David Ruiz (Operario 3)</option>
+              {backend.getProfiles().map((p) => (
+                <option key={p.id} value={p.email}>
+                  {p.role === 'admin' ? '👤 ' : '🔧 '}
+                  {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
+                </option>
+              ))}
             </select>
 
             <div className="flex items-center justify-between pt-0.5">
@@ -1525,9 +1536,7 @@ const MainApplicationContent: React.FC = () => {
               aria-label="Cambiar cuenta activa (Admin u Operario)"
               value={loggedUser.email}
               onChange={(e) => {
-                const email = e.target.value;
-                const pass = email.startsWith('admin') ? 'Admin1234!' : 'Oper1234!';
-                handleSwitchSessionRoleDemo(email, pass);
+                handleSwitchSessionRoleDemo(e.target.value);
               }}
               className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none ${
                 isAdmin
@@ -1535,10 +1544,12 @@ const MainApplicationContent: React.FC = () => {
                   : 'bg-blue-50 border-blue-300 text-blue-800'
               }`}
             >
-              <option value="admin@climalux-demo.es">👤 Admin (Elena)</option>
-              <option value="carlos@climalux-demo.es">👷 Operario 1 (Carlos)</option>
-              <option value="lucia@climalux-demo.es">👷 Operario 2 (Lucía)</option>
-              <option value="david@climalux-demo.es">👷 Operario 3 (David)</option>
+              {backend.getProfiles().map((p) => (
+                <option key={p.id} value={p.email}>
+                  {p.role === 'admin' ? '👤 ' : '👷 '}
+                  {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
+                </option>
+              ))}
             </select>
 
             <span className="text-xs text-slate-500 hidden md:inline">

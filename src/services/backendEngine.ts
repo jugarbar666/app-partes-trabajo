@@ -40,7 +40,7 @@ import {
   parseDateRobust,
   sanitizeTimezone,
 } from '../utils/formatters';
-import { createDemoSeedState, DatabaseState } from './seedData';
+import { createDemoSeedState, createCleanDatabaseState, DatabaseState } from './seedData';
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -80,8 +80,14 @@ export class InstallationBackendEngine {
   private simulatedBackupFailure = false;
   private storageKey: string;
 
-  constructor(installationId = 'instalaciones-climalux-demo', persistToStorage = true) {
-    this.storageKey = `agy_partes_installation_v3_${installationId}`;
+  constructor(
+    installationId = 'instalaciones-climalux-demo',
+    persistToStorage = true,
+    seedMode?: 'clean' | 'demo'
+  ) {
+    this.storageKey = `agy_partes_installation_v4_${installationId}`;
+    const effectiveMode =
+      seedMode ?? (installationId.startsWith('test') || installationId.includes('empresa') ? 'demo' : 'clean');
     if (persistToStorage && typeof window !== 'undefined' && window.localStorage) {
       const saved = window.localStorage.getItem(this.storageKey);
       if (saved) {
@@ -113,7 +119,10 @@ export class InstallationBackendEngine {
         }
       }
     }
-    this.state = createDemoSeedState(installationId);
+    this.state =
+      effectiveMode === 'demo'
+        ? createDemoSeedState(installationId)
+        : createCleanDatabaseState(installationId);
     this.persist();
   }
 
@@ -130,6 +139,16 @@ export class InstallationBackendEngine {
   public resetToDemoSeed(): void {
     this.state = createDemoSeedState(this.state.installationId);
     this.persist();
+  }
+
+  public resetToCleanState(): void {
+    this.state = createCleanDatabaseState(this.state.installationId);
+    this.persist();
+  }
+
+  public clearAllDatabaseRecords(): void {
+    this.requireAdmin();
+    this.resetToCleanState();
   }
 
   public exportFullSnapshot(): DatabaseState {
@@ -3613,4 +3632,4 @@ export class InstallationBackendEngine {
   }
 }
 
-export const defaultBackend = new InstallationBackendEngine('instalaciones-climalux-demo', true);
+export const defaultBackend = new InstallationBackendEngine('instalaciones-climalux-demo', true, 'clean');
