@@ -1438,4 +1438,105 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(reLogin.id).toBe(reAltaUser.id);
     expect(reLogin.must_change_password).toBe(true);
   });
+
+  it('Escenario 29: Al eliminar un parte, se renumeran todos los partes existentes (anteriores se mantienen, posteriores se reordenan sin salto)', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Crear un 5.º parte para tener exactamente [1, 2, 3, 4, 5]
+    const wo5 = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Quinto',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Persona Contacto 5',
+      snapshot_contact_phone: '600000005',
+      snapshot_contact_email: 'contacto5@test.es',
+      snapshot_address_line: 'Calle Quinta 5',
+      snapshot_postal_code: '28001',
+      snapshot_city: 'Madrid',
+      snapshot_province: 'Madrid',
+      planned_work: 'Instalación de caldera 5',
+      scheduled_at: '2026-10-30T10:00:00Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+
+    expect(wo5.number_seq).toBe(5);
+    expect(wo5.code).toBe('PT-2026-0005');
+
+    const antes = backend.getWorkOrders({ includeArchived: true });
+    expect(antes.map((w) => w.number_seq).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+
+    // 2. Eliminar definitivamente el parte 3 ('wo-3')
+    const wo3 = antes.find((w) => w.number_seq === 3)!;
+    expect(wo3).toBeDefined();
+    expect(wo3.id).toBe('wo-3');
+
+    backend.permanentDeleteWorkOrder('wo-3');
+
+    // 3. Comprobar que los partes restantes se han renumerado:
+    // Los anteriores (1 y 2) se quedan con su número.
+    // Los siguientes (el 4 pasa a 3, y el 5 pasa a 4)
+    const despues = backend.getWorkOrders({ includeArchived: true }).sort((a, b) => a.number_seq - b.number_seq);
+
+    expect(despues.length).toBe(4);
+    expect(despues.map((w) => w.number_seq)).toEqual([1, 2, 3, 4]);
+    expect(despues.map((w) => w.code)).toEqual([
+      'PT-2026-0001',
+      'PT-2026-0002',
+      'PT-2026-0003',
+      'PT-2026-0004',
+    ]);
+
+    // El parte 1 (wo-1) y el parte 2 (wo-2) no cambiaron de código
+    expect(despues.find((w) => w.id === 'wo-1')?.code).toBe('PT-2026-0001');
+    expect(despues.find((w) => w.id === 'wo-2')?.code).toBe('PT-2026-0002');
+
+    // El antiguo wo-4 ahora es el 3 con código PT-2026-0003
+    expect(despues.find((w) => w.id === 'wo-4')?.code).toBe('PT-2026-0003');
+    expect(despues.find((w) => w.id === 'wo-4')?.number_seq).toBe(3);
+
+    // El antiguo wo-5 ahora es el 4 con código PT-2026-0004
+    expect(despues.find((w) => w.id === wo5.id)?.code).toBe('PT-2026-0004');
+    expect(despues.find((w) => w.id === wo5.id)?.number_seq).toBe(4);
+
+    // 4. Crear un nuevo parte tras la renumeración:
+    // Debe recibir correlativamente el número 5 sin ningún hueco
+    const woNuevo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Sexto Continuo',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Persona Contacto 6',
+      snapshot_contact_phone: '600000006',
+      snapshot_contact_email: 'contacto6@test.es',
+      snapshot_address_line: 'Calle Sexta 6',
+      snapshot_postal_code: '28001',
+      snapshot_city: 'Madrid',
+      snapshot_province: 'Madrid',
+      planned_work: 'Revisión continua',
+      scheduled_at: '2026-10-31T10:00:00Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+
+    expect(woNuevo.number_seq).toBe(5);
+    expect(woNuevo.code).toBe('PT-2026-0005');
+
+    // 5. Eliminar el primer parte (el 1) y comprobar que el 2 pasa a 1, el 3 a 2, etc.
+    backend.permanentDeleteWorkOrder('wo-1');
+    const trasBorrarPrimero = backend.getWorkOrders({ includeArchived: true }).sort((a, b) => a.number_seq - b.number_seq);
+
+    expect(trasBorrarPrimero.length).toBe(4);
+    expect(trasBorrarPrimero.map((w) => w.number_seq)).toEqual([1, 2, 3, 4]);
+    expect(trasBorrarPrimero.map((w) => w.code)).toEqual([
+      'PT-2026-0001',
+      'PT-2026-0002',
+      'PT-2026-0003',
+      'PT-2026-0004',
+    ]);
+    // El antiguo wo-2 ahora tiene número 1 y código PT-2026-0001
+    expect(trasBorrarPrimero.find((w) => w.id === 'wo-2')?.number_seq).toBe(1);
+    expect(trasBorrarPrimero.find((w) => w.id === 'wo-2')?.code).toBe('PT-2026-0001');
+  });
 });

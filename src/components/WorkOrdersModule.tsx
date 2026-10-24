@@ -2478,10 +2478,12 @@ export const WorkOrderDetailView: React.FC<{
                 data-testid="btn-confirm-delete-wo-step2"
                 onClick={() => {
                   try {
+                    const deletedCode = wo.code;
                     backend.permanentDeleteWorkOrder(wo.id);
                     setDeleteConfirmStep(null);
+                    onRefresh?.();
                     notifySuccessGreen(
-                      `Parte ${wo.code} y todos sus datos han sido destruidos y eliminados por completo sin dejar rastro.`
+                      `Parte ${deletedCode} eliminado definitivamente y partes restantes renumerados de forma continua sin dejar rastro.`
                     );
                     onBack();
                   } catch (err: any) {

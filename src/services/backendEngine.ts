@@ -2302,6 +2302,59 @@ export class InstallationBackendEngine {
         JSON.stringify(entry.changes_json || {}).indexOf(woCode) === -1
     );
 
+    // 12. Renumerar todos los partes existentes independientemente del estado en que estén:
+    // los anteriores conservan su número y los siguientes se ordenan correlativamente
+    // cerrando cualquier salto en la secuencia para que no se perciba que se ha eliminado ningún parte.
+    const sortedRemaining = [...this.state.work_orders].sort((a, b) => {
+      const seqA = a.number_seq ?? 0;
+      const seqB = b.number_seq ?? 0;
+      if (seqA !== seqB) return seqA - seqB;
+      return a.created_at.localeCompare(b.created_at);
+    });
+
+    sortedRemaining.forEach((item, index) => {
+      const newSeq = index + 1;
+      if (item.number_seq !== newSeq) {
+        const oldCode = item.code;
+        item.number_seq = newSeq;
+
+        // Formar el nuevo código manteniendo prefijo y año
+        const match = oldCode.match(/^(.*)-(\d{4})-(\d+)$/);
+        const prefix = match ? match[1] : this.state.company_settings.work_order_prefix;
+        const year = match ? match[2] : new Date(item.created_at || Date.now()).getFullYear();
+        const newCode = `${prefix}-${year}-${String(newSeq).padStart(4, '0')}`;
+        item.code = newCode;
+
+        // Actualizar el código en resúmenes de firmas vinculadas
+        this.state.work_signatures.forEach((sig) => {
+          if (sig.work_order_id === item.id && sig.signed_summary_json) {
+            sig.signed_summary_json.work_order_code = newCode;
+          }
+        });
+
+        // Actualizar el código en eventos del parte
+        this.state.work_order_events.forEach((ev) => {
+          if (ev.work_order_id === item.id && ev.metadata && typeof ev.metadata.code === 'string') {
+            ev.metadata.code = newCode;
+          }
+        });
+
+        // Actualizar logs de auditoría para no dejar rastro del código antiguo
+        this.state.audit_log.forEach((log) => {
+          if (log.entity_id === item.id) {
+            if (log.changes_json && typeof log.changes_json === 'object') {
+              if (log.changes_json.code === oldCode) {
+                log.changes_json.code = newCode;
+              }
+            }
+          }
+        });
+      }
+    });
+
+    // 13. Reajustar el siguiente correlativo para que nuevas altas continúen sin saltos
+    this.state.company_settings.work_order_next_seq = this.state.work_orders.length + 1;
+
     this.persist();
   }
 
