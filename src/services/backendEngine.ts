@@ -389,7 +389,6 @@ export class InstallationBackendEngine {
   }
 
   public getProfiles(): UserProfile[] {
-    this.getCurrentUser();
     return this.state.profiles.map((p) => ({ ...p }));
   }
 

@@ -301,8 +301,12 @@ const MainApplicationContent: React.FC = () => {
   });
 
   const [loginEmail, setLoginEmail] = useState(() => {
-    const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
-    return admin ? admin.email : 'admin@climalux-demo.es';
+    try {
+      const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
+      return admin ? admin.email : 'admin@climalux-demo.es';
+    } catch {
+      return 'admin@climalux-demo.es';
+    }
   });
   const [loginPass, setLoginPass] = useState('Admin1234!');
   const [recoveryMode, setRecoveryMode] = useState(false);
