@@ -863,7 +863,7 @@ export function generateWorkOrderDetailPDF(params: {
     );
     try {
       if (params.signature.data_url.startsWith('data:image/png')) {
-        doc.addImage(params.signature.data_url, 'PNG', 14, nextY + 3, 60, 25);
+        doc.addImage(params.signature.data_url, 'PNG', 14, nextY + 3, 50, 25);
       }
     } catch {
       // ignore image decode error in headless test

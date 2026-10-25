@@ -575,11 +575,11 @@ export const ReviewsAndNotificationsModule: React.FC<{
       {showReviewModal && (
         <div
           data-testid="modal-edit-review"
-          className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4"
+          className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
         >
           <form
             onSubmit={handleSaveReview}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-3.5 text-xs"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 text-xs flex flex-col justify-between"
           >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -714,11 +714,11 @@ export const ReviewsAndNotificationsModule: React.FC<{
       {rescheduleOccModal.open && (
         <div
           data-testid="modal-reschedule-review"
-          className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4"
+          className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
         >
           <form
             onSubmit={handleRescheduleOccurrence}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 text-xs"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 text-xs flex flex-col justify-between"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -1005,11 +1005,11 @@ export const ShoppingListModule: React.FC<{
 
       {/* Modal emergente: alta de artículo en catálogo desde la lista de compra */}
       {showNewArticleModal && isAdmin && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleCreateArticle}
             data-testid="modal-new-article-from-shopping"
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-5 space-y-3 text-xs my-6"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto p-5 space-y-3 text-xs sm:my-6 flex flex-col justify-between"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h2 className="text-base font-bold text-slate-900">Alta de Artículo en Catálogo</h2>
@@ -1135,10 +1135,10 @@ export const ShoppingListModule: React.FC<{
 
       {/* Modal emergente para añadir artículo a la lista de compra */}
       {showAddShoppingModal && (
-        <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleAddRequest}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-4"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 flex flex-col justify-between"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -1911,10 +1911,10 @@ export const AttendanceAndReportsModule: React.FC<{
       )}
 
       {showAdminModal && (
-        <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveAdminCorrection}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-3 text-xs"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-3.5 text-xs flex flex-col justify-between"
           >
             <h3 className="text-base font-bold text-slate-900">
               {editingSessionId

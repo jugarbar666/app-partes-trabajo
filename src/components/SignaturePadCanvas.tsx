@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Eraser, Check, PenTool } from 'lucide-react';
 
 export const SignaturePadCanvas: React.FC<{
@@ -10,12 +10,14 @@ export const SignaturePadCanvas: React.FC<{
   disabled?: boolean;
 }> = ({ onConfirmSignature, disabled }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasStroke, setHasStroke] = useState(false);
   const [signerName, setSignerName] = useState('');
   const [signerDni, setSignerDni] = useState('');
 
-  useEffect(() => {
+  // Inicializar o limpiar el canvas preservando el fondo blanco
+  const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -23,10 +25,14 @@ export const SignaturePadCanvas: React.FC<{
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 3.2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
   }, []);
+
+  useEffect(() => {
+    initCanvas();
+  }, [initCanvas]);
 
   const getCoords = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
@@ -72,11 +78,7 @@ export const SignaturePadCanvas: React.FC<{
   };
 
   const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    initCanvas();
     setHasStroke(false);
   };
 
@@ -95,39 +97,40 @@ export const SignaturePadCanvas: React.FC<{
   };
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full space-y-3.5">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-          <PenTool className="w-4 h-4 text-blue-600" />
-          <span>Captura de firma manuscrita del cliente en pantalla (Opcional al finalizar)</span>
+          <PenTool className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>Firma manuscrita en pantalla (con el dedo o lápiz táctil)</span>
         </div>
         <button
           type="button"
           onClick={clearCanvas}
           disabled={disabled}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-slate-700"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 shadow-2xs shrink-0 cursor-pointer"
         >
-          <Eraser className="w-3.5 h-3.5" /> Borrar y repetir trazo
+          <Eraser className="w-3.5 h-3.5 text-rose-600" /> Borrar trazo
         </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">
-            Nombre y apellidos de quien firma *
+          <label className="block text-xs font-bold text-slate-700 mb-1">
+            Nombre y apellidos del firmante *
           </label>
           <input
             type="text"
+            required
             value={signerName}
             disabled={disabled}
             onChange={(e) => setSignerName(e.target.value)}
-            placeholder="Ej. Julián Gómez (Conserje / Cliente)"
-            className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm"
+            placeholder="Ej. Juan Pérez (Cliente o receptor)"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">
-            DNI / NIE (Opcional)
+          <label className="block text-xs font-bold text-slate-700 mb-1">
+            DNI / NIF (Opcional)
           </label>
           <input
             type="text"
@@ -135,16 +138,20 @@ export const SignaturePadCanvas: React.FC<{
             disabled={disabled}
             onChange={(e) => setSignerDni(e.target.value)}
             placeholder="Ej. 12345678Z"
-            className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
           />
         </div>
       </div>
 
-      <div className="border-2 border-dashed border-slate-300 rounded-xl bg-white overflow-hidden">
+      {/* ÁREA DE FIRMA ESPACIOSA PARA PANTALLAS TÁCTILES */}
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-[220px] sm:min-h-[280px] border-2 border-dashed border-blue-300 rounded-2xl bg-white overflow-hidden relative shadow-inner flex flex-col justify-center"
+      >
         <canvas
           ref={canvasRef}
-          width={560}
-          height={160}
+          width={800}
+          height={400}
           onMouseDown={startDrawing}
           onMouseMove={moveDrawing}
           onMouseUp={stopDrawing}
@@ -152,21 +159,29 @@ export const SignaturePadCanvas: React.FC<{
           onTouchStart={startDrawing}
           onTouchMove={moveDrawing}
           onTouchEnd={stopDrawing}
-          className="w-full h-36 cursor-crosshair touch-none"
+          className="w-full h-full min-h-[220px] sm:min-h-[280px] cursor-crosshair touch-none select-none bg-white"
         />
+        {!hasStroke && (
+          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 select-none px-4 text-center">
+            <span className="text-sm font-semibold text-slate-500">✍️ Firme aquí dentro con el dedo</span>
+            <span className="text-xs text-slate-400 mt-1">El espacio es amplio para firmar cómodamente</span>
+            <div className="w-3/4 border-b border-dashed border-slate-300 mt-6" />
+          </div>
+        )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-500">
-          Firma manuscrita simple vinculada al resumen y hash del contenido actual del parte (sin atribuir firma electrónica cualificada).
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+        <p className="text-[11px] text-slate-500 leading-snug">
+          Al pulsar confirmar, la firma quedará registrada de forma proporcional en el parte oficial y en el PDF exportable.
         </p>
         <button
           type="button"
-          disabled={disabled || !signerName.trim()}
+          disabled={disabled || !signerName.trim() || !hasStroke}
           onClick={handleConfirm}
           data-testid="btn-save-signature"
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold"
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold shadow-md cursor-pointer shrink-0"
         >
-          <Check className="w-4 h-4" /> Confirmar firma del cliente
+          <Check className="w-4 h-4" /> Guardar y Confirmar Firma
         </button>
       </div>
     </div>

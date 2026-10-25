@@ -1,6 +1,6 @@
 {
-  "name": "Gestión de Partes de Trabajo e Instalaciones",
-  "short_name": "Partes Trabajo",
+  "name": "Gestión de partes",
+  "short_name": "Gestión de partes",
   "description": "Gestión de partes de trabajo, revisiones periódicas, lista de compra y fichaje horario",
   "start_url": "/",
   "display": "standalone",

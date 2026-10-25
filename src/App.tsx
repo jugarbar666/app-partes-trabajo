@@ -263,12 +263,36 @@ const MainApplicationContent: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         const roleParam = params.get('role');
         const userParam = params.get('user');
-        if (userParam === 'lucia') {
-          return backend.login('lucia@climalux-demo.es', 'Oper1234!');
+        const profiles = backend.getProfiles();
+
+        if (userParam) {
+          const match = profiles.find(
+            (p) =>
+              p.email.toLowerCase() === userParam.toLowerCase() ||
+              p.full_name.toLowerCase().includes(userParam.toLowerCase()) ||
+              p.id === userParam
+          );
+          if (match) {
+            const pass = match.role === 'admin' ? 'Admin1234!' : 'Oper1234!';
+            return backend.login(match.email, pass);
+          }
         }
-        if (roleParam === 'operario' || userParam === 'carlos') {
-          return backend.login('carlos@climalux-demo.es', 'Oper1234!');
+        if (roleParam === 'operario') {
+          const firstOper = profiles.find((p) => p.role === 'operario' && p.is_active);
+          if (firstOper) {
+            return backend.login(firstOper.email, 'Oper1234!');
+          }
         }
+        if (roleParam === 'admin') {
+          const firstAdmin = profiles.find((p) => p.role === 'admin' && p.is_active);
+          if (firstAdmin) {
+            return backend.login(firstAdmin.email, 'Admin1234!');
+          }
+        }
+      }
+      const firstAdmin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
+      if (firstAdmin) {
+        return backend.login(firstAdmin.email, 'Admin1234!');
       }
       return backend.login('admin@climalux-demo.es', 'Admin1234!');
     } catch {
@@ -276,7 +300,10 @@ const MainApplicationContent: React.FC = () => {
     }
   });
 
-  const [loginEmail, setLoginEmail] = useState('admin@climalux-demo.es');
+  const [loginEmail, setLoginEmail] = useState(() => {
+    const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
+    return admin ? admin.email : 'admin@climalux-demo.es';
+  });
   const [loginPass, setLoginPass] = useState('Admin1234!');
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -297,10 +324,16 @@ const MainApplicationContent: React.FC = () => {
   const navigateTo = (next: ActiveRoute) => {
     setRouteStack((prev) => [...prev, next]);
     setMobileMenuOpen(false);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
   };
 
   const navigateBack = () => {
     setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
   };
 
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
@@ -353,6 +386,61 @@ const MainApplicationContent: React.FC = () => {
   >('customers');
 
   const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
+
+  // Actualizar favicon, título y manifest dinámico con el logotipo de la empresa para instalación en móvil
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Gestión de partes';
+      const logo = company.logo_url;
+      if (logo) {
+        let iconLink = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+        if (!iconLink) {
+          iconLink = document.createElement('link');
+          iconLink.rel = 'icon';
+          document.head.appendChild(iconLink);
+        }
+        iconLink.href = logo;
+
+        let appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
+        if (!appleIcon) {
+          appleIcon = document.createElement('link');
+          appleIcon.rel = 'apple-touch-icon';
+          document.head.appendChild(appleIcon);
+        }
+        appleIcon.href = logo;
+
+        try {
+          const dynamicManifest = {
+            name: 'Gestión de partes',
+            short_name: 'Gestión de partes',
+            description: 'Gestión de partes de trabajo, revisiones periódicas, lista de compra y fichaje horario',
+            start_url: '/',
+            display: 'standalone',
+            background_color: '#0f172a',
+            theme_color: '#0f172a',
+            orientation: 'any',
+            lang: 'es-ES',
+            icons: [
+              {
+                src: logo,
+                sizes: '192x192 512x512',
+                type: 'image/png',
+                purpose: 'any maskable',
+              },
+            ],
+          };
+          const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
+          const manifestUrl = URL.createObjectURL(blob);
+          let manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
+          if (manifestLink) {
+            manifestLink.href = manifestUrl;
+          }
+        } catch {
+          // ignore blob creation error
+        }
+      }
+    }
+  }, [company.logo_url]);
 
   // Disparador automático de copia de seguridad en la primera apertura diaria de escritorio (Regla 15)
   useEffect(() => {
@@ -529,8 +617,36 @@ const MainApplicationContent: React.FC = () => {
                   </div>
                   <p>{recoveryResult.message}</p>
                   {recoveryResult.temporaryPassword && (
-                    <div className="p-2.5 bg-white rounded-lg border border-emerald-300 font-mono text-center text-sm font-black text-emerald-800 shadow-2xs">
-                      {recoveryResult.temporaryPassword}
+                    <div className="space-y-2">
+                      <div className="p-2.5 bg-white rounded-lg border border-emerald-300 font-mono text-center text-sm font-black text-emerald-800 shadow-2xs">
+                        {recoveryResult.temporaryPassword}
+                      </div>
+
+                      {/* Enlace directo a la app para enviar al operario */}
+                      <div className="p-2.5 bg-white/80 rounded-lg border border-emerald-200 text-slate-700 text-[11px] space-y-1">
+                        <div className="font-bold text-slate-900">Enlace directo a la aplicación:</div>
+                        <a
+                          href={typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-700 underline font-semibold break-all"
+                        >
+                          {typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app'}
+                        </a>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app';
+                          const msg = `Acceso a Gestión de partes — ${company.company_name}:\n\n🔗 Enlace a la aplicación:\n${appUrl}\n\n👤 Usuario / Email: ${recoveryEmail}\n🔑 Clave temporal: ${recoveryResult.temporaryPassword}\n\n(Al iniciar sesión se te pedirá cambiarla por tu contraseña definitiva).`;
+                          navigator.clipboard.writeText(msg);
+                          notifySuccessGreen('Datos de acceso y enlace copiados al portapapeles. Puedes pegarlo en WhatsApp o Correo.');
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-xs border border-emerald-300 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        📋 Copiar datos y enlace (para WhatsApp o Email)
+                      </button>
                     </div>
                   )}
                   {recoveryResult.temporaryPassword && (

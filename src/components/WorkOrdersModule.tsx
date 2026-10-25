@@ -386,11 +386,11 @@ export const WorkOrderCreateModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full my-8 overflow-hidden">
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-3xl w-full h-full sm:h-auto sm:my-8 overflow-y-auto flex flex-col justify-between">
+        <div className="bg-slate-900 text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-bold">Nuevo Parte de Trabajo</h2>
+            <h2 className="text-base sm:text-lg font-bold">Nuevo Parte de Trabajo</h2>
             <p className="text-xs text-slate-300">
               La numeración única se generará en servidor al guardar. Los datos del servicio se guardan como instantánea.
             </p>
@@ -398,13 +398,13 @@ export const WorkOrderCreateModal: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-bold text-slate-700 uppercase">
@@ -637,10 +637,10 @@ export const WorkOrderCreateModal: React.FC<{
 
       {showInlineCustomerModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
           data-testid="modal-inline-customer"
         >
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden my-6">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto sm:my-6 flex flex-col justify-between">
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold">
@@ -900,6 +900,13 @@ export const WorkOrderDetailView: React.FC<{
     wo.deleted_at === null &&
     wo.archived_at === null &&
     (isAdmin ? wo.status !== 'cerrado' : wo.status === 'no_iniciado' || wo.status === 'en_curso' || wo.status === 'reabierto');
+
+  // Asegurar que al entrar al parte siempre se posicione en la cabecera superior en dispositivos móviles
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, [wo?.id]);
 
   // Ventanas emergentes (Modales) para añadir o editar elementos del parte
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
@@ -1925,11 +1932,13 @@ export const WorkOrderDetailView: React.FC<{
                 Firmante: <strong>{validSignature.signer_name}</strong> (
                 {validSignature.signer_dni || 'Sin DNI'})
               </div>
-              <img
-                src={validSignature.data_url}
-                alt="Firma manuscrita del cliente"
-                className="h-20 bg-white border border-emerald-200 rounded p-1"
-              />
+              <div className="bg-white border border-emerald-200 rounded-xl p-2.5 max-w-sm flex items-center justify-center shadow-2xs">
+                <img
+                  src={validSignature.data_url}
+                  alt="Firma manuscrita del cliente"
+                  className="max-h-24 w-auto max-w-full object-contain"
+                />
+              </div>
             </div>
           ) : (
             <div className="text-xs text-slate-500 p-3 rounded-xl border border-dashed border-slate-200">
@@ -2057,66 +2066,66 @@ export const WorkOrderDetailView: React.FC<{
       {/* 1. VENTANA EMERGENTE: AÑADIR TRABAJO REALIZADO */}
       {showAddEntryModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
           data-testid="modal-add-work-entry"
         >
           <form
             onSubmit={handleAddEntry}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
           >
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-blue-400" />
+                <Wrench className="w-5 h-5 text-blue-400" />
                 <h3 className="font-bold text-base">Añadir Trabajo Realizado — {wo.code}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddEntryModal(false)}
-                className="p-1 rounded hover:bg-white/10"
+                className="p-1.5 rounded-lg hover:bg-white/10"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-3 text-xs">
+            <div className="p-5 space-y-4 text-xs flex-1">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Descripción del trabajo realizado *
                 </label>
                 <textarea
-                  rows={3}
+                  rows={5}
                   required
                   autoFocus
                   data-testid="input-new-entry-desc"
                   value={newEntryDesc}
                   onChange={(e) => setNewEntryDesc(e.target.value)}
                   placeholder="Describe detalladamente la intervención realizada..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Observaciones adicionales (opcional)
                 </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={newEntryObs}
                   onChange={(e) => setNewEntryObs(e.target.value)}
                   placeholder="Parámetros medidos, recomendaciones, estado de la instalación..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
             </div>
-            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2">
+            <div className="bg-slate-50 px-5 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowAddEntryModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-xs font-semibold text-slate-700"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-xs font-bold shadow-xs cursor-pointer"
               >
                 Revisar y Guardar Trabajo
               </button>
@@ -2127,56 +2136,56 @@ export const WorkOrderDetailView: React.FC<{
 
       {/* 2. VENTANA EMERGENTE: MODIFICAR TRABAJO REALIZADO */}
       {editingEntryId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveEditEntry}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
           >
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-base">Modificar Trabajo Realizado</h3>
               <button
                 type="button"
                 onClick={() => setEditingEntryId(null)}
-                className="p-1 rounded hover:bg-white/10"
+                className="p-1.5 rounded-lg hover:bg-white/10"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-3 text-xs">
+            <div className="p-5 space-y-4 text-xs flex-1">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Descripción del trabajo *
                 </label>
                 <textarea
-                  rows={3}
+                  rows={5}
                   required
                   autoFocus
                   value={editEntryDesc}
                   onChange={(e) => setEditEntryDesc(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Observaciones</label>
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">Observaciones</label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={editEntryObs}
                   onChange={(e) => setEditEntryObs(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
             </div>
-            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2">
+            <div className="bg-slate-50 px-5 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setEditingEntryId(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
               >
                 Guardar Cambios
               </button>
@@ -2187,24 +2196,24 @@ export const WorkOrderDetailView: React.FC<{
 
       {/* 4. VENTANA EMERGENTE: AÑADIR MATERIAL AL PARTE */}
       {showAddMaterialModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleAddMaterial}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
           >
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-base">Añadir Material Utilizado — {wo.code}</h3>
               <button
                 type="button"
                 onClick={() => setShowAddMaterialModal(false)}
-                className="p-1 rounded hover:bg-white/10"
+                className="p-1.5 rounded-lg hover:bg-white/10"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-3 text-xs">
+            <div className="p-5 space-y-4 text-xs flex-1">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Artículo del catálogo *
                 </label>
                 <SearchableSelect
@@ -2218,7 +2227,7 @@ export const WorkOrderDetailView: React.FC<{
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Cantidad utilizada (admite decimales como 2,5 m) *
                 </label>
                 <input
@@ -2227,11 +2236,11 @@ export const WorkOrderDetailView: React.FC<{
                   value={matQty}
                   onChange={(e) => setMatQty(e.target.value)}
                   placeholder="Ej. 1 o 2,5"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5">
                   Observaciones del material
                 </label>
                 <input
@@ -2239,21 +2248,21 @@ export const WorkOrderDetailView: React.FC<{
                   value={matNotes}
                   onChange={(e) => setMatNotes(e.target.value)}
                   placeholder="Ubicación o nota de instalación..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
             </div>
-            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2">
+            <div className="bg-slate-50 px-5 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowAddMaterialModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
               >
                 Guardar Material
               </button>
@@ -2264,21 +2273,21 @@ export const WorkOrderDetailView: React.FC<{
 
       {/* 5. VENTANA EMERGENTE: FIRMA MANUSCRITA DEL CLIENTE EN PANTALLA */}
       {showSignatureModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-3xl w-full h-full sm:h-[90vh] overflow-hidden flex flex-col justify-between">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-base">
                 Firma Manuscrita del Cliente — Parte {wo.code}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowSignatureModal(false)}
-                className="p-1 rounded hover:bg-white/10"
+                className="p-1.5 rounded-lg hover:bg-white/10"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5">
+            <div className="p-4 sm:p-6 flex-1 flex flex-col overflow-y-auto">
               <SignaturePadCanvas
                 onConfirmSignature={({ signerName, signerDni, dataUrl }) => {
                   backend.saveWorkSignature({
@@ -2342,50 +2351,52 @@ export const WorkOrderDetailView: React.FC<{
 
       {/* 7. VENTANA EMERGENTE: REAPERTURA CON MOTIVO (SOLO ADMIN) */}
       {showReopenModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-3 text-xs">
-            <h3 className="text-base font-bold text-slate-900">
-              Reapertura Administrativa con Motivo — {wo.code}
-            </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 space-y-4 flex flex-col justify-between text-xs">
+            <div className="space-y-3 flex-1">
+              <h3 className="text-base font-bold text-slate-900">
+                Reapertura Administrativa con Motivo — {wo.code}
+              </h3>
 
-            {/* Aviso de asignación automática al operario que lo cerró */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-center gap-2.5">
-              <Users className="w-4 h-4 text-blue-600 shrink-0" />
+              {/* Aviso de asignación automática al operario que lo cerró */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-center gap-2.5">
+                <Users className="w-4 h-4 text-blue-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-slate-900">
+                    Operario asignado tras reapertura: <span className="text-blue-700">{closingOperatorName}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    El parte se asigna automáticamente al operario que lo cerró para continuar la intervención.
+                  </p>
+                </div>
+              </div>
+
               <div>
-                <p className="font-bold text-slate-900">
-                  Operario asignado tras reapertura: <span className="text-blue-700">{closingOperatorName}</span>
-                </p>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  El parte se asigna automáticamente al operario que lo cerró para continuar la intervención.
-                </p>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Motivo obligatorio para auditoría *
+                </label>
+                <input
+                  type="text"
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                  placeholder="Indica el motivo de la reapertura..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Estado destino</label>
+                <select
+                  value={reopenTarget}
+                  onChange={(e) => setReopenTarget(e.target.value as 'reabierto' | 'en_curso' | 'terminado')}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
+                >
+                  <option value="reabierto">Reabierto (marrón en negrita - devolver a operarios)</option>
+                  <option value="en_curso">Reabrir a En Curso</option>
+                  <option value="terminado">Reabrir a Terminado (solo revisión admin)</option>
+                </select>
               </div>
             </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                Motivo obligatorio para auditoría *
-              </label>
-              <input
-                type="text"
-                value={reopenReason}
-                onChange={(e) => setReopenReason(e.target.value)}
-                placeholder="Indica el motivo de la reapertura..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Estado destino</label>
-              <select
-                value={reopenTarget}
-                onChange={(e) => setReopenTarget(e.target.value as 'reabierto' | 'en_curso' | 'terminado')}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
-              >
-                <option value="reabierto">Reabierto (marrón en negrita - devolver a operarios)</option>
-                <option value="en_curso">Reabrir a En Curso</option>
-                <option value="terminado">Reabrir a Terminado (solo revisión admin)</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowReopenModal(false)}
@@ -2557,7 +2568,7 @@ export const WorkOrderDetailView: React.FC<{
       {/* VENTANA EMERGENTE: MODIFICAR DATOS DEL SERVICIO, UBICACIÓN Y CONTACTO (SOLO ADMIN) */}
       {showEditServiceDataModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
           data-testid="modal-edit-service-data"
         >
           <form
@@ -2596,7 +2607,7 @@ export const WorkOrderDetailView: React.FC<{
                 },
               });
             }}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4 my-8"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 sm:my-8 flex flex-col justify-between"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -2766,7 +2777,7 @@ export const WorkOrderDetailView: React.FC<{
       {/* VENTANA EMERGENTE: FIJAR / MODIFICAR IMPORTE DEL TRABAJO (SOLO ADMIN) */}
       {showEditAmountModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
           data-testid="modal-edit-amount"
         >
           <form
@@ -2799,7 +2810,7 @@ export const WorkOrderDetailView: React.FC<{
                 },
               });
             }}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 flex flex-col justify-between"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -2868,12 +2879,12 @@ export const WorkOrderDetailView: React.FC<{
 
         return (
           <div
-            className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
             data-testid="modal-finalize-wo"
           >
             <form
               onSubmit={handleFinalizeSubmit}
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4"
+              className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 flex flex-col justify-between"
             >
               <h3 className="text-lg font-bold text-slate-900">
                 Finalizar Trabajo — Parte {wo.code}
@@ -3026,7 +3037,7 @@ export const WorkOrderDetailView: React.FC<{
       {showRescheduleModal && (
         <div
           data-testid="modal-reschedule-work-order"
-          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
         >
           <form
             onSubmit={(e) => {
@@ -3071,7 +3082,7 @@ export const WorkOrderDetailView: React.FC<{
                 },
               });
             }}
-            className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-xs"
+            className="bg-white rounded-none sm:rounded-2xl max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 shadow-xl text-xs flex flex-col justify-between"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">

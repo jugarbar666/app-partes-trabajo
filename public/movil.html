@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Simulador Terminal Móvil — Gestión de Partes</title>
+    <title>Terminal Móvil — Gestión de partes</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
@@ -14,24 +14,26 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 18px;
+        padding: 16px;
       }
       .toolbar {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        margin-bottom: 16px;
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        padding: 10px 16px;
+        gap: 8px;
+        margin-bottom: 14px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        padding: 8px 14px;
         border-radius: 14px;
+        max-width: 95vw;
       }
       .toolbar span {
         font-size: 13px;
         font-weight: 700;
         color: #93c5fd;
+        margin-right: 4px;
       }
       .toolbar button, .toolbar a {
         background: #1e293b;
@@ -43,6 +45,9 @@
         font-weight: 600;
         cursor: pointer;
         text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
       }
       .toolbar button.active, .toolbar button.active-role {
         background: #2563eb;
@@ -89,16 +94,15 @@
   </head>
   <body>
     <div class="toolbar">
-      <span>📱 Emulador Móvil</span>
-      <button id="role-operario" class="active-role" onclick="setRole('carlos', 'role-operario')">
-        👷 Ver como Operario 1 (Carlos)
-      </button>
-      <button id="role-lucia" onclick="setRole('lucia', 'role-lucia')">
-        👷 Ver como Operario 2 (Lucía)
-      </button>
-      <button id="role-admin" onclick="setRole('admin', 'role-admin')">
-        👤 Ver como Administrador (Elena)
-      </button>
+      <span>📱 Gestión de partes</span>
+      <div id="users-container" style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+        <button id="btn-default-oper" class="active-role" onclick="setUser('operario', this)">
+          👷 Ver como Operario
+        </button>
+        <button id="btn-default-admin" onclick="setUser('admin', this)">
+          👤 Ver como Administrador
+        </button>
+      </div>
       <div class="divider"></div>
       <button id="btn-iphone" class="size-btn active" onclick="setSize(390, 844, 'btn-iphone')">
         iPhone (390×844)
@@ -114,7 +118,7 @@
 
     <div id="frame" class="phone-frame">
       <div class="phone-notch"></div>
-      <iframe id="app-iframe" src="/?mobile=1&role=operario&user=carlos" title="Vista Móvil Gestión de Partes"></iframe>
+      <iframe id="app-iframe" src="/?mobile=1&role=operario" title="Vista Móvil Gestión de partes"></iframe>
     </div>
 
     <script>
@@ -126,16 +130,44 @@
         document.getElementById(btnId).classList.add('active');
       }
 
-      function setRole(userKey, btnId) {
+      function setUser(roleOrEmail, btn) {
         const iframe = document.getElementById('app-iframe');
-        if (userKey === 'admin') {
-          iframe.src = '/?mobile=1&role=admin&t=' + Date.now();
+        if (roleOrEmail.includes('@')) {
+          iframe.src = '/?mobile=1&user=' + encodeURIComponent(roleOrEmail) + '&t=' + Date.now();
         } else {
-          iframe.src = '/?mobile=1&role=operario&user=' + userKey + '&t=' + Date.now();
+          iframe.src = '/?mobile=1&role=' + encodeURIComponent(roleOrEmail) + '&t=' + Date.now();
         }
-        document.querySelectorAll('#role-operario, #role-lucia, #role-admin').forEach(b => b.classList.remove('active-role'));
-        document.getElementById(btnId).classList.add('active-role');
+        document.querySelectorAll('#users-container button').forEach(b => b.classList.remove('active-role'));
+        if (btn) btn.classList.add('active-role');
       }
+
+      // Sincronizar dinámicamente con los operarios y usuarios guardados en la aplicación
+      function initDynamicUsers() {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('agy_partes_installation')) {
+              const parsed = JSON.parse(localStorage.getItem(key));
+              if (parsed && Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
+                const container = document.getElementById('users-container');
+                container.innerHTML = '';
+                const activeProfiles = parsed.profiles.filter(p => p.is_active);
+                activeProfiles.forEach((p, idx) => {
+                  const b = document.createElement('button');
+                  b.textContent = (p.role === 'admin' ? '👤 ' : '👷 ') + p.full_name;
+                  if (idx === 0) b.classList.add('active-role');
+                  b.onclick = () => setUser(p.email, b);
+                  container.appendChild(b);
+                });
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Error leyendo perfiles dinámicos:', e);
+        }
+      }
+      initDynamicUsers();
     </script>
   </body>
 </html>

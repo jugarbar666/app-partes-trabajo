@@ -1124,8 +1124,8 @@ export const MasterDataAndUsersModule: React.FC<{
           VENTANAS EMERGENTES (MODALES) PARA ALTA EN DATOS MAESTROS Y USUARIOS
       ===================================================================== */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between">
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
               <h3 className="font-bold text-base">
                 {editingId
@@ -2046,73 +2046,75 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* MODAL 1: RESUMEN DE INVITACIÓN CREADA CON ENLACE Y DATOS DE ACCESO PARA COPIAR */}
       {invitationSummaryModal?.open && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-xs border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
-                  <Check className="w-5 h-5" />
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-none sm:rounded-2xl max-w-lg w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl text-xs border-0 sm:border border-slate-200 flex flex-col justify-between">
+            <div className="space-y-3.5 flex-1">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                    <Check className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">
+                      Invitación Generada con Éxito
+                    </h3>
+                    <p className="text-slate-500 text-[11px]">
+                      Envía estos datos de acceso al nuevo usuario
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInvitationSummaryModal(null)}
+                  className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+                <div>
+                  <span className="text-slate-500 font-medium">Usuario:</span>{' '}
+                  <strong className="text-slate-900">{invitationSummaryModal.fullName}</strong>
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-900">
-                    Invitación Generada con Éxito
-                  </h3>
-                  <p className="text-slate-500 text-[11px]">
-                    Envía estos datos de acceso al nuevo usuario
-                  </p>
+                  <span className="text-slate-500 font-medium">Email / Usuario:</span>{' '}
+                  <strong className="text-slate-900 font-mono">{invitationSummaryModal.email}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">Contraseña temporal:</span>{' '}
+                  <strong className="text-blue-700 font-mono font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {invitationSummaryModal.tempPass}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">Enlace de acceso a la app:</span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={invitationSummaryModal.link}
+                    className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-[11px] text-slate-700"
+                  />
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setInvitationSummaryModal(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="space-y-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200">
-              <div>
-                <span className="text-slate-500 font-medium">Usuario:</span>{' '}
-                <strong className="text-slate-900">{invitationSummaryModal.fullName}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium">Email / Usuario:</span>{' '}
-                <strong className="text-slate-900 font-mono">{invitationSummaryModal.email}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium">Contraseña temporal:</span>{' '}
-                <strong className="text-blue-700 font-mono font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                  {invitationSummaryModal.tempPass}
-                </strong>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium">Enlace de acceso:</span>
-                <input
-                  type="text"
-                  readOnly
-                  value={invitationSummaryModal.link}
-                  className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-[11px] text-slate-700"
-                />
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed text-[11px]">
+                ℹ️ <strong>Seguridad garantizada:</strong> La primera vez que{' '}
+                <strong>{invitationSummaryModal.fullName}</strong> inicie sesión con esta clave temporal, el sistema le obligará a definir su contraseña definitiva.
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed text-[11px]">
-              ℹ️ <strong>Seguridad garantizada:</strong> La primera vez que{' '}
-              <strong>{invitationSummaryModal.fullName}</strong> inicie sesión con esta clave temporal, el sistema le obligará a definir su contraseña definitiva.
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => {
-                  const messageText = `Hola ${invitationSummaryModal.fullName},\nHas sido invitado/a a la aplicación de Gestión de Partes de Trabajo.\n\nEnlace de acceso: ${invitationSummaryModal.link}\nUsuario: ${invitationSummaryModal.email}\nContraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
+                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo a la app:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
                   navigator.clipboard.writeText(messageText);
                   setCopiedInvite(true);
                   setTimeout(() => setCopiedInvite(false), 3000);
                   notifySuccessGreen('Datos de invitación y credenciales copiados al portapapeles.');
                 }}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
               >
                 {copiedInvite ? (
                   <>
@@ -2129,7 +2131,7 @@ export const MasterDataAndUsersModule: React.FC<{
               <button
                 type="button"
                 onClick={() => setInvitationSummaryModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
               >
                 Cerrar
               </button>
@@ -2244,60 +2246,69 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* MODAL 3: CREDENCIALES RESTABLECIDAS LISTAS PARA ENVIAR */}
       {resetSuccessModal?.open && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs border border-slate-200">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
-                <Check className="w-5 h-5" />
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-none sm:rounded-2xl max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl text-xs border-0 sm:border border-slate-200 flex flex-col justify-between">
+            <div className="space-y-3.5 flex-1">
+              <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                  <Check className="w-5 h-5" />
+                </div>
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Contraseña Restablecida con Éxito
+                </h3>
               </div>
-              <h3 className="font-extrabold text-sm text-slate-900">
-                Contraseña Restablecida con Éxito
-              </h3>
+
+              <p className="text-slate-600 leading-relaxed">
+                La contraseña temporal para <strong>{resetSuccessModal.fullName}</strong> ya está activa. Puedes copiar el siguiente mensaje completo con el enlace a la app para enviárselo al operario:
+              </p>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono space-y-2 text-[11px]">
+                <div>Usuario / Email: <strong>{resetSuccessModal.email}</strong></div>
+                <div>Contraseña temporal: <strong className="text-blue-700">{resetSuccessModal.tempPass}</strong></div>
+                <div>
+                  Enlace a la app:{' '}
+                  <span className="text-blue-700 underline font-semibold break-all">
+                    {typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app'}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                El usuario tendrá que cambiarla obligatoriamente nada más iniciar sesión en su dispositivo.
+              </p>
             </div>
 
-            <p className="text-slate-600 leading-relaxed">
-              La contraseña temporal para <strong>{resetSuccessModal.fullName}</strong> ya está activa. Puedes copiar el siguiente mensaje para enviárselo:
-            </p>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono space-y-1 text-[11px]">
-              <div>Usuario: <strong>{resetSuccessModal.email}</strong></div>
-              <div>Contraseña temporal: <strong className="text-blue-700">{resetSuccessModal.tempPass}</strong></div>
-            </div>
-
-            <p className="text-[11px] text-slate-500">
-              El usuario tendrá que cambiarla obligatoriamente nada más iniciar sesión.
-            </p>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => {
-                  const msg = `Hola ${resetSuccessModal.fullName},\nTu contraseña de acceso a la aplicación ha sido restablecida.\n\nUsuario: ${resetSuccessModal.email}\nContraseña temporal: ${resetSuccessModal.tempPass}\n\n(Al iniciar sesión deberás cambiarla por tu contraseña definitiva).`;
+                  const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app';
+                  const msg = `Hola ${resetSuccessModal.fullName},\n\nTu contraseña de acceso a la aplicación de Gestión de partes ha sido restablecida:\n\n🔗 Enlace directo a la app:\n${appUrl}\n\n👤 Usuario / Email: ${resetSuccessModal.email}\n🔑 Contraseña temporal: ${resetSuccessModal.tempPass}\n\n(Al entrar por primera vez, el sistema te pedirá establecer tu contraseña personal definitiva).`;
                   navigator.clipboard.writeText(msg);
                   setCopiedReset(true);
                   setTimeout(() => setCopiedReset(false), 3000);
-                  notifySuccessGreen('Mensaje copiado al portapapeles.');
+                  notifySuccessGreen('Mensaje completo con enlace copiado al portapapeles.');
                 }}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
               >
                 {copiedReset ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-200" />
-                    <span>¡Copiado!</span>
+                    <span>¡Copiado al portapapeles!</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-4 h-4" />
-                    <span>Copiar Credenciales</span>
+                    <span>Copiar Datos y Enlace (WhatsApp / Email)</span>
                   </>
                 )}
               </button>
               <button
                 type="button"
                 onClick={() => setResetSuccessModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
               >
-                Aceptar
+                Cerrar
               </button>
             </div>
           </div>
