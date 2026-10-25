@@ -30,3 +30,7 @@ Thumbs.db
 .env.local
 .env.production
 .env.development
+
+# Supabase CLI temp
+supabase/.temp/
+

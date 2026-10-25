@@ -6,12 +6,18 @@
 -- 1. Añadir el valor 'reabierto' al tipo enumerado work_order_status
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_type t
-    JOIN pg_enum e ON t.oid = e.enumtypid
-    WHERE t.typname = 'work_order_status' AND e.enumlabel = 'reabierto'
+  IF EXISTS (
+    SELECT 1 FROM pg_type WHERE typname = 'work_order_status'
   ) THEN
-    ALTER TYPE public.work_order_status ADD VALUE 'reabierto' AFTER 'en_curso';
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_type t
+      JOIN pg_enum e ON t.oid = e.enumtypid
+      WHERE t.typname = 'work_order_status' AND e.enumlabel = 'reabierto'
+    ) THEN
+      ALTER TYPE public.work_order_status ADD VALUE 'reabierto';
+    END IF;
+  ELSE
+    CREATE TYPE public.work_order_status AS ENUM ('no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado');
   END IF;
 END $$;
 
