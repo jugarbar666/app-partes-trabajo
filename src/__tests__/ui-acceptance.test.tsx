@@ -140,16 +140,17 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
   });
 
   it('Control de selector de versiones móviles por rama: activo en pruebas y deshabilitado en empresa-fontaneria-roma', () => {
-    // 1. En entorno de desarrollo / rama pruebas está activo
-    expect(isMobilePreviewEnabled()).toBe(true);
-
-    const htmlPruebas = renderToString(<App />);
-    expect(htmlPruebas).toContain('Vista Móvil');
-    expect(htmlPruebas).toContain('iPhone 15 Pro');
-
-    // 2. Comprobación de que si se fuerza desactivación (como en producción fontanería roma), no aparece en el DOM
     const originalEnv = import.meta.env.VITE_SHOW_MOBILE_PREVIEW;
     try {
+      // 1. En entorno de desarrollo / rama pruebas está activo
+      (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = 'true';
+      expect(isMobilePreviewEnabled()).toBe(true);
+
+      const htmlPruebas = renderToString(<App />);
+      expect(htmlPruebas).toContain('Vista Móvil');
+      expect(htmlPruebas).toContain('iPhone 15 Pro');
+
+      // 2. Comprobación de que si se fuerza desactivación (como en producción fontanería roma), no aparece en el DOM
       (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = 'false';
       expect(isMobilePreviewEnabled()).toBe(false);
 
@@ -162,15 +163,16 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
   });
 
   it('Control de selector de cambio de usuario por rama: activo en pruebas y bloqueado en empresa-fontaneria-roma (identificado fijo)', () => {
-    // 1. En entorno de desarrollo / rama pruebas está activo para permitir pruebas
-    expect(isDemoUserSwitchEnabled()).toBe(true);
-
-    const htmlPruebas = renderToString(<App />);
-    expect(htmlPruebas).toContain('select-active-session-user');
-
-    // 2. Comprobación de que si se desactiva (como en producción fontanería roma), no aparece ningún desplegable de cambio de cuenta
     const originalEnv = import.meta.env.VITE_ENABLE_DEMO_USER_SWITCH;
     try {
+      // 1. En entorno de desarrollo / rama pruebas está activo para permitir pruebas
+      (import.meta.env as any).VITE_ENABLE_DEMO_USER_SWITCH = 'true';
+      expect(isDemoUserSwitchEnabled()).toBe(true);
+
+      const htmlPruebas = renderToString(<App />);
+      expect(htmlPruebas).toContain('select-active-session-user');
+
+      // 2. Comprobación de que si se desactiva (como en producción fontanería roma), no aparece ningún desplegable de cambio de cuenta
       (import.meta.env as any).VITE_ENABLE_DEMO_USER_SWITCH = 'false';
       expect(isDemoUserSwitchEnabled()).toBe(false);
 
