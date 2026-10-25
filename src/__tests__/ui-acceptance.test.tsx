@@ -178,6 +178,7 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
 
       const htmlProd = renderToString(<App />);
       expect(htmlProd).not.toContain('select-active-session-user');
+      expect(htmlProd).not.toContain('Cambiar cuenta activa (Admin u Operario)');
       expect(htmlProd).toContain('header-identified-user-badge');
       expect(htmlProd).toContain('sidebar-identified-user-display');
     } finally {

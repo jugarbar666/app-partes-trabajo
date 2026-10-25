@@ -19,11 +19,23 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Configuración específica por rama para Netlify (persiste automáticamente en cualquier actualización)
+# Configuración específica por entorno y rama para Netlify (persiste automáticamente en cualquier despliegue)
+[context.production.environment]
+  VITE_SHOW_MOBILE_PREVIEW = "false"
+  VITE_ENABLE_DEMO_USER_SWITCH = "false"
+  VITE_BRANCH = "empresa-fontaneria-roma"
+
 [context.empresa-fontaneria-roma.environment]
   VITE_SHOW_MOBILE_PREVIEW = "false"
+  VITE_ENABLE_DEMO_USER_SWITCH = "false"
+  VITE_BRANCH = "empresa-fontaneria-roma"
+
+[context.main.environment]
+  VITE_SHOW_MOBILE_PREVIEW = "false"
+  VITE_ENABLE_DEMO_USER_SWITCH = "false"
   VITE_BRANCH = "empresa-fontaneria-roma"
 
 [context.pruebas.environment]
   VITE_SHOW_MOBILE_PREVIEW = "true"
+  VITE_ENABLE_DEMO_USER_SWITCH = "true"
   VITE_BRANCH = "pruebas"

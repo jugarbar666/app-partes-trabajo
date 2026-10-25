@@ -16,13 +16,13 @@ function detectCurrentBranch(): string {
 }
 
 const currentBranch = detectCurrentBranch()
-const isFontaneriaProduction = currentBranch === 'empresa-fontaneria-roma'
+const isPruebas = currentBranch === 'pruebas'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     __APP_GIT_BRANCH__: JSON.stringify(currentBranch),
-    __SHOW_MOBILE_SIMULATOR__: JSON.stringify(!isFontaneriaProduction),
+    __SHOW_MOBILE_SIMULATOR__: JSON.stringify(isPruebas),
   },
   test: {
     environment: 'jsdom',
