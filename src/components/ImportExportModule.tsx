@@ -127,15 +127,24 @@ export const ImportExportModule: React.FC<{
     const ws = wb.Sheets[sheet];
     if (!ws) return;
     const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-    setRawRows(json);
-    const headers = json.length > 0 ? Object.keys(json[0]) : [];
+    // Protección estricta contra Prototype Pollution y Formula Injection (OWASP)
+    const sanitizedJson = json.map((row) => {
+      const clean: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        clean[k] = typeof v === 'string' && /^[=@+-]/.test(v) ? `'${v}` : v;
+      }
+      return clean;
+    });
+    setRawRows(sanitizedJson);
+    const headers = sanitizedJson.length > 0 ? Object.keys(sanitizedJson[0]) : [];
     setDetectedHeaders(headers);
     const defaultMap = initDefaultMapping(type, headers);
     setColumnMapping(defaultMap);
     const prev = validateAndPreviewImport({
       backend,
       entityType: type,
-      rawRows: json,
+      rawRows: sanitizedJson,
       columnMapping: defaultMap,
     });
     setPreview(prev);

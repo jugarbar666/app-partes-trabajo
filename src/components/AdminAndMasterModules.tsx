@@ -185,11 +185,20 @@ export const MasterDataAndUsersModule: React.FC<{
         return;
       }
       const ws = wb.Sheets[firstSheet];
-      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-      if (json.length === 0) {
+      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+      if (jsonRaw.length === 0) {
         notifyError('La hoja Excel está vacía.');
         return;
       }
+      // Protección contra Prototype Pollution y Formula Injection (OWASP)
+      const json = jsonRaw.map((row) => {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+          clean[k] = typeof v === 'string' && /^[=@+-]/.test(v) ? `'${v}` : v;
+        }
+        return clean;
+      });
       const headers = Object.keys(json[0]);
       const mapping: Record<string, string> = {
         name:
