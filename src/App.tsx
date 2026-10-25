@@ -22,6 +22,7 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   PlayCircle,
   FileText,
   ArrowUpRight,
@@ -873,7 +874,28 @@ const MainApplicationContent: React.FC = () => {
       return { occ, rev, cust, addr, rType };
     });
 
+  const todayLocalDate = getCurrentLocalDate(tz);
   const countRevisionesPendientes = upcomingDashboardReviews.length;
+
+  // Detección de aviso para revisiones con vencimiento en la ventana [7 días antes .. 1 día después]:
+  // "cuando haya una revision a la que le queda una semana y durante esa semana hasta el dia seguiente que haya vencido y si no se ha realizado"
+  // "Si se ha realizado desaparecera ese aviso"
+  const hasUpcomingOrDueReview = useMemo(() => {
+    return reviewOccurrences.some((occ) => {
+      if (occ.status === 'realizada' || occ.status === 'cancelada') {
+        return false;
+      }
+      if (!occ.due_date) return false;
+      const [dueY, dueM, dueD] = occ.due_date.split('-').map(Number);
+      const [todayY, todayM, todayD] = todayLocalDate.split('-').map(Number);
+      if (!dueY || !dueM || !dueD || !todayY || !todayM || !todayD) return false;
+      const dueTime = Date.UTC(dueY, dueM - 1, dueD);
+      const todayTime = Date.UTC(todayY, todayM - 1, todayD);
+      const diffDays = Math.round((dueTime - todayTime) / (1000 * 60 * 60 * 24));
+      // Ventana de aviso: diffDays entre -1 (día siguiente de vencer) y 7 (le queda 1 semana)
+      return diffDays >= -1 && diffDays <= 7;
+    });
+  }, [reviewOccurrences, todayLocalDate]);
 
   // Importes facturados/cobrados para resumen visual en tarjetas
   const totalFinishedCents = activeWorkOrders
@@ -917,7 +939,7 @@ const MainApplicationContent: React.FC = () => {
   const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   // Cálculos para el Planing Semanal de la Agenda Operativa (Lunes a Viernes, días laborables)
-  const todayLocalDate = getCurrentLocalDate(tz);
+  // todayLocalDate definido arriba para cálculos de avisos y planning
   const currentWeekDays = useMemo(() => getWeekDays(todayLocalDate, 0, tz, true), [todayLocalDate, tz]);
   const nextWeekDays = useMemo(() => getWeekDays(todayLocalDate, 1, tz, true), [todayLocalDate, tz]);
   const selectedWeekDays = useMemo(
@@ -1983,7 +2005,15 @@ const MainApplicationContent: React.FC = () => {
                             className="p-4 rounded-xl bg-indigo-600 text-white text-left shadow-xs cursor-pointer"
                           >
                             <div className="text-[11px] font-bold uppercase opacity-85">4. Revisiones</div>
-                            <div className="text-2xl font-black mt-1">{countRevisionesPendientes}</div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-2xl font-black">{countRevisionesPendientes}</span>
+                              {hasUpcomingOrDueReview && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full animate-pulse shadow-xs">
+                                  <AlertTriangle className="w-3 h-3 text-slate-950 shrink-0" />
+                                  <span>Revisión próxima a realizar</span>
+                                </span>
+                              )}
+                            </div>
                           </button>
                         </div>
                         {renderWeeklyPlanningSection()}
@@ -2167,8 +2197,19 @@ const MainApplicationContent: React.FC = () => {
                         </span>
                         <CalendarClock className="w-4 h-4 text-blue-600" />
                       </div>
-                      <div className="text-3xl font-extrabold text-blue-600 tracking-tight my-1">
-                        {countRevisionesPendientes}
+                      <div className="flex items-center gap-2.5 my-1 flex-wrap">
+                        <div className="text-3xl font-extrabold text-blue-600 tracking-tight">
+                          {countRevisionesPendientes}
+                        </div>
+                        {hasUpcomingOrDueReview && (
+                          <span
+                            data-testid="aviso-revision-proxima"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-400 text-amber-800 text-[11px] font-extrabold animate-pulse shadow-xs"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Revisión próxima a realizar</span>
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-400">
                         Vencimientos activos en agenda

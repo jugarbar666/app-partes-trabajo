@@ -264,5 +264,27 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       expect(updatedUser.phone).toBe('600123456');
     }
   });
+
+  it('Aviso parpadeante de revisión próxima a realizar al lado del número en la tarjeta 4 del dashboard', () => {
+    // 1. Con el dataset demo, existen revisiones pendientes para el 29 y 30 de octubre de 2026 (dentro de la ventana de 7 días)
+    const htmlWithUpcoming = renderToString(<App />);
+    expect(htmlWithUpcoming).toContain('4. Revisiones pendientes');
+    expect(htmlWithUpcoming).toContain('Revisión próxima a realizar');
+    expect(htmlWithUpcoming).toContain('animate-pulse');
+
+    // 2. Si las revisiones de esa ventana se marcan como realizadas, el aviso desaparece
+    const occurrences = defaultBackend.getReviewOccurrences();
+    occurrences.forEach((occ) => {
+      defaultBackend.completeReviewOccurrenceAndScheduleNext({
+        occurrence_id: occ.id,
+        completed_date: '2026-10-25',
+        next_due_date: '2027-10-25',
+        notes: 'Revisión periódica ejecutada satisfactoriamente',
+      });
+    });
+
+    const htmlCompleted = renderToString(<App />);
+    expect(htmlCompleted).not.toContain('Revisión próxima a realizar');
+  });
 });
 
