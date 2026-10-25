@@ -270,7 +270,7 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     const htmlWithUpcoming = renderToString(<App />);
     expect(htmlWithUpcoming).toContain('4. Revisiones pendientes');
     expect(htmlWithUpcoming).toContain('Revisión próxima a realizar');
-    expect(htmlWithUpcoming).toContain('animate-pulse');
+    expect(htmlWithUpcoming).toContain('animacion-parpadeo');
 
     // 2. Si las revisiones de esa ventana se marcan como realizadas, el aviso desaparece
     const occurrences = defaultBackend.getReviewOccurrences();

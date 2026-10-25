@@ -2008,8 +2008,11 @@ const MainApplicationContent: React.FC = () => {
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <span className="text-2xl font-black">{countRevisionesPendientes}</span>
                               {hasUpcomingOrDueReview && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full animate-pulse shadow-xs">
-                                  <AlertTriangle className="w-3 h-3 text-slate-950 shrink-0" />
+                                <span
+                                  className="animacion-parpadeo inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full select-none"
+                                  style={{ animation: 'parpadeo-aviso 1s infinite ease-in-out' }}
+                                >
+                                  <AlertTriangle className="w-3 h-3 shrink-0" />
                                   <span>Revisión próxima a realizar</span>
                                 </span>
                               )}
@@ -2204,9 +2207,10 @@ const MainApplicationContent: React.FC = () => {
                         {hasUpcomingOrDueReview && (
                           <span
                             data-testid="aviso-revision-proxima"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-400 text-amber-800 text-[11px] font-extrabold animate-pulse shadow-xs"
+                            className="animacion-parpadeo inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-extrabold select-none"
+                            style={{ animation: 'parpadeo-aviso 1s infinite ease-in-out' }}
                           >
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                             <span>Revisión próxima a realizar</span>
                           </span>
                         )}
