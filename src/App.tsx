@@ -1061,6 +1061,9 @@ const MainApplicationContent: React.FC = () => {
                   <>
                     {dayWos.map((wo) => {
                       const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
+                      const woOps = assignments
+                        .filter((a) => a.work_order_id === wo.id && a.is_active)
+                        .map((a) => getUserName(a.operator_id));
                       return (
                         <div
                           key={wo.id}
@@ -1113,6 +1116,23 @@ const MainApplicationContent: React.FC = () => {
                             title={wo.snapshot_customer_name}
                           >
                             {wo.snapshot_customer_name}
+                          </div>
+
+                          {/* Operarios asignados */}
+                          <div
+                            className={`flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1 border transition ${
+                              finished
+                                ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                : 'bg-slate-50 text-slate-700 border-slate-200/90'
+                            }`}
+                            title={`Operarios asignados: ${woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}`}
+                            data-testid={`planning-wo-operators-${wo.id}`}
+                          >
+                            <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="font-extrabold text-slate-900 shrink-0">Op:</span>
+                            <span className="truncate font-semibold text-slate-800">
+                              {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
+                            </span>
                           </div>
 
                           {/* Aviso de reapertura si fue devuelto por administración */}

@@ -76,6 +76,12 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     expect(workWeek).toHaveLength(5);
     expect(workWeek[0].weekdayName).toBe('Lunes');
     expect(workWeek[4].weekdayName).toBe('Viernes');
+
+    // Verificación de visualización de operarios asignados en las tarjetas del planing semanal
+    const html = renderToString(<App />);
+    expect(html).toContain('data-testid="weekly-planning-board"');
+    expect(html).toContain('planning-wo-operators-');
+    expect(html).toContain('Op:');
   });
 
   it('Escenario Agenda: los partes terminados o cerrados pasan al final del día después de los pendientes', () => {
