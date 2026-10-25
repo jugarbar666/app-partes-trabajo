@@ -2197,9 +2197,61 @@ export class InstallationBackendEngine {
   }
 
   /**
+   * Obtiene el identificador del operario que cerró o finalizó la intervención de un parte.
+   * Regla de negocio: En reaperturas, el parte se le asigna al mismo operario que lo cerró.
+   */
+  private getClosingOperatorId(wo: WorkOrder): string | null {
+    // 1. Operario registrado al finalizar la intervención (finished_by)
+    if (wo.finished_by) {
+      const p = this.state.profiles.find((prof) => prof.id === wo.finished_by);
+      if (p && p.role === 'operario') return p.id;
+    }
+    // 2. Operario que cerró el parte si tuviera rol operario (closed_by)
+    if (wo.closed_by) {
+      const p = this.state.profiles.find((prof) => prof.id === wo.closed_by);
+      if (p && p.role === 'operario') return p.id;
+    }
+    // 3. Último evento de finalización o cierre ejecutado por un operario en el historial
+    const finishEvent = this.state.work_order_events.find(
+      (e) =>
+        e.work_order_id === wo.id &&
+        (e.event_type === 'finalizado' || e.event_type === 'cerrado') &&
+        this.state.profiles.some((p) => p.id === e.actor_id && p.role === 'operario')
+    );
+    if (finishEvent) {
+      return finishEvent.actor_id;
+    }
+    // 4. Último operario que registró jornada de trabajo en este parte
+    const lastSession = [...this.state.work_sessions]
+      .filter((s) => s.work_order_id === wo.id)
+      .sort((a, b) => (b.ended_at || b.started_at).localeCompare(a.ended_at || a.started_at))[0];
+    if (lastSession) {
+      const p = this.state.profiles.find((prof) => prof.id === lastSession.operator_id);
+      if (p && p.role === 'operario') return p.id;
+    }
+    // 5. Asignaciones activas o previas de este parte
+    const assignments = this.state.work_order_assignments.filter((a) => a.work_order_id === wo.id);
+    const activeAsg = assignments.find((a) => a.is_active);
+    if (activeAsg) {
+      return activeAsg.operator_id;
+    }
+    const lastAsg = [...assignments].sort((a, b) => (b.assigned_at || '').localeCompare(a.assigned_at || ''))[0];
+    if (lastAsg) {
+      return lastAsg.operator_id;
+    }
+    // 6. Si finished_by era usuario registrado (aunque no tuviera rol 'operario' explícito)
+    if (wo.finished_by) {
+      const p = this.state.profiles.find((prof) => prof.id === wo.finished_by);
+      if (p) return p.id;
+    }
+    return null;
+  }
+
+  /**
    * Reapertura con motivo (Solo Administrador):
    * Elimina marca de archivo si estaba archivado y permite volver a `reabierto` (marrón, en negrita),
    * a `terminado` (revisión administrativa) o a `en_curso`.
+   * En reaperturas, el parte se le asigna al mismo operario que lo cerró.
    */
   public reopenWorkOrder(
     workOrderId: string,
@@ -2213,6 +2265,9 @@ export class InstallationBackendEngine {
     }
     const wo = this.state.work_orders.find((w) => w.id === workOrderId);
     if (!wo || wo.deleted_at !== null) throw new ValidationError('Parte no encontrado.');
+
+    // 1. Determinar el operario que cerró o finalizó el parte antes de limpiar el estado
+    const closingOperatorId = this.getClosingOperatorId(wo);
 
     const now = new Date().toISOString();
     const prevStatus = wo.status;
@@ -2236,6 +2291,36 @@ export class InstallationBackendEngine {
     wo.updated_at = now;
     wo.version += 1;
 
+    // 2. Regla de negocio: En reaperturas, el parte se le asigna al mismo operario que lo cerró
+    if (closingOperatorId) {
+      for (const asg of this.state.work_order_assignments.filter((a) => a.work_order_id === wo.id)) {
+        if (asg.operator_id === closingOperatorId) {
+          asg.is_active = true;
+          asg.unassigned_at = null;
+          asg.unassigned_by = null;
+        } else if (asg.is_active) {
+          asg.is_active = false;
+          asg.unassigned_at = now;
+          asg.unassigned_by = admin.id;
+        }
+      }
+      const hasAssignment = this.state.work_order_assignments.some(
+        (a) => a.work_order_id === wo.id && a.operator_id === closingOperatorId
+      );
+      if (!hasAssignment) {
+        this.state.work_order_assignments.push({
+          id: genId('asg'),
+          work_order_id: wo.id,
+          operator_id: closingOperatorId,
+          is_active: true,
+          assigned_at: now,
+          assigned_by: admin.id,
+          unassigned_at: null,
+          unassigned_by: null,
+        });
+      }
+    }
+
     this.state.work_order_events.unshift({
       id: genId('woe'),
       work_order_id: wo.id,
@@ -2244,7 +2329,7 @@ export class InstallationBackendEngine {
       to_status: targetStatus,
       reason: reason.trim(),
       actor_id: admin.id,
-      metadata: { was_archived: wasArchived },
+      metadata: { was_archived: wasArchived, assigned_to_operator_id: closingOperatorId },
       created_at: now,
     });
 
@@ -2254,7 +2339,7 @@ export class InstallationBackendEngine {
       'work_order',
       wo.id,
       'REABRIR_PARTE',
-      { from_status: prevStatus, to_status: targetStatus, was_archived: wasArchived },
+      { from_status: prevStatus, to_status: targetStatus, was_archived: wasArchived, assigned_to_operator_id: closingOperatorId },
       reason.trim()
     );
     this.persist();

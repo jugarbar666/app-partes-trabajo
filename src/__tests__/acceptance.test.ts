@@ -1140,6 +1140,68 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(finalWo.status).toBe('terminado');
   });
 
+  it('Escenario Reaperturas: el parte se reasigna automáticamente al mismo operario que lo cerró', () => {
+    // 1. Admin crea un parte asignado a dos operarios (Carlos: usr-oper-1 y Lucía: usr-oper-2)
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Comunidad Propietarios Altagracia',
+      snapshot_customer_tax_id: 'H13998877',
+      snapshot_contact_name: 'Presidente',
+      snapshot_contact_phone: '+34 926 112 233',
+      snapshot_contact_email: 'presidente@altagracia.es',
+      snapshot_address_line: 'Calle Toledo 45',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Reparación de bajante comunitaria',
+      scheduled_at: '2026-10-27T10:00:00.000Z',
+      initial_notes: 'Asignación conjunta inicial',
+      operator_ids: ['usr-oper-1', 'usr-oper-2'],
+    });
+
+    const initialAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(initialAssignments).toHaveLength(2);
+
+    // 2. Lucía (usr-oper-2) realiza la intervención y finaliza el parte
+    backend.login('lucia@climalux-demo.es', 'Oper1234!');
+    backend.startWorkOrder(wo.id);
+    backend.finalizeWorkOrder({
+      work_order_id: wo.id,
+      total_amount_cents: 8000,
+      customer_requests_invoice: true,
+      customer_has_paid: false,
+      observations: 'Bajante sellada y encolada por Lucía',
+    });
+
+    // 3. Admin cierra el parte administrativamente
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    backend.closeWorkOrder(wo.id);
+
+    // 4. Admin reabre el parte por reclamación del cliente
+    const motivoReapertura = 'Reapertura: Se filtra humedad en la planta 2. Devolver al operario que intervino.';
+    backend.reopenWorkOrder(wo.id, motivoReapertura, 'reabierto');
+
+    // 5. Verificamos que las asignaciones activas ahora corresponden exclusivamente a Lucía (usr-oper-2)
+    const postReopenAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(postReopenAssignments).toHaveLength(1);
+    expect(postReopenAssignments[0].operator_id).toBe('usr-oper-2');
+    expect(postReopenAssignments[0].is_active).toBe(true);
+
+    // 6. Lucía (usr-oper-2) puede ver el parte reabierto en su bandeja de trabajo
+    backend.login('lucia@climalux-demo.es', 'Oper1234!');
+    const luciaWo = backend.getWorkOrderById(wo.id);
+    expect(luciaWo.status).toBe('reabierto');
+    expect(luciaWo.reopen_reason).toBe(motivoReapertura);
+
+    // 7. Carlos (usr-oper-1) ya no tiene asignado este parte porque lo cerró Lucía
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    expect(() => backend.getWorkOrderById(wo.id)).toThrowError(
+      'No tienes permiso para acceder a este parte de trabajo o ya no forma parte de tu flujo activo.'
+    );
+  });
+
   it('Escenario 25: Gestión de usuarios - Invitación con clave temporal, cambio obligatorio en primer acceso, recuperación automática y reseteo por admin', () => {
     // 1. Admin invita a un nuevo operario con una contraseña temporal decidida por el admin
     backend.login('admin@climalux-demo.es', 'Admin1234!');

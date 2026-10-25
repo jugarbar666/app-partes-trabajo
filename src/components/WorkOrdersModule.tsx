@@ -984,6 +984,39 @@ export const WorkOrderDetailView: React.FC<{
   const [reopenReason, setReopenReason] = useState('');
   const [reopenTarget, setReopenTarget] = useState<'reabierto' | 'en_curso' | 'terminado'>('reabierto');
 
+  // Operario que cerró o finalizó el trabajo para asignárselo en reaperturas
+  const closingOperatorName = useMemo(() => {
+    if (wo.finished_by) {
+      const p = profiles.find((prof) => prof.id === wo.finished_by);
+      if (p) return p.full_name;
+    }
+    if (wo.closed_by) {
+      const p = profiles.find((prof) => prof.id === wo.closed_by && prof.role === 'operario');
+      if (p) return p.full_name;
+    }
+    const finishEvent = events.find(
+      (e) =>
+        (e.event_type === 'finalizado' || e.event_type === 'cerrado') &&
+        profiles.some((p) => p.id === e.actor_id && p.role === 'operario')
+    );
+    if (finishEvent) {
+      const p = profiles.find((prof) => prof.id === finishEvent.actor_id);
+      if (p) return p.full_name;
+    }
+    const lastSession = [...sessions].sort((a, b) =>
+      (b.ended_at || b.started_at).localeCompare(a.ended_at || a.started_at)
+    )[0];
+    if (lastSession) {
+      const p = profiles.find((prof) => prof.id === lastSession.operator_id);
+      if (p) return p.full_name;
+    }
+    if (assignments.length > 0) {
+      const p = profiles.find((prof) => prof.id === assignments[0].operator_id);
+      if (p) return p.full_name;
+    }
+    return 'Operario asignado';
+  }, [wo.finished_by, wo.closed_by, profiles, events, sessions, assignments]);
+
   // Doble confirmación en fondo rojo para borrado irreversible de parte (Solo Admin)
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2 | null>(null);
 
@@ -1262,6 +1295,12 @@ export const WorkOrderDetailView: React.FC<{
           <p className="text-xs text-amber-900 font-medium">
             ⚠️ <strong>Atención Operario:</strong> Este parte ha sido devuelto a tu lista para su revisión o subsanación. Comprueba las indicaciones del motivo antes de darlo de nuevo por finalizado.
           </p>
+          {assignments.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 pt-1 border-t border-amber-300/80" data-testid="banner-reopen-assigned-operator">
+              <Users className="w-4 h-4 text-amber-800 shrink-0" />
+              <span>Asignado al operario que lo cerró: {assignments.map((a) => getUserName(a.operator_id)).join(', ')}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -2308,6 +2347,20 @@ export const WorkOrderDetailView: React.FC<{
             <h3 className="text-base font-bold text-slate-900">
               Reapertura Administrativa con Motivo — {wo.code}
             </h3>
+
+            {/* Aviso de asignación automática al operario que lo cerró */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-center gap-2.5">
+              <Users className="w-4 h-4 text-blue-600 shrink-0" />
+              <div>
+                <p className="font-bold text-slate-900">
+                  Operario asignado tras reapertura: <span className="text-blue-700">{closingOperatorName}</span>
+                </p>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  El parte se asigna automáticamente al operario que lo cerró para continuar la intervención.
+                </p>
+              </div>
+            </div>
+
             <div>
               <label className="block font-bold text-slate-700 mb-1">
                 Motivo obligatorio para auditoría *
@@ -2344,10 +2397,11 @@ export const WorkOrderDetailView: React.FC<{
                 type="button"
                 onClick={() => {
                   try {
+                    const assignedName = closingOperatorName;
                     backend.reopenWorkOrder(wo.id, reopenReason, reopenTarget);
                     setReopenReason('');
                     setShowReopenModal(false);
-                    notifySuccessGreen('Parte reabierto y registrado en auditoría.');
+                    notifySuccessGreen(`Parte reabierto y asignado a ${assignedName}.`);
                     refreshLocal();
                   } catch (err: any) {
                     notifyError(err?.message || 'Error al reabrir');
