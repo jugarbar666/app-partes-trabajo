@@ -65,7 +65,7 @@ import {
   sanitizeTimezone,
   WeekDayInfo,
 } from './utils/formatters';
-import { isMobilePreviewEnabled } from './config/branchConfig';
+import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from './config/branchConfig';
 
 type ActiveRoute =
   | 'dashboard'
@@ -1238,22 +1238,47 @@ const MainApplicationContent: React.FC = () => {
               )}
             </div>
 
-            <select
-              aria-label="Cambiar sesión activa para verificar permisos"
-              data-testid="select-active-session-user"
-              value={loggedUser.email}
-              onChange={(e) => {
-                handleSwitchSessionRoleDemo(e.target.value);
-              }}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b1120] border border-slate-700 text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
-            >
-              {backend.getProfiles().map((p) => (
-                <option key={p.id} value={p.email}>
-                  {p.role === 'admin' ? '👤 ' : '🔧 '}
-                  {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
-                </option>
-              ))}
-            </select>
+            {isDemoUserSwitchEnabled() ? (
+              <select
+                aria-label="Cambiar sesión activa para verificar permisos"
+                data-testid="select-active-session-user"
+                value={loggedUser.email}
+                onChange={(e) => {
+                  handleSwitchSessionRoleDemo(e.target.value);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b1120] border border-slate-700 text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
+              >
+                {backend.getProfiles().map((p) => (
+                  <option key={p.id} value={p.email}>
+                    {p.role === 'admin' ? '👤 ' : '🔧 '}
+                    {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div
+                data-testid="sidebar-identified-user-display"
+                className="w-full px-3 py-2 rounded-lg bg-[#0b1120] border border-slate-700/80 text-xs text-white flex items-center justify-between gap-2 shadow-2xs"
+                title={`Usuario identificado en este dispositivo: ${loggedUser.full_name} (${loggedUser.email})`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0">{isAdmin ? '👤' : '🔧'}</span>
+                  <div className="min-w-0">
+                    <div className="font-bold text-white truncate text-xs">{loggedUser.full_name}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{loggedUser.email}</div>
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold shrink-0 uppercase tracking-wide border ${
+                    isAdmin
+                      ? 'bg-purple-950/80 text-purple-200 border-purple-800'
+                      : 'bg-blue-950/80 text-blue-200 border-blue-800'
+                  }`}
+                >
+                  {loggedUser.role}
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between pt-0.5">
               <span className="text-[11px] text-slate-400 truncate max-w-[110px]">
@@ -1531,26 +1556,44 @@ const MainApplicationContent: React.FC = () => {
               </span>
             )}
 
-            {/* Selector rápido de cuenta visible también en móvil sin abrir el menú */}
-            <select
-              aria-label="Cambiar cuenta activa (Admin u Operario)"
-              value={loggedUser.email}
-              onChange={(e) => {
-                handleSwitchSessionRoleDemo(e.target.value);
-              }}
-              className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none max-w-[145px] sm:max-w-none truncate shrink-0 ${
-                isAdmin
-                  ? 'bg-amber-50 border-amber-300 text-amber-800'
-                  : 'bg-blue-50 border-blue-300 text-blue-800'
-              }`}
-            >
-              {backend.getProfiles().map((p) => (
-                <option key={p.id} value={p.email}>
-                  {p.role === 'admin' ? '👤 ' : '👷 '}
-                  {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
-                </option>
-              ))}
-            </select>
+            {/* Selector de cuenta: desplegable en modo pruebas/demo; identificación fija en producción Fontanería Roma */}
+            {isDemoUserSwitchEnabled() ? (
+              <select
+                aria-label="Cambiar cuenta activa (Admin u Operario)"
+                value={loggedUser.email}
+                onChange={(e) => {
+                  handleSwitchSessionRoleDemo(e.target.value);
+                }}
+                className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none max-w-[145px] sm:max-w-none truncate shrink-0 ${
+                  isAdmin
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-blue-50 border-blue-300 text-blue-800'
+                }`}
+              >
+                {backend.getProfiles().map((p) => (
+                  <option key={p.id} value={p.email}>
+                    {p.role === 'admin' ? '👤 ' : '👷 '}
+                    {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div
+                data-testid="header-identified-user-badge"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold shrink-0 max-w-[155px] sm:max-w-none ${
+                  isAdmin
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-blue-50 border-blue-300 text-blue-900'
+                }`}
+                title={`Sesión iniciada como ${loggedUser.full_name} (${loggedUser.email})`}
+              >
+                <span>{isAdmin ? '👤' : '👷'}</span>
+                <span className="truncate">{loggedUser.full_name.split(' ')[0]}</span>
+                <span className="hidden sm:inline text-[10px] font-extrabold uppercase opacity-80">
+                  ({isAdmin ? 'Admin' : 'Operario'})
+                </span>
+              </div>
+            )}
 
             <span className="text-xs text-slate-500 hidden md:inline shrink-0">
               Moneda: <strong className="text-slate-700">{company.currency} (€)</strong> · Zona:{' '}

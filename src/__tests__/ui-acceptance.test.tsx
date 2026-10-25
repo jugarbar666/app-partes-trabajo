@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
 import { WorkOrderStatusBadge, UIConfirmationProvider } from '../components/CommonUI';
-import { isMobilePreviewEnabled } from '../config/branchConfig';
+import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from '../config/branchConfig';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
 import { MasterDataAndUsersModule } from '../components/AdminAndMasterModules';
@@ -152,6 +152,28 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       expect(htmlProd).not.toContain('header-mobile-view-link');
     } finally {
       (import.meta.env as any).VITE_SHOW_MOBILE_PREVIEW = originalEnv;
+    }
+  });
+
+  it('Control de selector de cambio de usuario por rama: activo en pruebas y bloqueado en empresa-fontaneria-roma (identificado fijo)', () => {
+    // 1. En entorno de desarrollo / rama pruebas está activo para permitir pruebas
+    expect(isDemoUserSwitchEnabled()).toBe(true);
+
+    const htmlPruebas = renderToString(<App />);
+    expect(htmlPruebas).toContain('select-active-session-user');
+
+    // 2. Comprobación de que si se desactiva (como en producción fontanería roma), no aparece ningún desplegable de cambio de cuenta
+    const originalEnv = import.meta.env.VITE_ENABLE_DEMO_USER_SWITCH;
+    try {
+      (import.meta.env as any).VITE_ENABLE_DEMO_USER_SWITCH = 'false';
+      expect(isDemoUserSwitchEnabled()).toBe(false);
+
+      const htmlProd = renderToString(<App />);
+      expect(htmlProd).not.toContain('select-active-session-user');
+      expect(htmlProd).toContain('header-identified-user-badge');
+      expect(htmlProd).toContain('sidebar-identified-user-display');
+    } finally {
+      (import.meta.env as any).VITE_ENABLE_DEMO_USER_SWITCH = originalEnv;
     }
   });
 
