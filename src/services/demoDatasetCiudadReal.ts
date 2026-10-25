@@ -31,9 +31,9 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
   if (!profiles.some((p) => p.role === 'admin')) {
     profiles.unshift({
       id: 'usr-admin-1',
-      full_name: 'Administración Fontanería Roma',
+      full_name: 'Antonio Roma',
       dni: '12345678A',
-      email: 'admin@climalux-demo.es',
+      email: 'anromago@hotmail.com',
       phone: '+34 600 111 222',
       role: 'admin',
       is_active: true,
@@ -41,6 +41,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       created_at: '2026-01-10T08:00:00.000Z',
       updated_at: '2026-01-10T08:00:00.000Z',
     });
+    passwords['anromago@hotmail.com'] = 'anromago';
     passwords['admin@climalux-demo.es'] = 'Admin1234!';
   }
 

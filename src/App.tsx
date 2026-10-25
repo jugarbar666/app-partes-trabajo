@@ -292,9 +292,10 @@ const MainApplicationContent: React.FC = () => {
       }
       const firstAdmin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
       if (firstAdmin) {
-        return backend.login(firstAdmin.email, 'Admin1234!');
+        const pass = firstAdmin.email.toLowerCase() === 'anromago@hotmail.com' ? 'anromago' : 'Admin1234!';
+        return backend.login(firstAdmin.email, pass);
       }
-      return backend.login('admin@climalux-demo.es', 'Admin1234!');
+      return backend.login('anromago@hotmail.com', 'anromago');
     } catch {
       return null;
     }
@@ -303,12 +304,22 @@ const MainApplicationContent: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState(() => {
     try {
       const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
-      return admin ? admin.email : 'admin@climalux-demo.es';
+      return admin ? admin.email : 'anromago@hotmail.com';
     } catch {
-      return 'admin@climalux-demo.es';
+      return 'anromago@hotmail.com';
     }
   });
-  const [loginPass, setLoginPass] = useState('Admin1234!');
+  const [loginPass, setLoginPass] = useState(() => {
+    try {
+      const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
+      if (admin && admin.email.toLowerCase() === 'anromago@hotmail.com') {
+        return 'anromago';
+      }
+      return 'anromago';
+    } catch {
+      return 'anromago';
+    }
+  });
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryResult, setRecoveryResult] = useState<{
@@ -545,12 +556,12 @@ const MainApplicationContent: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setLoginEmail('admin@climalux-demo.es');
-                      setLoginPass('Admin1234!');
+                      setLoginEmail('anromago@hotmail.com');
+                      setLoginPass('anromago');
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
-                    Admin (Elena)
+                    Admin (Antonio Roma)
                   </button>
                   <button
                     type="button"

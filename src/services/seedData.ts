@@ -74,9 +74,9 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
   const profiles: UserProfile[] = [
     {
       id: 'usr-roma-admin',
-      full_name: 'Juan Carlos (Administrador)',
+      full_name: 'Antonio Roma',
       dni: '00000001A',
-      email: 'jugarbar@gmail.com',
+      email: 'anromago@hotmail.com',
       phone: '+34 600 000 001',
       role: 'admin',
       is_active: true,
@@ -942,7 +942,8 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
     },
     profiles,
     passwords: {
-      'jugarbar@gmail.com': 'Admin1234!',
+      'anromago@hotmail.com': 'anromago',
+      'jugarbar@gmail.com': 'anromago',
       'jcgbarrajon@gmail.com': 'Oper1234!',
       'admin@climalux-demo.es': 'Admin1234!',
       'carlos@climalux-demo.es': 'Oper1234!',
@@ -1038,9 +1039,9 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
   const profiles: UserProfile[] = [
     {
       id: 'usr-admin-1',
-      full_name: 'Administrador (Gestión)',
+      full_name: 'Antonio Roma',
       dni: '12345678A',
-      email: 'admin@climalux-demo.es',
+      email: 'anromago@hotmail.com',
       phone: '+34 600 111 222',
       role: 'admin',
       is_active: true,
@@ -1076,6 +1077,7 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
     },
     profiles,
     passwords: {
+      'anromago@hotmail.com': 'anromago',
       'admin@climalux-demo.es': 'Admin1234!',
     },
     invitations: [],
