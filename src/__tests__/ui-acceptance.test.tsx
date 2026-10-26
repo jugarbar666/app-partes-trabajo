@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
 import { WorkOrderStatusBadge, UIConfirmationProvider } from '../components/CommonUI';
@@ -10,6 +10,8 @@ import { MasterDataAndUsersModule } from '../components/AdminAndMasterModules';
 
 describe('Verificación de Pantallas, Colores Obligatorios y Controles Persistentes (Escenarios 18, 19 y 20)', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-22T10:00:00.000Z'));
     defaultBackend.resetToDemoSeed();
     defaultBackend.login('admin@climalux-demo.es', 'Admin1234!');
   });
