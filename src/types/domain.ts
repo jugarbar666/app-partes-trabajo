@@ -21,6 +21,7 @@ export type NotificationStatus =
 
 export type BackupTriggerType = 'auto_desktop' | 'manual' | 'scheduled';
 export type BackupStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type WorkShiftType = 'continua' | 'partida';
 
 export interface CompanySettings {
   id: 1;
@@ -37,8 +38,17 @@ export interface CompanySettings {
   work_order_prefix: string;
   work_order_next_seq: number;
   timezone: string;
+  default_work_shift_type?: WorkShiftType;
   default_work_start_time?: string;
   default_work_end_time?: string;
+
+  default_work_morning_start_time?: string;
+  default_work_morning_end_time?: string;
+  default_work_afternoon_start_time?: string;
+  default_work_afternoon_end_time?: string;
+
+
+
   locale: string;
   currency: string;
   date_format: string;
@@ -54,8 +64,13 @@ export interface UserProfile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  work_shift_type?: WorkShiftType;
   work_start_time?: string;
   work_end_time?: string;
+  work_morning_start_time?: string;
+  work_morning_end_time?: string;
+  work_afternoon_start_time?: string;
+  work_afternoon_end_time?: string;
   must_change_password?: boolean;
   column_preferences: Record<string, string[]>;
   created_at: string;

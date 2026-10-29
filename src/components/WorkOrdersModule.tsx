@@ -150,9 +150,25 @@ export const WorkOrderCreateModal: React.FC<{
   );
 
   const [plannedWork, setPlannedWork] = useState(preselectedPlannedWork || '');
-  const [scheduledAt, setScheduledAt] = useState(
-    preselectedScheduledAt || '2026-10-22T09:00'
-  );
+  const getInitialScheduledAt = () => {
+    if (preselectedScheduledAt) {
+      const parsed = new Date(preselectedScheduledAt);
+      if (!isNaN(parsed.getTime()) && parsed.getTime() >= Date.now() - 60000) {
+        return preselectedScheduledAt.includes('T')
+          ? preselectedScheduledAt.slice(0, 16)
+          : `${preselectedScheduledAt}T09:00`;
+      }
+    }
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  };
+
+  const [scheduledAt, setScheduledAt] = useState(getInitialScheduledAt);
   const [initialNotes, setInitialNotes] = useState('');
   const [amountStr, setAmountStr] = useState(
     preselectedAmountCents !== undefined && preselectedAmountCents !== null
@@ -165,6 +181,11 @@ export const WorkOrderCreateModal: React.FC<{
     [backend]
   );
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
+
+  const scheduleConflicts = useMemo(() => {
+    if (!scheduledAt || selectedOperatorIds.length === 0) return [];
+    return backend.findOperatorScheduleConflicts(scheduledAt, selectedOperatorIds);
+  }, [backend, scheduledAt, selectedOperatorIds]);
 
   const [showInlineCustomerModal, setShowInlineCustomerModal] = useState(false);
   const [newCustomerCode, setNewCustomerCode] = useState('');
@@ -367,14 +388,31 @@ export const WorkOrderCreateModal: React.FC<{
       return;
     }
 
+    const scheduledDate = new Date(scheduledAt);
+    if (isNaN(scheduledDate.getTime())) {
+      notifyError('Fecha y hora prevista no válida.');
+      return;
+    }
+    if (scheduledDate.getTime() < Date.now() - 60 * 1000) {
+      notifyError('No se puede crear un parte con fecha u hora anterior a la actual.');
+      return;
+    }
+
     const scheduledIso = scheduledAt.includes('Z')
       ? scheduledAt
       : new Date(scheduledAt).toISOString();
+
+    const conflicts = backend.findOperatorScheduleConflicts(scheduledIso, selectedOperatorIds);
+    const conflictWarnings = conflicts.map(
+      (c) =>
+        `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
+    );
 
     const parsedCents = amountStr.trim() !== '' ? parseEurosToCents(amountStr) : null;
 
     requestSaveConfirmation({
       title: 'Alta de Nuevo Parte de Trabajo',
+      warnings: conflictWarnings.length > 0 ? conflictWarnings : undefined,
       changes: [
         { label: 'Cliente', value: cust.name },
         { label: 'Dirección específica del servicio', value: `${addressLine}, ${city}` },
@@ -653,6 +691,30 @@ export const WorkOrderCreateModal: React.FC<{
               })}
             </div>
           </div>
+
+          {scheduleConflicts.length > 0 && (
+            <div
+              className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1.5 text-xs text-amber-900"
+              data-testid="alert-operator-schedule-conflict"
+            >
+              <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Aviso: Solapamiento de horario (se permite el guardado)</span>
+              </div>
+              <p className="text-amber-800 text-[11px]">
+                Los siguientes operarios ya tienen otro parte asignado a esa misma hora:
+              </p>
+              <ul className="list-disc pl-5 space-y-0.5 text-[11px]">
+                {scheduleConflicts.map((c, i) => (
+                  <li key={i}>
+                    <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
+                    <strong>{c.work_order_code}</strong> el{' '}
+                    {formatDateES(c.scheduled_at)} a las {formatTimeES(c.scheduled_at)} h ({c.customer_name}).
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
             <button
@@ -1004,9 +1066,31 @@ const WorkOrderDetailLoadedView: React.FC<{
 
   // Modal Reprogramar Fecha y Hora Prevista (Disponible para Administradores y Operarios en cualquier momento)
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [rescheduleDateStr, setRescheduleDateStr] = useState(
-    wo.scheduled_at ? wo.scheduled_at.slice(0, 16) : '2026-10-22T09:00'
-  );
+  const [rescheduleDateStr, setRescheduleDateStr] = useState(() => {
+    if (wo.scheduled_at) {
+      const parsed = new Date(wo.scheduled_at);
+      if (!isNaN(parsed.getTime()) && parsed.getTime() >= Date.now() - 60000) {
+        return wo.scheduled_at.slice(0, 16);
+      }
+    }
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  });
+
+  const rescheduleConflicts = useMemo(() => {
+    if (!rescheduleDateStr) return [];
+    const activeOpIds = assignments.filter((a) => a.is_active).map((a) => a.operator_id);
+    return backend.findOperatorScheduleConflicts(
+      rescheduleDateStr,
+      activeOpIds,
+      wo.id
+    );
+  }, [backend, rescheduleDateStr, assignments, wo.id]);
   const [rescheduleReason, setRescheduleReason] = useState('');
 
   // Personal activo disponible para asignaciones (operarios y administradores)
@@ -1020,6 +1104,15 @@ const WorkOrderDetailLoadedView: React.FC<{
   const [selectedOpIdsForReassign, setSelectedOpIdsForReassign] = useState<string[]>(() =>
     assignments.map((a) => a.operator_id)
   );
+
+  const reassignConflicts = useMemo(() => {
+    if (!wo?.scheduled_at || selectedOpIdsForReassign.length === 0) return [];
+    return backend.findOperatorScheduleConflicts(
+      wo.scheduled_at,
+      selectedOpIdsForReassign,
+      wo.id
+    );
+  }, [backend, wo?.scheduled_at, selectedOpIdsForReassign, wo?.id]);
   const [editOperatorIds, setEditOperatorIds] = useState<string[]>(() =>
     assignments.map((a) => a.operator_id)
   );
@@ -3239,6 +3332,26 @@ const WorkOrderDetailLoadedView: React.FC<{
               Seleccionados: <strong>{selectedOpIdsForReassign.length}</strong> operario(s)
             </div>
 
+            {reassignConflicts.length > 0 && (
+              <div
+                className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-xs text-amber-900"
+                data-testid="alert-reassign-schedule-conflict"
+              >
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Aviso de solapamiento (se permite la reasignación):</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-0.5 text-[11px]">
+                  {reassignConflicts.map((c, i) => (
+                    <li key={i}>
+                      <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
+                      <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
@@ -3259,8 +3372,13 @@ const WorkOrderDetailLoadedView: React.FC<{
                   const selectedNames = selectedOpIdsForReassign
                     .map((id) => getUserName(id))
                     .join(', ');
+                  const reassignWarnings = reassignConflicts.map(
+                    (c) =>
+                      `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
+                  );
                   requestSaveConfirmation({
                     title: `Reasignar Operarios — ${wo.code}`,
+                    warnings: reassignWarnings.length > 0 ? reassignWarnings : undefined,
                     changes: [
                       {
                         label: 'Nuevos operarios asignados',
@@ -3794,12 +3912,27 @@ const WorkOrderDetailLoadedView: React.FC<{
                 notifyError('Debes indicar una fecha y hora prevista válida.');
                 return;
               }
+              const targetDate = new Date(rescheduleDateStr);
+              if (isNaN(targetDate.getTime())) {
+                notifyError('Debes indicar una fecha y hora prevista válida.');
+                return;
+              }
+              if (targetDate.getTime() < Date.now() - 60 * 1000) {
+                notifyError('No se puede reprogramar un parte con fecha u hora anterior a la actual.');
+                return;
+              }
               const isoTarget = rescheduleDateStr.includes('Z')
                 ? rescheduleDateStr
                 : new Date(rescheduleDateStr).toISOString();
 
+              const reschedWarnings = rescheduleConflicts.map(
+                (c) =>
+                  `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
+              );
+
               requestSaveConfirmation({
                 title: 'Confirmar Reprogramación de Fecha y Hora Prevista',
+                warnings: reschedWarnings.length > 0 ? reschedWarnings : undefined,
                 changes: [
                   { label: 'Parte de trabajo', value: wo.code },
                   {
@@ -3863,6 +3996,26 @@ const WorkOrderDetailLoadedView: React.FC<{
                 testId="input-reschedule-datetime"
               />
             </div>
+
+            {rescheduleConflicts.length > 0 && (
+              <div
+                className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-xs text-amber-900"
+                data-testid="alert-reschedule-schedule-conflict"
+              >
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Aviso de solapamiento (se permite reprogramar):</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-0.5 text-[11px]">
+                  {rescheduleConflicts.map((c, i) => (
+                    <li key={i}>
+                      <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
+                      <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">

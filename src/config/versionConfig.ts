@@ -2,8 +2,8 @@
  * Control de versión instalada en el dispositivo y detección de nuevas versiones disponibles.
  */
 
-export const LATEST_APP_VERSION = '1.8.0';
-export const INITIAL_DEVICE_VERSION = '1.7.0';
+export const LATEST_APP_VERSION = '1.9.0';
+export const INITIAL_DEVICE_VERSION = '1.8.0';
 export const DEVICE_INSTALLED_VERSION_KEY = 'agy_roma_device_installed_version';
 
 export function getInstalledDeviceVersion(): string {
@@ -49,7 +49,7 @@ export async function fetchRemoteLatestVersion(): Promise<string> {
       }
     }
   } catch {
-    // Fallback to bundled constant when offline or in test environment
+    // Si no hay red o falla la petición, mantener la versión empaquetada
   }
   return LATEST_APP_VERSION;
 }

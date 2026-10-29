@@ -1,5 +1,5 @@
 {
-  "version": "1.8.0",
-  "releasedAt": "2026-10-29T18:10:00.000Z",
-  "notes": "Botón modificar materiales utilizados, finalización libre de partes sin bloqueos por jornadas, y validación de horarios laborales al crear o reprogramar partes"
+  "version": "1.9.0",
+  "releasedAt": "2026-10-29T20:20:00.000Z",
+  "notes": "Recuperación segura por token de correo, aviso de solapamiento de horarios al crear o reasignar partes, restricción de fechas pasadas, control de jornada continua y partida en fichajes, búsqueda por operario y soporte PWA"
 }

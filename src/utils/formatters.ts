@@ -896,3 +896,18 @@ export function cleanOperatorName(rawName?: string | null): string {
     .trim();
 }
 
+/**
+ * Calcula la hora frontera / punto medio entre el fin del turno de mañana y el inicio de tarde
+ * para clasificar marcas de fichaje en jornada partida (ej: 13:30 y 15:30 -> 14:30).
+ */
+export function getShiftMidpointTime(endMorning = '13:30', startAfternoon = '15:30'): string {
+  const [h1, m1] = endMorning.split(':').map((v) => parseInt(v, 10) || 0);
+  const [h2, m2] = startAfternoon.split(':').map((v) => parseInt(v, 10) || 0);
+  const totalMins1 = h1 * 60 + m1;
+  const totalMins2 = h2 * 60 + m2;
+  const midMins = Math.floor((totalMins1 + totalMins2) / 2);
+  const midH = Math.floor(midMins / 60);
+  const midM = midMins % 60;
+  return `${String(midH).padStart(2, '0')}:${String(midM).padStart(2, '0')}`;
+}
+

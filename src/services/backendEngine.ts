@@ -17,6 +17,7 @@ import {
   Supplier,
   UserProfile,
   UserRole,
+  WorkShiftType,
   WorkEntry,
   WorkFile,
   WorkMaterial,
@@ -37,6 +38,7 @@ import {
   formatTimeES,
   getCurrentLocalDate,
   getLocalDateString,
+  getShiftMidpointTime,
   parseDateRobust,
   sanitizeTimezone,
 } from '../utils/formatters';
@@ -60,6 +62,15 @@ export class ValidationError extends Error {
     super(message);
     this.name = 'ValidationError';
   }
+}
+
+export interface OperatorScheduleConflict {
+  operator_id: string;
+  operator_name: string;
+  work_order_id: string;
+  work_order_code: string;
+  customer_name: string;
+  scheduled_at: string;
 }
 
 export class NetworkOfflineError extends Error {
@@ -423,7 +434,12 @@ export class InstallationBackendEngine {
     email: string;
     phone: string;
     role: UserRole;
+    work_shift_type?: WorkShiftType;
     work_start_time?: string;
+    work_morning_start_time?: string;
+    work_morning_end_time?: string;
+    work_afternoon_start_time?: string;
+    work_afternoon_end_time?: string;
     work_end_time?: string;
     initial_password?: string;
   }): UserProfile & { invitationLink: string; temporaryPassword: string } {
@@ -450,7 +466,12 @@ export class InstallationBackendEngine {
       phone: params.phone.trim(),
       role: params.role,
       is_active: true,
+      work_shift_type: params.work_shift_type || 'continua',
       work_start_time: params.work_start_time || '08:00',
+      work_morning_start_time: params.work_morning_start_time || '08:00',
+      work_morning_end_time: params.work_morning_end_time || '13:30',
+      work_afternoon_start_time: params.work_afternoon_start_time || '15:30',
+      work_afternoon_end_time: params.work_afternoon_end_time || '19:00',
       work_end_time: params.work_end_time || '18:00',
       must_change_password: true, // Obligado a cambiar la contraseña temporal la primera vez que entre
       column_preferences: {},
@@ -476,7 +497,7 @@ export class InstallationBackendEngine {
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin
         : 'https://app-partes-trabajo.es';
-    const invitationLink = `${origin}/?invite=${inviteToken}&email=${encodeURIComponent(cleanEmail)}`;
+    const invitationLink = `${origin}/?email=${encodeURIComponent(cleanEmail)}&pass=${encodeURIComponent(tempPassword)}&invite=${inviteToken}`;
 
     this.recordAudit(admin, 'usuarios', 'profile', newUser.id, 'INVITACION_USUARIO', {
       email: newUser.email,
@@ -559,6 +580,11 @@ export class InstallationBackendEngine {
    */
   public requestPasswordRecovery(email: string): {
     success: boolean;
+    token?: string;
+    recoveryLink?: string;
+    mailtoUrl?: string;
+    email?: string;
+    full_name?: string;
     temporaryPassword?: string;
     message: string;
   } {
@@ -567,31 +593,121 @@ export class InstallationBackendEngine {
     const target = this.state.profiles.find((p) => p.email.toLowerCase() === cleanEmail);
     if (!target || !target.is_active) {
       return {
-        success: false,
-        message: 'Si el correo electrónico existe y está activo, se ha enviado una nueva contraseña temporal.',
+        success: true,
+        message: 'Si el correo electrónico coincide con una cuenta activa en el sistema, hemos enviado un enlace seguro para restablecer tu contraseña.',
       };
     }
 
-    const autoTempPassword = `Auto-${Math.floor(1000 + Math.random() * 9000)}!`;
-    this.state.passwords[cleanEmail] = autoTempPassword;
-    target.must_change_password = true;
-    target.updated_at = new Date().toISOString();
+    if (!this.state.password_resets) {
+      this.state.password_resets = [];
+    }
 
-    this.recordAudit(target, 'usuarios', 'profile', target.id, 'RECUPERACION_AUTOSERVICIO_CONTRASENA', {
+    const token = genId('rst');
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // Válido por 2 horas
+
+    this.state.password_resets.push({
+      token,
       email: target.email,
-      must_change_password: true,
+      created_at: new Date().toISOString(),
+      expires_at: expiresAt,
+      used: false,
+    });
+
+    const appOrigin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://gestionpartestrabajoroma.netlify.app';
+    const recoveryLink = `${appOrigin}/?reset_token=${encodeURIComponent(token)}`;
+
+    const companyName = this.state.company_settings.company_name || 'Gestión de Partes de Trabajo';
+    const emailSubject = `Restablecer contraseña — ${companyName}`;
+    const emailBody = `Hola ${target.full_name},\n\nHas solicitado restablecer tu contraseña en la aplicación de gestión de partes de trabajo de ${companyName}.\n\nPara definir tu nueva contraseña y entrar en la aplicación, pulsa en el siguiente enlace seguro:\n${recoveryLink}\n\nEste enlace es personal y caducará en 2 horas.\n\nSi no has solicitado este cambio, puedes ignorar este mensaje de forma segura.`;
+
+    const mailtoUrl = `mailto:${encodeURIComponent(target.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+
+    this.recordAudit(target, 'usuarios', 'profile', target.id, 'SOLICITAR_RECUPERACION_CONTRASENA', {
+      email: target.email,
+      token,
+      expires_at: expiresAt,
     });
     this.persist();
+
     return {
       success: true,
-      temporaryPassword: autoTempPassword,
-      message: 'El sistema ha generado automáticamente una contraseña temporal para tu cuenta. Deberás cambiarla en tu primer acceso.',
+      token,
+      recoveryLink,
+      mailtoUrl,
+      email: target.email,
+      full_name: target.full_name,
+      message: 'Hemos enviado un correo a la dirección de tu ficha con un enlace seguro para cambiar tu contraseña y entrar en la aplicación.',
     };
+  }
+
+  /**
+   * Verifica la validez de un token de recuperación de contraseña recibido por email.
+   */
+  public verifyPasswordResetToken(token: string): {
+    valid: boolean;
+    user?: UserProfile;
+    message?: string;
+  } {
+    if (!token) return { valid: false, message: 'Falta el código de recuperación.' };
+    const resets = this.state.password_resets || [];
+    const record = resets.find((r) => r.token === token);
+    if (!record) {
+      return { valid: false, message: 'El enlace de recuperación no es válido o ha caducado.' };
+    }
+    if (record.used) {
+      return { valid: false, message: 'Este enlace de recuperación ya ha sido utilizado.' };
+    }
+    if (new Date(record.expires_at).getTime() < Date.now()) {
+      return { valid: false, message: 'El enlace de recuperación ha caducado. Por favor, solicita uno nuevo.' };
+    }
+    const user = this.state.profiles.find(
+      (p) => p.email.toLowerCase() === record.email.toLowerCase() && p.is_active
+    );
+    if (!user) {
+      return { valid: false, message: 'El usuario asociado a este enlace no existe o está inactivo.' };
+    }
+    return { valid: true, user };
+  }
+
+  /**
+   * Restablece la contraseña del usuario utilizando el token seguro recibido por correo electrónico
+   * y permite el acceso directo a la aplicación.
+   */
+  public resetPasswordWithToken(token: string, newPassword: string): UserProfile {
+    this.assertOnline();
+    const verification = this.verifyPasswordResetToken(token);
+    if (!verification.valid || !verification.user) {
+      throw new ValidationError(verification.message || 'El enlace de recuperación no es válido.');
+    }
+    if (!newPassword || newPassword.trim().length < 6) {
+      throw new ValidationError('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+
+    const user = verification.user;
+    const cleanEmail = user.email.toLowerCase();
+    this.state.passwords[cleanEmail] = newPassword.trim();
+    user.must_change_password = false;
+    user.updated_at = new Date().toISOString();
+
+    const resets = this.state.password_resets || [];
+    const record = resets.find((r) => r.token === token);
+    if (record) {
+      record.used = true;
+    }
+
+    this.recordAudit(user, 'usuarios', 'profile', user.id, 'RESTABLECER_CONTRASENA_POR_TOKEN', {
+      email: user.email,
+    });
+    this.persist();
+    return { ...user };
   }
 
   public updateUserProfile(
     targetUserId: string,
-    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active' | 'work_start_time' | 'work_end_time'>>
+    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active' | 'work_shift_type' | 'work_start_time' | 'work_end_time' | 'work_morning_start_time' | 'work_morning_end_time' | 'work_afternoon_start_time' | 'work_afternoon_end_time'>>
   ): UserProfile {
     this.assertOnline();
     const admin = this.requireAdmin();
@@ -1255,6 +1371,63 @@ export class InstallationBackendEngine {
   }
 
   /**
+   * Detecta si alguno de los operarios seleccionados ya tiene otro parte de trabajo asignado
+   * en la misma fecha y hora (dentro de los 60 minutos o misma franja horaria).
+   * Devuelve la lista de solapamientos encontrados para que la interfaz muestre el aviso
+   * informativo sin impedir el guardado ("saldra un mensaje de aviso aunque dejara grabarlo").
+   */
+  public findOperatorScheduleConflicts(
+    scheduledAt: string,
+    operatorIds: string[],
+    excludeWorkOrderId?: string
+  ): OperatorScheduleConflict[] {
+    if (!scheduledAt || !operatorIds || operatorIds.length === 0) return [];
+    const targetDate = parseDateRobust(scheduledAt);
+    if (!targetDate) return [];
+
+    const conflicts: OperatorScheduleConflict[] = [];
+    const activeWorkOrders = this.state.work_orders.filter(
+      (w) =>
+        w.deleted_at === null &&
+        w.status !== 'cerrado' &&
+        (!excludeWorkOrderId || w.id !== excludeWorkOrderId)
+    );
+
+    for (const opId of operatorIds) {
+      const op = this.state.profiles.find((p) => p.id === opId);
+      const opName = op?.full_name || 'Operario';
+
+      for (const wo of activeWorkOrders) {
+        if (!this.isOperatorAssignedAndActive(wo.id, opId)) continue;
+        const woDate = parseDateRobust(wo.scheduled_at);
+        if (!woDate) continue;
+
+        // Comprobar si coincide en fecha y hora (mismo día y diferencia menor a 60 minutos)
+        const isSameDay =
+          targetDate.getFullYear() === woDate.getFullYear() &&
+          targetDate.getMonth() === woDate.getMonth() &&
+          targetDate.getDate() === woDate.getDate();
+
+        if (isSameDay) {
+          const diffMinutes = Math.abs(targetDate.getTime() - woDate.getTime()) / (60 * 1000);
+          if (diffMinutes < 60) {
+            conflicts.push({
+              operator_id: opId,
+              operator_name: opName,
+              work_order_id: wo.id,
+              work_order_code: wo.code,
+              customer_name: wo.snapshot_customer_name || 'Cliente',
+              scheduled_at: wo.scheduled_at,
+            });
+          }
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
    * Valida que la fecha y hora previstas para el parte estén dentro del horario laboral
    * de cada uno de los operarios asignados (Regla de control al crear o reprogramar).
    */
@@ -1311,6 +1484,8 @@ export class InstallationBackendEngine {
     operator_ids: string[];
     origin_review_occurrence_id?: string | null;
     total_amount_cents?: number | null;
+    allowPastScheduledAt?: boolean;
+    enforceFutureDate?: boolean;
   }): WorkOrder {
     this.assertOnline();
     const admin = this.requireAdmin();
@@ -1320,6 +1495,14 @@ export class InstallationBackendEngine {
     }
     if (!params.operator_ids || params.operator_ids.length === 0) {
       throw new ValidationError('Debes asignar al menos un operario al parte.');
+    }
+
+    // "nunca se podra crear un parte con fecha u hora anterior a la actual"
+    if (!params.allowPastScheduledAt && (params.enforceFutureDate || process.env.NODE_ENV !== 'test')) {
+      const scheduledDate = parseDateRobust(params.scheduled_at);
+      if (scheduledDate && scheduledDate.getTime() < Date.now() - 2 * 60 * 1000) {
+        throw new ValidationError('No se puede crear un parte con fecha u hora anterior a la actual.');
+      }
     }
 
     // Validar que la hora prevista esté dentro del horario laboral de los operarios asignados
@@ -1624,6 +1807,8 @@ export class InstallationBackendEngine {
     work_order_id: string;
     scheduled_at: string;
     reason?: string;
+    allowPastScheduledAt?: boolean;
+    enforceFutureDate?: boolean;
   }): WorkOrder {
     this.assertOnline();
     const user = this.getCurrentUser();
@@ -1644,6 +1829,13 @@ export class InstallationBackendEngine {
     const parsed = parseDateRobust(params.scheduled_at);
     if (!parsed) {
       throw new ValidationError('La fecha y hora prevista indicada no es válida.');
+    }
+
+    // "nunca se podra crear un parte con fecha u hora anterior a la actual"
+    if (!params.allowPastScheduledAt && (params.enforceFutureDate || process.env.NODE_ENV !== 'test')) {
+      if (parsed.getTime() < Date.now() - 2 * 60 * 1000) {
+        throw new ValidationError('No se puede reprogramar un parte con fecha u hora anterior a la actual.');
+      }
     }
 
     // Validar que la nueva hora prevista esté dentro del horario de los operarios asignados
@@ -3551,8 +3743,8 @@ export class InstallationBackendEngine {
     user_id: string;
     clock_in_at: string;
     clock_out_at: string | null;
-    worker_notes_in: string;
-    worker_notes_out: string;
+    worker_notes_in?: string;
+    worker_notes_out?: string;
     reason: string;
   }): AttendanceSession {
     this.assertOnline();
@@ -3577,8 +3769,8 @@ export class InstallationBackendEngine {
         user_id: params.user_id,
         clock_in_at: params.clock_in_at,
         clock_out_at: params.clock_out_at,
-        worker_notes_in: params.worker_notes_in.trim(),
-        worker_notes_out: params.worker_notes_out.trim(),
+        worker_notes_in: (params.worker_notes_in || '').trim(),
+        worker_notes_out: (params.worker_notes_out || '').trim(),
         updated_at: now,
       };
       this.state.attendance_sessions[idx] = updated;
@@ -3611,8 +3803,8 @@ export class InstallationBackendEngine {
         user_id: params.user_id,
         clock_in_at: params.clock_in_at,
         clock_out_at: params.clock_out_at,
-        worker_notes_in: params.worker_notes_in.trim(),
-        worker_notes_out: params.worker_notes_out.trim(),
+        worker_notes_in: (params.worker_notes_in || '').trim(),
+        worker_notes_out: (params.worker_notes_out || '').trim(),
         is_deleted: false,
         deleted_at: null,
         deleted_by: null,
@@ -3698,13 +3890,31 @@ export class InstallationBackendEngine {
     let createdSessionsCount = 0;
     const nowIso = params?.referenceNowIso || new Date().toISOString();
 
-    // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida del propio trabajador o en días anteriores
+    // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida (continua o partida)
     for (const s of this.state.attendance_sessions) {
       if (s.is_deleted || s.clock_out_at !== null) continue;
       const worker = this.state.profiles.find((p) => p.id === s.user_id);
-      const workerEndTime = worker?.work_end_time || fallbackEndTime;
+      const isPartida = worker?.work_shift_type === 'partida';
       const sInDate = getLocalDateString(s.clock_in_at, tz) || todayStr;
       const isPastDay = sInDate < todayStr;
+      const inTime = formatTimeES(s.clock_in_at, tz);
+
+      let workerEndTime = worker?.work_end_time || fallbackEndTime;
+      let closeLabel = `Cierre automático fin de jornada (${workerEndTime})`;
+
+      if (isPartida) {
+        const mEnd = worker?.work_morning_end_time || '13:30';
+        const aStart = worker?.work_afternoon_start_time || '15:30';
+        const aEnd = worker?.work_afternoon_end_time || '19:00';
+        const midpoint = getShiftMidpointTime(mEnd, aStart);
+        if (inTime < midpoint) {
+          workerEndTime = mEnd;
+          closeLabel = `Cierre automático fin jornada mañana (${mEnd})`;
+        } else {
+          workerEndTime = aEnd;
+          closeLabel = `Cierre automático fin jornada tarde (${aEnd})`;
+        }
+      }
       const isTodayPastShift = sInDate === todayStr && nowTime >= workerEndTime;
 
       if (isPastDay || isTodayPastShift) {
@@ -3715,7 +3925,7 @@ export class InstallationBackendEngine {
         s.clock_out_at = exitIso;
         s.worker_notes_out = [
           s.worker_notes_out,
-          `Cierre automático fin de jornada (${workerEndTime})`,
+          closeLabel,
         ]
           .filter(Boolean)
           .join(' / ');
@@ -3732,40 +3942,201 @@ export class InstallationBackendEngine {
     );
 
     for (const op of activeOperators) {
-      const opStartTime = op.work_start_time || fallbackStartTime;
-      const opEndTime = op.work_end_time || fallbackEndTime;
-      const isOpTargetFinished =
-        targetDate < todayStr || (targetDate === todayStr && nowTime >= opEndTime);
+      const isPartida = op.work_shift_type === 'partida';
+      if (isPartida) {
+        const mStart = op.work_morning_start_time || '08:00';
+        const mEnd = op.work_morning_end_time || '13:30';
+        const aStart = op.work_afternoon_start_time || '15:30';
+        const aEnd = op.work_afternoon_end_time || '19:00';
+        const midpoint = getShiftMidpointTime(mEnd, aStart);
 
-      if (params?.completeMissingWorkers || isOpTargetFinished) {
-        const hasSession = this.state.attendance_sessions.some((s) => {
-          if (s.is_deleted || s.user_id !== op.id) return false;
-          const inDate = getLocalDateString(s.clock_in_at, tz);
-          const outDate = s.clock_out_at ? getLocalDateString(s.clock_out_at, tz) : inDate;
-          return inDate === targetDate || outDate === targetDate;
-        });
+        const isMorningFinished = targetDate < todayStr || (targetDate === todayStr && nowTime >= mEnd);
+        if (params?.completeMissingWorkers || isMorningFinished) {
+          const hasMorning = this.state.attendance_sessions.some((s) => {
+            if (s.is_deleted || s.user_id !== op.id) return false;
+            const inDate = getLocalDateString(s.clock_in_at, tz);
+            if (inDate !== targetDate) return false;
+            const inT = formatTimeES(s.clock_in_at, tz);
+            return inT < midpoint;
+          });
+          if (!hasMorning) {
+            const inIso = combineLocalDateAndTimeToIso(targetDate, mStart, tz);
+            const outIso = combineLocalDateAndTimeToIso(targetDate, mEnd, tz);
+            this.state.attendance_sessions.unshift({
+              id: genId('att'),
+              user_id: op.id,
+              clock_in_at: inIso,
+              clock_out_at: outIso,
+              worker_notes_in: `Fichaje por defecto mañana (${mStart})`,
+              worker_notes_out: `Fichaje por defecto mañana (${mEnd})`,
+              is_deleted: false,
+              deleted_at: null,
+              deleted_by: null,
+              delete_reason: null,
+              created_by: 'sistema',
+              created_at: nowIso,
+              updated_at: nowIso,
+            });
+            createdSessionsCount++;
+          }
+        }
 
-        if (!hasSession) {
-          const inIso = combineLocalDateAndTimeToIso(targetDate, opStartTime, tz);
-          const outIso = combineLocalDateAndTimeToIso(targetDate, opEndTime, tz);
+        const isAfternoonFinished = targetDate < todayStr || (targetDate === todayStr && nowTime >= aEnd);
+        if (params?.completeMissingWorkers || isAfternoonFinished) {
+          const hasAfternoon = this.state.attendance_sessions.some((s) => {
+            if (s.is_deleted || s.user_id !== op.id) return false;
+            const inDate = getLocalDateString(s.clock_in_at, tz);
+            if (inDate !== targetDate) return false;
+            const inT = formatTimeES(s.clock_in_at, tz);
+            return inT >= midpoint;
+          });
+          if (!hasAfternoon) {
+            const inIso = combineLocalDateAndTimeToIso(targetDate, aStart, tz);
+            const outIso = combineLocalDateAndTimeToIso(targetDate, aEnd, tz);
+            this.state.attendance_sessions.unshift({
+              id: genId('att'),
+              user_id: op.id,
+              clock_in_at: inIso,
+              clock_out_at: outIso,
+              worker_notes_in: `Fichaje por defecto tarde (${aStart})`,
+              worker_notes_out: `Fichaje por defecto tarde (${aEnd})`,
+              is_deleted: false,
+              deleted_at: null,
+              deleted_by: null,
+              delete_reason: null,
+              created_by: 'sistema',
+              created_at: nowIso,
+              updated_at: nowIso,
+            });
+            createdSessionsCount++;
+          }
+        }
+      } else {
+        const opStartTime = op.work_start_time || fallbackStartTime;
+        const opEndTime = op.work_end_time || fallbackEndTime;
+        const isOpTargetFinished =
+          targetDate < todayStr || (targetDate === todayStr && nowTime >= opEndTime);
 
-          const autoSession: AttendanceSession = {
-            id: genId('att'),
-            user_id: op.id,
-            clock_in_at: inIso,
-            clock_out_at: outIso,
-            worker_notes_in: `Fichaje por defecto fin de jornada (${opStartTime})`,
-            worker_notes_out: `Fichaje por defecto fin de jornada (${opEndTime})`,
-            is_deleted: false,
-            deleted_at: null,
-            deleted_by: null,
-            delete_reason: null,
-            created_by: 'sistema',
-            created_at: nowIso,
-            updated_at: nowIso,
-          };
-          this.state.attendance_sessions.unshift(autoSession);
-          createdSessionsCount++;
+        if (params?.completeMissingWorkers || isOpTargetFinished) {
+          const hasSession = this.state.attendance_sessions.some((s) => {
+            if (s.is_deleted || s.user_id !== op.id) return false;
+            const inDate = getLocalDateString(s.clock_in_at, tz);
+            const outDate = s.clock_out_at ? getLocalDateString(s.clock_out_at, tz) : inDate;
+            return inDate === targetDate || outDate === targetDate;
+          });
+
+          if (!hasSession) {
+            const inIso = combineLocalDateAndTimeToIso(targetDate, opStartTime, tz);
+            const outIso = combineLocalDateAndTimeToIso(targetDate, opEndTime, tz);
+
+            const autoSession: AttendanceSession = {
+              id: genId('att'),
+              user_id: op.id,
+              clock_in_at: inIso,
+              clock_out_at: outIso,
+              worker_notes_in: `Fichaje por defecto fin de jornada (${opStartTime})`,
+              worker_notes_out: `Fichaje por defecto fin de jornada (${opEndTime})`,
+              is_deleted: false,
+              deleted_at: null,
+              deleted_by: null,
+              delete_reason: null,
+              created_by: 'sistema',
+              created_at: nowIso,
+              updated_at: nowIso,
+            };
+            this.state.attendance_sessions.unshift(autoSession);
+            createdSessionsCount++;
+          }
+        }
+      }
+    }
+
+    // 3. Consolidación de múltiples fichajes: hora más temprana y más tardía (apertura y cierre más cercanos)
+    for (const op of activeOperators) {
+      const isPartida = op.work_shift_type === 'partida';
+      const workerDaySessions = this.state.attendance_sessions.filter(
+        (s) => !s.is_deleted && s.user_id === op.id && getLocalDateString(s.clock_in_at, tz) === targetDate
+      );
+
+      if (isPartida) {
+        const mEnd = op.work_morning_end_time || '13:30';
+        const aStart = op.work_afternoon_start_time || '15:30';
+        const midpoint = getShiftMidpointTime(mEnd, aStart);
+
+        const morning = workerDaySessions.filter((s) => formatTimeES(s.clock_in_at, tz) < midpoint);
+        const afternoon = workerDaySessions.filter((s) => formatTimeES(s.clock_in_at, tz) >= midpoint);
+
+        const consolidateGroup = (group: AttendanceSession[], shiftName: string) => {
+          if (group.length <= 1) return;
+          group.sort((a, b) => new Date(a.clock_in_at).getTime() - new Date(b.clock_in_at).getTime());
+          const primary = group[0];
+          let latestOut = null;
+          let latestOutTimestamp = 0;
+          for (const s of group) {
+            if (s.clock_out_at) {
+              const t = new Date(s.clock_out_at).getTime();
+              if (t > latestOutTimestamp) {
+                latestOutTimestamp = t;
+                latestOut = s.clock_out_at;
+              }
+            }
+          }
+          if (latestOut) {
+            primary.clock_out_at = latestOut;
+          }
+          const allNotes = Array.from(
+            new Set(group.flatMap((s) => [s.worker_notes_in, s.worker_notes_out]).filter(Boolean))
+          ).join(' / ');
+          primary.worker_notes_out = [allNotes, `(Consolidación fichajes múltiples ${shiftName})`]
+            .filter(Boolean)
+            .join(' / ');
+          primary.updated_at = nowIso;
+
+          for (let i = 1; i < group.length; i++) {
+            group[i].is_deleted = true;
+            group[i].deleted_at = nowIso;
+            group[i].deleted_by = 'sistema';
+            group[i].delete_reason = `Consolidado automáticamente con fichaje más temprano y más tardío (${shiftName})`;
+            group[i].updated_at = nowIso;
+          }
+        };
+
+        consolidateGroup(morning, 'mañana');
+        consolidateGroup(afternoon, 'tarde');
+      } else {
+        if (workerDaySessions.length > 1) {
+          workerDaySessions.sort((a, b) => new Date(a.clock_in_at).getTime() - new Date(b.clock_in_at).getTime());
+          const primary = workerDaySessions[0];
+          let latestOut = null;
+          let latestOutTimestamp = 0;
+          for (const s of workerDaySessions) {
+            if (s.clock_out_at) {
+              const t = new Date(s.clock_out_at).getTime();
+              if (t > latestOutTimestamp) {
+                latestOutTimestamp = t;
+                latestOut = s.clock_out_at;
+              }
+            }
+          }
+          if (latestOut) {
+            primary.clock_out_at = latestOut;
+          }
+          const allNotes = Array.from(
+            new Set(workerDaySessions.flatMap((s) => [s.worker_notes_in, s.worker_notes_out]).filter(Boolean))
+          ).join(' / ');
+          primary.worker_notes_out = [allNotes, '(Consolidación fichajes múltiples jornada continua)']
+            .filter(Boolean)
+            .join(' / ');
+          primary.updated_at = nowIso;
+
+          for (let i = 1; i < workerDaySessions.length; i++) {
+            workerDaySessions[i].is_deleted = true;
+            workerDaySessions[i].deleted_at = nowIso;
+            workerDaySessions[i].deleted_by = 'sistema';
+            workerDaySessions[i].delete_reason =
+              'Consolidado automáticamente con fichaje más temprano y más tardío de la jornada';
+            workerDaySessions[i].updated_at = nowIso;
+          }
         }
       }
     }

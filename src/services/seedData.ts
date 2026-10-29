@@ -43,6 +43,13 @@ export interface DatabaseState {
     created_at: string;
     used: boolean;
   }>;
+  password_resets?: Array<{
+    token: string;
+    email: string;
+    created_at: string;
+    expires_at: string;
+    used: boolean;
+  }>;
   customers: Customer[];
   customer_addresses: CustomerAddress[];
   suppliers: Supplier[];
@@ -1013,6 +1020,7 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
       'david@climalux-demo.es': 'Oper1234!',
     },
     invitations: [],
+    password_resets: [],
     customers,
     customer_addresses,
     suppliers,
@@ -1191,6 +1199,7 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
       'marcos roma': 'anromago678*',
     },
     invitations: [],
+    password_resets: [],
     customers: [],
     customer_addresses: [],
     suppliers: [],

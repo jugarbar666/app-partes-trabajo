@@ -636,6 +636,69 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(closed?.worker_notes_out).toContain('15:00');
   });
 
+  it('Control de jornada partida en fichajes: auto-resolución y consolidación de marcas múltiples', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Crear o actualizar operario con jornada partida
+    const operario = backend.getProfiles().find((p) => p.role === 'operario')!;
+    backend.updateUserProfile(operario.id, {
+      work_shift_type: 'partida',
+      work_morning_start_time: '08:00',
+      work_morning_end_time: '13:30',
+      work_afternoon_start_time: '15:30',
+      work_afternoon_end_time: '19:00',
+    });
+
+    const updated = backend.getProfiles().find((p) => p.id === operario.id)!;
+    expect(updated.work_shift_type).toBe('partida');
+    expect(updated.work_morning_start_time).toBe('08:00');
+    expect(updated.work_morning_end_time).toBe('13:30');
+    expect(updated.work_afternoon_start_time).toBe('15:30');
+    expect(updated.work_afternoon_end_time).toBe('19:00');
+
+    // 2. Si no ficha en todo el día, se generan automáticamente los dos tramos (mañana y tarde) de su ficha
+    const targetDate = '2026-10-26';
+    backend.autoResolvePendingAttendance({
+      targetDateCivil: targetDate,
+      completeMissingWorkers: true,
+      referenceNowIso: '2026-10-26T20:00:00.000Z',
+    });
+
+    const sessions = backend.getAttendanceSessions(false).filter(
+      (s) => s.user_id === operario.id && s.clock_in_at.startsWith(targetDate)
+    );
+    expect(sessions.length).toBe(2);
+
+    // 3. Simular múltiples fichajes de entrada y salida en la misma jornada y comprobar la consolidación
+    const dateMulti = '2026-10-27';
+    backend.adminCreateOrCorrectAttendance({
+      user_id: operario.id,
+      clock_in_at: '2026-10-27T07:55:00.000Z',
+      clock_out_at: '2026-10-27T09:00:00.000Z',
+      worker_notes_in: 'Fichaje 1',
+      reason: 'Simulación pruebas múltiples fichajes mañana 1',
+    });
+    backend.adminCreateOrCorrectAttendance({
+      user_id: operario.id,
+      clock_in_at: '2026-10-27T09:15:00.000Z',
+      clock_out_at: '2026-10-27T13:35:00.000Z',
+      worker_notes_in: 'Fichaje 2',
+      reason: 'Simulación pruebas múltiples fichajes mañana 2',
+    });
+
+    backend.autoResolvePendingAttendance({
+      targetDateCivil: dateMulti,
+      referenceNowIso: '2026-10-27T20:00:00.000Z',
+    });
+
+    const consolidated = backend.getAttendanceSessions(false).filter(
+      (s) => s.user_id === operario.id && s.clock_in_at.startsWith(dateMulti)
+    );
+    const morningSession = consolidated.find((s) => s.clock_in_at.includes('07:55'));
+    expect(morningSession).toBeDefined();
+    expect(morningSession?.clock_out_at).toContain('13:35');
+  });
+
   it('Escenario 13: Importar valida relaciones, datos incorrectos y coincidencias antes de escribir; exportar protege frente a fórmulas', () => {
     // Protección frente a inyección de fórmulas en Excel
     expect(sanitizeSpreadsheetCell('=SUM(A1:A10)')).toBe("'=SUM(A1:A10)");
@@ -1316,20 +1379,24 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const reLogin = backend.login('marcos@roma-fontaneria.es', nuevaClaveDefinitiva);
     expect(reLogin.must_change_password).toBe(false);
 
-    // 4. Caso olvido de contraseña: El sistema le manda automáticamente una nueva contraseña
+    // 4. Caso olvido de contraseña: El sistema envía un correo con enlace seguro para cambiar contraseña
     backend.logout();
     const recoveryRes = backend.requestPasswordRecovery('marcos@roma-fontaneria.es');
     expect(recoveryRes.success).toBe(true);
-    expect(recoveryRes.temporaryPassword).toBeDefined();
+    expect(recoveryRes.token).toBeDefined();
+    expect(recoveryRes.recoveryLink).toContain('reset_token=');
 
-    const autoTempPass = recoveryRes.temporaryPassword!;
-    const loginWithAuto = backend.login('marcos@roma-fontaneria.es', autoTempPass);
-    // Vuelve a estar obligado a cambiarla
-    expect(loginWithAuto.must_change_password).toBe(true);
+    // Comprobar verificación de token
+    const verification = backend.verifyPasswordResetToken(recoveryRes.token!);
+    expect(verification.valid).toBe(true);
+    expect(verification.user?.email).toBe('marcos@roma-fontaneria.es');
 
-    // Marcos vuelve a cambiarla
+    // El usuario define su nueva contraseña con el enlace recibido y accede directamente a la app
     const segundaClave = 'ClaveDefinitiva2!';
-    backend.changePassword(loginWithAuto.id, segundaClave);
+    const recoveredUser = backend.resetPasswordWithToken(recoveryRes.token!, segundaClave);
+    expect(recoveredUser.must_change_password).toBe(false);
+    const loginWithAuto = backend.login('marcos@roma-fontaneria.es', segundaClave);
+    expect(loginWithAuto.must_change_password).toBe(false);
 
     // 5. Opción Administrador: El admin restablece la contraseña con la clave que él decida
     backend.login('admin@climalux-demo.es', 'Admin1234!');
@@ -2066,5 +2133,129 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       customer_has_paid: true,
     });
     expect(finalized.status).toBe('terminado');
+  });
+
+  it('Escenario 41: Detección de aviso de solapamiento para el mismo operario a la misma hora al dar de alta o reasignar, permitiendo el guardado', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Crear un primer parte para Carlos a las 11:00
+    const wo1 = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Solapamiento 1',
+      snapshot_customer_tax_id: 'B11223344',
+      snapshot_contact_name: 'Contacto 1',
+      snapshot_contact_phone: '+34600111222',
+      snapshot_contact_email: 'c1@ejemplo.es',
+      snapshot_address_line: 'Calle Prueba 1',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Revisión aire acondicionado',
+      scheduled_at: '2026-11-05T11:00:00.000Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+    expect(wo1.id).toBeTruthy();
+
+    // 2. Al comprobar solapamientos a esa misma hora para Carlos, detecta el conflicto
+    const conflicts = backend.findOperatorScheduleConflicts(
+      '2026-11-05T11:00:00.000Z',
+      ['usr-oper-1']
+    );
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0].operator_id).toBe('usr-oper-1');
+    expect(conflicts[0].work_order_code).toBe(wo1.code);
+
+    // 3. Crear el segundo parte a esa misma hora: "saldra un mensaje de aviso aunque dejara grabarlo"
+    const wo2 = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Solapamiento 2',
+      snapshot_customer_tax_id: 'B11223344',
+      snapshot_contact_name: 'Contacto 2',
+      snapshot_contact_phone: '+34600111333',
+      snapshot_contact_email: 'c2@ejemplo.es',
+      snapshot_address_line: 'Calle Prueba 2',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Sustitución de grifería urgente',
+      scheduled_at: '2026-11-05T11:00:00.000Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+    expect(wo2.id).toBeTruthy();
+    expect(wo2.code).not.toBe(wo1.code);
+
+    // 4. Reasignar a otro operario que ya tenga parte a esa hora detecta solapamiento y permite reasignar
+    const reassignConflicts = backend.findOperatorScheduleConflicts(
+      '2026-11-05T11:00:00.000Z',
+      ['usr-oper-1'],
+      wo2.id
+    );
+    expect(reassignConflicts.length).toBe(1);
+    expect(reassignConflicts[0].work_order_code).toBe(wo1.code);
+
+    const updated = backend.updateWorkOrderPlanningAndAssignments(wo2.id, {
+      operator_ids: ['usr-oper-1', 'usr-oper-2'],
+    });
+    expect(updated.id).toBe(wo2.id);
+  });
+
+  it('Escenario 42: Prohibición estricta de crear o reprogramar partes con fecha u hora anterior a la actual', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    const pastDate = '2026-10-20T10:00:00.000Z';
+
+    // 1. Intentar crear parte en el pasado debe lanzar ValidationError
+    expect(() =>
+      backend.createWorkOrder({
+        customer_id: 'cust-1',
+        customer_address_id: 'addr-1',
+        snapshot_customer_name: 'Cliente Pasado',
+        snapshot_customer_tax_id: 'B11223344',
+        snapshot_contact_name: 'Contacto',
+        snapshot_contact_phone: '+34600111222',
+        snapshot_contact_email: 'pasado@ejemplo.es',
+        snapshot_address_line: 'Calle Pasado',
+        snapshot_postal_code: '13001',
+        snapshot_city: 'Ciudad Real',
+        snapshot_province: 'Ciudad Real',
+        planned_work: 'Trabajo en el pasado',
+        scheduled_at: pastDate,
+        initial_notes: '',
+        operator_ids: ['usr-oper-1'],
+        enforceFutureDate: true,
+      })
+    ).toThrow(/No se puede crear un parte con fecha u hora anterior a la actual/);
+
+    // 2. Intentar reprogramar parte al pasado debe lanzar ValidationError
+    const futureWo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Futuro',
+      snapshot_customer_tax_id: 'B11223344',
+      snapshot_contact_name: 'Contacto',
+      snapshot_contact_phone: '+34600111222',
+      snapshot_contact_email: 'futuro@ejemplo.es',
+      snapshot_address_line: 'Calle Futuro',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Trabajo futuro',
+      scheduled_at: '2026-11-10T10:00:00.000Z',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+
+    expect(() =>
+      backend.rescheduleWorkOrder({
+        work_order_id: futureWo.id,
+        scheduled_at: pastDate,
+        reason: 'Error al pasado',
+        enforceFutureDate: true,
+      })
+    ).toThrow(/No se puede reprogramar un parte con fecha u hora anterior a la actual/);
   });
 });

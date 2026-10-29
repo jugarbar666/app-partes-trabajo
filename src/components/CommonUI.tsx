@@ -38,6 +38,7 @@ export interface SaveSummaryItem {
 interface SaveConfirmModalState {
   title: string;
   changes: SaveSummaryItem[];
+  warnings?: string[];
   onConfirm: () => Promise<void> | void;
 }
 
@@ -188,6 +189,19 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
               </h3>
             </div>
             <div className="p-5 space-y-3 max-h-80 overflow-y-auto">
+              {saveModal.warnings && saveModal.warnings.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-900 text-xs" data-testid="modal-save-warnings">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Aviso informativo (se permite el guardado):</span>
+                  </div>
+                  {saveModal.warnings.map((w, i) => (
+                    <p key={i} className="pl-5 font-semibold text-amber-800">
+                      {w}
+                    </p>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-slate-600">
                 Revisa el resumen de datos que se van a guardar en el servidor:
               </p>

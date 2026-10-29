@@ -7,11 +7,13 @@
  *   para no provocar recargas inesperadas ni pérdidas de formularios en edición.
  */
 
-const CACHE_NAME = 'partes-trabajo-static-v1';
+const CACHE_NAME = 'partes-trabajo-static-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
+  '/icon-192.png',
+  '/icon-512.png',
   '/icon-192.svg',
   '/icon-512.svg'
 ];

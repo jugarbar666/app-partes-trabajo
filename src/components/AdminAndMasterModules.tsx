@@ -140,8 +140,13 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
   const [usrRole, setUsrRole] = useState<'operario' | 'admin' | ''>('');
+  const [usrWorkShiftType, setUsrWorkShiftType] = useState<'continua' | 'partida'>('continua');
   const [usrWorkStartTime, setUsrWorkStartTime] = useState('08:00');
   const [usrWorkEndTime, setUsrWorkEndTime] = useState('18:00');
+  const [usrMorningStart, setUsrMorningStart] = useState('08:00');
+  const [usrMorningEnd, setUsrMorningEnd] = useState('13:30');
+  const [usrAfternoonStart, setUsrAfternoonStart] = useState('15:30');
+  const [usrAfternoonEnd, setUsrAfternoonEnd] = useState('19:00');
   const [usrTempPassword, setUsrTempPassword] = useState('Clima-2026!');
 
   // Modal de resumen con enlace y credenciales tras invitar
@@ -333,7 +338,7 @@ export const MasterDataAndUsersModule: React.FC<{
     articles: '+ Nuevo Artículo',
     suppliers: '+ Nuevo Proveedor',
     review_types: '+ Nuevo Tipo de Revisión',
-    users: '+ Invitar Usuario',
+    users: '✉️ Invitar a un Usuario Nuevo',
   };
 
   const handleOpenCreate = () => {
@@ -389,8 +394,13 @@ export const MasterDataAndUsersModule: React.FC<{
       setUsrEmail('');
       setUsrPhone('');
       setUsrRole('');
+      setUsrWorkShiftType('continua');
       setUsrWorkStartTime('08:00');
       setUsrWorkEndTime('18:00');
+      setUsrMorningStart('08:00');
+      setUsrMorningEnd('13:30');
+      setUsrAfternoonStart('15:30');
+      setUsrAfternoonEnd('19:00');
       setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
     }
     setShowCreateModal(true);
@@ -1023,7 +1033,15 @@ export const MasterDataAndUsersModule: React.FC<{
                     <span>·</span>
                     <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
                       <Clock className="w-3 h-3 text-indigo-600" />
-                      Jornada habitual: <strong>{u.work_start_time || '08:00'}</strong> a <strong>{u.work_end_time || '18:00'}</strong>
+                      {u.work_shift_type === 'partida' ? (
+                        <span>
+                          Jornada partida: Mañana <strong>{u.work_morning_start_time || '08:00'} - {u.work_morning_end_time || '13:30'}</strong> / Tarde <strong>{u.work_afternoon_start_time || '15:30'} - {u.work_afternoon_end_time || '19:00'}</strong>
+                        </span>
+                      ) : (
+                        <span>
+                          Jornada continua: <strong>{u.work_start_time || '08:00'}</strong> a <strong>{u.work_end_time || '18:00'}</strong>
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1039,8 +1057,13 @@ export const MasterDataAndUsersModule: React.FC<{
                       setUsrDni(u.dni || '');
                       setUsrPhone(u.phone || '');
                       setUsrRole(u.role);
+                      setUsrWorkShiftType(u.work_shift_type || 'continua');
                       setUsrWorkStartTime(u.work_start_time || '08:00');
                       setUsrWorkEndTime(u.work_end_time || '18:00');
+                      setUsrMorningStart(u.work_morning_start_time || '08:00');
+                      setUsrMorningEnd(u.work_morning_end_time || '13:30');
+                      setUsrAfternoonStart(u.work_afternoon_start_time || '15:30');
+                      setUsrAfternoonEnd(u.work_afternoon_end_time || '19:00');
                       setShowCreateModal(true);
                     }}
                     className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
@@ -1916,7 +1939,12 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
                       { label: 'Rol asignado', value: validRole },
-                      { label: 'Jornada habitual', value: `${usrWorkStartTime || '08:00'} a ${usrWorkEndTime || '18:00'}` },
+                      {
+                        label: 'Tipo de jornada',
+                        value: usrWorkShiftType === 'partida'
+                          ? `Partida: Mañana (${usrMorningStart}-${usrMorningEnd}) / Tarde (${usrAfternoonStart}-${usrAfternoonEnd})`
+                          : `Continua (${usrWorkStartTime || '08:00'} a ${usrWorkEndTime || '18:00'})`,
+                      },
                       ...(isEdit ? [] : [{ label: 'Contraseña temporal', value: usrTempPassword }]),
                     ],
                     onConfirm: () => {
@@ -1927,8 +1955,13 @@ export const MasterDataAndUsersModule: React.FC<{
                             dni: usrDni,
                             phone: usrPhone,
                             role: validRole,
+                            work_shift_type: usrWorkShiftType,
                             work_start_time: usrWorkStartTime || '08:00',
                             work_end_time: usrWorkEndTime || '18:00',
+                            work_morning_start_time: usrMorningStart || '08:00',
+                            work_morning_end_time: usrMorningEnd || '13:30',
+                            work_afternoon_start_time: usrAfternoonStart || '15:30',
+                            work_afternoon_end_time: usrAfternoonEnd || '19:00',
                           });
                           notifySuccessGreen('Datos del usuario actualizados correctamente.');
                           setEditingId(null);
@@ -1939,8 +1972,13 @@ export const MasterDataAndUsersModule: React.FC<{
                             email: usrEmail,
                             phone: usrPhone,
                             role: validRole,
+                            work_shift_type: usrWorkShiftType,
                             work_start_time: usrWorkStartTime || '08:00',
                             work_end_time: usrWorkEndTime || '18:00',
+                            work_morning_start_time: usrMorningStart || '08:00',
+                            work_morning_end_time: usrMorningEnd || '13:30',
+                            work_afternoon_start_time: usrAfternoonStart || '15:30',
+                            work_afternoon_end_time: usrAfternoonEnd || '19:00',
                             initial_password: usrTempPassword,
                           });
                           setInvitationSummaryModal({
@@ -2015,40 +2053,122 @@ export const MasterDataAndUsersModule: React.FC<{
                   <option value="admin">Rol: Administrador</option>
                 </select>
 
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                   <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
                     <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Jornada Habitual Individual (para Fichajes y Cierre)</span>
+                    <span>Horario y Tipo de Jornada para Fichajes</span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    Horario propio e independiente asignado a este trabajador para la apertura y cierre automático de jornadas.
+                    Selecciona si el trabajador tiene jornada continua o partida para el control horario, auto-resolución y consolidación de fichajes.
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Hora habitual de entrada *
-                      </label>
-                      <input
-                        type="time"
-                        required
-                        value={usrWorkStartTime}
-                        onChange={(e) => setUsrWorkStartTime(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Hora habitual de salida *
-                      </label>
-                      <input
-                        type="time"
-                        required
-                        value={usrWorkEndTime}
-                        onChange={(e) => setUsrWorkEndTime(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
-                      />
-                    </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setUsrWorkShiftType('continua')}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        usrWorkShiftType === 'continua'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Jornada Continua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUsrWorkShiftType('partida')}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        usrWorkShiftType === 'partida'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Jornada Partida (Mañana y Tarde)
+                    </button>
                   </div>
+
+                  {usrWorkShiftType === 'continua' ? (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Hora habitual de entrada *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={usrWorkStartTime}
+                          onChange={(e) => setUsrWorkStartTime(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Hora habitual de salida *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={usrWorkEndTime}
+                          onChange={(e) => setUsrWorkEndTime(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-1 border-t border-slate-200">
+                      <div>
+                        <div className="text-[11px] font-bold text-indigo-700 mb-1">Turno de Mañana</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Entrada mañana *</label>
+                            <input
+                              type="time"
+                              required
+                              value={usrMorningStart}
+                              onChange={(e) => setUsrMorningStart(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Salida mañana *</label>
+                            <input
+                              type="time"
+                              required
+                              value={usrMorningEnd}
+                              onChange={(e) => setUsrMorningEnd(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-bold text-indigo-700 mb-1">Turno de Tarde</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Entrada tarde *</label>
+                            <input
+                              type="time"
+                              required
+                              value={usrAfternoonStart}
+                              onChange={(e) => setUsrAfternoonStart(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Salida tarde *</label>
+                            <input
+                              type="time"
+                              required
+                              value={usrAfternoonEnd}
+                              onChange={(e) => setUsrAfternoonEnd(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {!editingId ? (
@@ -2175,17 +2295,39 @@ export const MasterDataAndUsersModule: React.FC<{
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => {
-                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo a la app:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
+                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo con tus datos:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
+                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
+              >
+                <span>🟢 Enviar por WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo con tus datos:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
+                  window.open(`mailto:${invitationSummaryModal.email}?subject=${encodeURIComponent('Invitación y acceso a Gestión de partes')}&body=${encodeURIComponent(messageText)}`, '_blank');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
+              >
+                <span>📧 Enviar por Correo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo con tus datos:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
                   navigator.clipboard.writeText(messageText);
                   setCopiedInvite(true);
                   setTimeout(() => setCopiedInvite(false), 3000);
                   notifySuccessGreen('Datos de invitación y credenciales copiados al portapapeles.');
                 }}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
               >
                 {copiedInvite ? (
                   <>
@@ -2195,14 +2337,15 @@ export const MasterDataAndUsersModule: React.FC<{
                 ) : (
                   <>
                     <Copy className="w-4 h-4" />
-                    <span>Copiar Datos para WhatsApp / Correo</span>
+                    <span>Copiar Invitación</span>
                   </>
                 )}
               </button>
+
               <button
                 type="button"
                 onClick={() => setInvitationSummaryModal(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs cursor-pointer"
               >
                 Cerrar
               </button>

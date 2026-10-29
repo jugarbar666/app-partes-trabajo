@@ -36,6 +36,7 @@ import {
   BookOpen,
   RotateCcw,
   Edit3,
+  Download,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
 import { UserProfile } from './types/domain';
@@ -121,6 +122,74 @@ const MONTHS_ES = [
   { value: '12', label: 'Diciembre' },
 ];
 
+// Paleta de tonalidades pastel suaves claramente diferenciables para cada ficha (escritorio y movil)
+const planningCardPalettes = [
+  {
+    bg: 'bg-[#dbeafe]', // Azul cielo pastel
+    border: 'border-[#93c5fd]',
+    hoverBorder: 'hover:border-[#3b82f6]',
+    text: 'text-sky-950',
+    innerBox: 'bg-white/90 border-[#bfdbfe] text-sky-950',
+    badge: 'bg-blue-600 text-white',
+  },
+  {
+    bg: 'bg-[#fef3c7]', // Ámbar / Crema cálido pastel
+    border: 'border-[#fde047]',
+    hoverBorder: 'hover:border-[#eab308]',
+    text: 'text-amber-950',
+    innerBox: 'bg-white/90 border-[#fef08a] text-amber-950',
+    badge: 'bg-amber-600 text-white',
+  },
+  {
+    bg: 'bg-[#dcfce7]', // Verde menta pastel
+    border: 'border-[#86efac]',
+    hoverBorder: 'hover:border-[#22c55e]',
+    text: 'text-emerald-950',
+    innerBox: 'bg-white/90 border-[#bbf7d0] text-emerald-950',
+    badge: 'bg-emerald-600 text-white',
+  },
+  {
+    bg: 'bg-[#f3e8ff]', // Lila / Lavanda pastel
+    border: 'border-[#d8b4fe]',
+    hoverBorder: 'hover:border-[#a855f7]',
+    text: 'text-purple-950',
+    innerBox: 'bg-white/90 border-[#e9d5ff] text-purple-950',
+    badge: 'bg-purple-600 text-white',
+  },
+  {
+    bg: 'bg-[#ffe4e6]', // Rosa suave pastel
+    border: 'border-[#fca5a5]',
+    hoverBorder: 'hover:border-[#f43f5e]',
+    text: 'text-rose-950',
+    innerBox: 'bg-white/90 border-[#fecdd3] text-rose-950',
+    badge: 'bg-rose-600 text-white',
+  },
+  {
+    bg: 'bg-[#ffedd5]', // Naranja melocotón pastel
+    border: 'border-[#fdba74]',
+    hoverBorder: 'hover:border-[#f97316]',
+    text: 'text-orange-950',
+    innerBox: 'bg-white/90 border-[#fed7aa] text-orange-950',
+    badge: 'bg-orange-600 text-white',
+  },
+  {
+    bg: 'bg-[#ccfbf1]', // Turquesa suave pastel
+    border: 'border-[#5eead4]',
+    hoverBorder: 'hover:border-[#14b8a6]',
+    text: 'text-teal-950',
+    innerBox: 'bg-white/90 border-[#99f6e4] text-teal-950',
+    badge: 'bg-teal-600 text-white',
+  },
+  {
+    bg: 'bg-[#e0e7ff]', // Añil / Indigo pastel
+    border: 'border-[#a5b4fc]',
+    hoverBorder: 'hover:border-[#6366f1]',
+    text: 'text-indigo-950',
+    innerBox: 'bg-white/90 border-[#c7d2fe] text-indigo-950',
+    badge: 'bg-indigo-600 text-white',
+  },
+];
+
 const WorkOrderMobileCard: React.FC<{
   wo: WorkOrder;
   tz: string;
@@ -130,7 +199,9 @@ const WorkOrderMobileCard: React.FC<{
   onReschedule: (wo: WorkOrder) => void;
   onReassign?: (wo: WorkOrder) => void;
   isAdmin?: boolean;
-}> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule, onReassign, isAdmin }) => {
+  cardIndex?: number;
+}> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule, onReassign, isAdmin, cardIndex = 0 }) => {
+  const palette = planningCardPalettes[cardIndex % planningCardPalettes.length];
   const woOps = assignments
     .filter((a) => a.work_order_id === wo.id)
     .map((a) => getUserName(a.operator_id));
@@ -143,17 +214,7 @@ const WorkOrderMobileCard: React.FC<{
     <div
       key={wo.id}
       data-testid={`operator-card-${wo.id}`}
-      className={`bg-white rounded-2xl border-2 p-4 sm:p-5 shadow-2xs space-y-3 flex flex-col justify-between ${
-        isReopenedCard
-          ? 'border-[#78350f]'
-          : wo.status === 'en_curso'
-          ? 'border-amber-400'
-          : wo.status === 'no_iniciado'
-          ? 'border-blue-400'
-          : wo.status === 'terminado'
-          ? 'border-emerald-400'
-          : 'border-slate-300'
-      }`}
+      className={`${palette.bg} ${palette.border} rounded-2xl border-2 p-4 sm:p-5 shadow-xs space-y-3 flex flex-col justify-between transition hover:shadow-md`}
     >
       <div className="space-y-2.5">
         {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
@@ -213,7 +274,7 @@ const WorkOrderMobileCard: React.FC<{
         </div>
 
         <div className="space-y-1.5 pt-0.5">
-          <div className="text-base font-extrabold text-slate-900 tracking-tight leading-snug">
+          <div className={`text-base font-black tracking-tight leading-snug ${palette.text}`}>
             {wo.snapshot_customer_name}
           </div>
           <div>
@@ -247,8 +308,9 @@ const WorkOrderMobileCard: React.FC<{
           <PhoneActionLinks phone={wo.snapshot_contact_phone} />
         </div>
 
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800">
-          <strong>Trabajo a realizar:</strong> {wo.planned_work}
+        <div className={`p-3 rounded-xl border text-xs font-bold leading-relaxed ${palette.innerBox}`}>
+          <span className="text-slate-600 font-semibold mr-1">Trabajo a realizar:</span>
+          <span>{wo.planned_work}</span>
         </div>
 
         {wo.total_amount_cents !== null && (
@@ -375,9 +437,113 @@ const MainApplicationContent: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [recoveryMode, setRecoveryMode] = useState(false);
+
+  // Filtro por operario en listado de partes (Escritorio y Mvil)
+  const [woFilterOperatorId, setWoFilterOperatorId] = useState<string>('all');
+
+  // PWA: Captura del evento de instalacin y deteccin de modo app
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallHelpModal, setShowInstallHelpModal] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+
+  // Estado para el flujo seguro de recuperacion por token y cambio de contrasena
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetTokenUser, setResetTokenUser] = useState<any | null>(null);
+  const [resetTokenError, setResetTokenError] = useState<string | null>(null);
+  const [resetNewPass, setResetNewPass] = useState('');
+  const [resetConfirmPass, setResetConfirmPass] = useState('');
+  const [showResetNewPass, setShowResetNewPass] = useState(false);
+
+  // 1. Deteccion de token de recuperacion o credenciales desde URL
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location?.search) {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const rToken = searchParams.get('reset_token');
+        if (rToken) {
+          setResetToken(rToken);
+          const verif = backend.verifyPasswordResetToken(rToken);
+          if (verif.valid && verif.user) {
+            setResetTokenUser(verif.user);
+          } else {
+            setResetTokenError(verif.message || 'El enlace de recuperacion no es valido o ha caducado.');
+          }
+        }
+        const urlEmail = searchParams.get('email') || searchParams.get('user');
+        const urlPass = searchParams.get('pass');
+        if (urlEmail) {
+          setLoginEmail(urlEmail);
+          setRecoveryEmail(urlEmail);
+        }
+        if (urlPass) {
+          setLoginPass(urlPass);
+        }
+      } catch (e) {
+        console.warn('Error leyendo parametros URL:', e);
+      }
+    }
+  }, [backend]);
+
+  // 2. Escuchar evento beforeinstallprompt y detectar si la aplicación ya está instalada en el dispositivo
+  useEffect(() => {
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+    const isStandalone =
+      (typeof window.matchMedia === 'function' &&
+        window.matchMedia('(display-mode: standalone)').matches) ||
+      Boolean((window.navigator as any)?.standalone) ||
+      (typeof window !== 'undefined' && window.localStorage?.getItem('pwa_installed_device') === 'true');
+    if (isStandalone) {
+      setIsAppInstalled(true);
+    }
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      try {
+        window.localStorage?.setItem('pwa_installed_device', 'true');
+      } catch {}
+      notifySuccessGreen('¡Aplicación instalada con éxito en tu dispositivo!');
+    };
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice?.outcome === 'accepted') {
+          setIsAppInstalled(true);
+          try {
+            window.localStorage?.setItem('pwa_installed_device', 'true');
+          } catch {}
+          notifySuccessGreen('¡Aplicación instalada con éxito!');
+        }
+      } catch {
+        setShowInstallHelpModal(true);
+      }
+      setDeferredPrompt(null);
+    } else {
+      setShowInstallHelpModal(true);
+    }
+  };
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryResult, setRecoveryResult] = useState<{
     success: boolean;
+    token?: string;
+    recoveryLink?: string;
+    mailtoUrl?: string;
+    email?: string;
+    full_name?: string;
     temporaryPassword?: string;
     message: string;
   } | null>(null);
@@ -664,7 +830,121 @@ const MainApplicationContent: React.FC = () => {
             </div>
           </div>
 
-          {!recoveryMode ? (
+          {resetToken ? (
+            /* Vista 1: Restablecer Contraseña por Enlace Seguro */
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!resetNewPass || resetNewPass.trim().length < 6) {
+                  notifyError('La nueva contraseña debe tener al menos 6 caracteres.');
+                  return;
+                }
+                if (resetNewPass !== resetConfirmPass) {
+                  notifyError('Las dos contraseñas no coinciden. Por favor, revísalas.');
+                  return;
+                }
+                try {
+                  const updatedUser = backend.resetPasswordWithToken(resetToken, resetNewPass);
+                  const logged = backend.login(updatedUser.email, resetNewPass);
+                  if (typeof window !== 'undefined' && window.localStorage) {
+                    try { window.localStorage.setItem(DEVICE_LOGGED_USER_ID_KEY, logged.id); } catch {}
+                    if (window.history?.replaceState) {
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                  }
+                  setResetToken(null);
+                  setLoggedUser(logged);
+                  setRouteStack(['dashboard']);
+                  notifySuccessGreen('¡Contraseña cambiada con éxito! Has accedido a la aplicación.');
+                } catch (err: any) {
+                  notifyError(err?.message || 'Error al cambiar la contraseña.');
+                }
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div className="pb-2 border-b border-slate-100">
+                <h2 className="font-extrabold text-sm text-slate-900">
+                  Restablecer Contraseña y Entrar
+                </h2>
+                {resetTokenUser ? (
+                  <p className="text-slate-600 mt-1">
+                    Hola <strong>{resetTokenUser.full_name}</strong> ({resetTokenUser.email}). Introduce tu nueva contraseña para acceder a la aplicación:
+                  </p>
+                ) : resetTokenError ? (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl font-medium">
+                    {resetTokenError}
+                  </div>
+                ) : null}
+              </div>
+
+              {!resetTokenError && (
+                <>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Nueva Contraseña * (mínimo 6 caracteres)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showResetNewPass ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        placeholder="Escribe tu nueva contraseña"
+                        value={resetNewPass}
+                        onChange={(e) => setResetNewPass(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetNewPass(!showResetNewPass)}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                      >
+                        {showResetNewPass ? 'Ocultar' : 'Ver'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Confirmar Nueva Contraseña *
+                    </label>
+                    <input
+                      type={showResetNewPass ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Repite tu nueva contraseña"
+                      value={resetConfirmPass}
+                      onChange={(e) => setResetConfirmPass(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm transition cursor-pointer"
+                  >
+                    Guardar Contraseña y Acceder a la App →
+                  </button>
+                </>
+              )}
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetToken(null);
+                    setResetTokenError(null);
+                    if (typeof window !== 'undefined' && window.history?.replaceState) {
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                  }}
+                  className="text-slate-500 hover:text-slate-700 font-semibold cursor-pointer underline"
+                >
+                  Volver al inicio de sesión
+                </button>
+              </div>
+            </form>
+          ) : !recoveryMode ? (
+            /* Vista 2: Inicio de Sesión Habitual */
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -726,17 +1006,23 @@ const MainApplicationContent: React.FC = () => {
                   }}
                   className="text-blue-600 hover:underline font-medium cursor-pointer"
                 >
-                  ¿Has olvidado tu contraseña? Recuperar acceso
+                  ¿Has olvidado tu contraseña?
                 </button>
               </div>
             </form>
           ) : (
+            /* Vista 3: Solicitar Enlace Seguro de Recuperación por Correo */
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 try {
                   const res = backend.requestPasswordRecovery(recoveryEmail);
                   setRecoveryResult(res);
+                  if (res.mailtoUrl && typeof window !== 'undefined') {
+                    try {
+                      window.open(res.mailtoUrl, '_blank');
+                    } catch {}
+                  }
                 } catch (err: any) {
                   notifyError(err?.message || 'Error al solicitar recuperación de contraseña.');
                 }
@@ -744,10 +1030,10 @@ const MainApplicationContent: React.FC = () => {
               className="space-y-3.5 text-xs"
             >
               <h2 className="font-extrabold text-sm text-slate-900">
-                Recuperación Automática de Contraseña
+                Recuperar Contraseña
               </h2>
               <p className="text-slate-600 leading-relaxed">
-                Si has olvidado tu contraseña, introduce tu correo corporativo. El sistema generará automáticamente una nueva clave temporal de acceso:
+                Introduce el correo electrónico que está en tu ficha. El sistema te enviará un correo con un enlace para que puedas cambiar tu contraseña y entrar en la aplicación:
               </p>
               <input
                 type="email"
@@ -762,86 +1048,46 @@ const MainApplicationContent: React.FC = () => {
               />
 
               {recoveryResult && (
-                <div
-                  className={`p-3.5 rounded-xl border space-y-2 leading-relaxed ${
-                    recoveryResult.success
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                      : 'bg-amber-50 border-amber-300 text-amber-950'
-                  }`}
-                >
-                  <div className="font-bold flex items-center gap-1.5">
-                    {recoveryResult.success
-                      ? '✅ Contraseña Temporal Generada por el Sistema'
-                      : 'ℹ️ Información'}
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-2.5 leading-relaxed">
+                  <div className="font-bold flex items-center gap-2 text-emerald-900 text-sm">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>Correo de recuperación enviado</span>
                   </div>
-                  <p>{recoveryResult.message}</p>
-                  {recoveryResult.temporaryPassword && (
-                    <div className="space-y-2">
-                      <div className="p-2.5 bg-white rounded-lg border border-emerald-300 font-mono text-center text-sm font-black text-emerald-800 shadow-2xs">
-                        {recoveryResult.temporaryPassword}
-                      </div>
-
-                      {/* Enlace directo a la app para enviar al operario */}
-                      <div className="p-2.5 bg-white/80 rounded-lg border border-emerald-200 text-slate-700 text-[11px] space-y-1">
-                        <div className="font-bold text-slate-900">Enlace directo a la aplicación:</div>
-                        <a
-                          href={typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-700 underline font-semibold break-all"
-                        >
-                          {typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app'}
-                        </a>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://partestrabajofontaneria.netlify.app';
-                          const msg = `Acceso a Gestión de partes — ${company.company_name}:\n\n🔗 Enlace a la aplicación:\n${appUrl}\n\n👤 Usuario / Email: ${recoveryEmail}\n🔑 Clave temporal: ${recoveryResult.temporaryPassword}\n\n(Al iniciar sesión se te pedirá cambiarla por tu contraseña definitiva).`;
-                          navigator.clipboard.writeText(msg);
-                          notifySuccessGreen('Datos de acceso y enlace copiados al portapapeles. Puedes pegarlo en WhatsApp o Correo.');
-                        }}
-                        className="w-full py-2 px-3 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-xs border border-emerald-300 cursor-pointer flex items-center justify-center gap-1.5"
+                  <p className="text-xs text-emerald-800 leading-relaxed">
+                    Hemos enviado un correo a la dirección de tu ficha (<strong>{recoveryEmail}</strong>) con un enlace para que puedas cambiar tu contraseña y entrar en la aplicación.
+                  </p>
+                  <p className="text-[11px] text-slate-600">
+                    Revisa tu bandeja de entrada y pulsa en el enlace recibido para definir tu nueva contraseña.
+                  </p>
+                  {recoveryResult.recoveryLink && (
+                    <div className="pt-2 border-t border-emerald-200">
+                      <a
+                        href={recoveryResult.recoveryLink}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition"
                       >
-                        📋 Copiar datos y enlace (para WhatsApp o Email)
-                      </button>
+                        <span>🔗 Abrir enlace recibido para cambiar contraseña</span>
+                      </a>
                     </div>
-                  )}
-                  {recoveryResult.temporaryPassword && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginEmail(recoveryEmail);
-                        setLoginPass(recoveryResult.temporaryPassword || '');
-                        setRecoveryMode(false);
-                        setRecoveryResult(null);
-                        notifySuccessGreen('Credenciales preparadas para iniciar sesión.');
-                      }}
-                      className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer"
-                    >
-                      Iniciar Sesión con esta Contraseña →
-                    </button>
                   )}
                 </div>
               )}
 
-              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setRecoveryMode(false);
                     setRecoveryResult(null);
                   }}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 cursor-pointer text-xs"
                 >
-                  Volver al acceso
+                  Volver al inicio de sesión
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer text-xs shadow-xs"
                 >
-                  Generar Clave Automática
+                  Enviar Correo
                 </button>
               </div>
             </form>
@@ -1128,19 +1374,6 @@ const MainApplicationContent: React.FC = () => {
     return map;
   })();
 
-  // Agrupación de revisiones por día civil en la semana seleccionada
-  const weekReviewsByDay = (() => {
-    const map = new Map<string, typeof reviewOccurrences>();
-    selectedWeekDays.forEach((d) => map.set(d.dateStr, []));
-    for (const occ of reviewOccurrences) {
-      if (occ.status === 'realizada' || occ.status === 'cancelada') continue;
-      if (map.has(occ.due_date)) {
-        map.get(occ.due_date)!.push(occ);
-      }
-    }
-    return map;
-  })();
-
   // Totales de la semana seleccionada
   const totalWeekWorkOrders = (() => {
     let count = 0;
@@ -1233,7 +1466,7 @@ const MainApplicationContent: React.FC = () => {
   const pctTerminado = Math.round((countPendientesCierre / totalForPie) * 100);
   const pctArchivado = Math.max(0, 100 - pctNoIniciado - pctEnCurso - pctTerminado);
 
-  // PLANING SEMANAL INTERACTIVO REUTILIZABLE (INICIO Y AGENDA)
+    // PLANING SEMANAL INTERACTIVO REUTILIZABLE (INICIO Y AGENDA)
   const renderWeeklyPlanningSection = (stickyTopOffset: number = 0) => (
     <div className="flex flex-col" data-testid="weekly-planning-board">
       {/* Cabecera fija del Planing Semanal + Los 5 días de la semana con máscara opaca bg-[#f4f6fa] para ocultar cualquier contenido al desplazar */}
@@ -1370,9 +1603,11 @@ const MainApplicationContent: React.FC = () => {
 
       {/* CUADRÍCULA DE LOS 5 DÍAS LABORABLES (LUNES A VIERNES) */}
       <div className="bg-white rounded-b-2xl border-x border-b border-slate-200 p-5 pt-3.5 grid grid-cols-1 md:grid-cols-5 gap-3.5 items-stretch shadow-xs">
-        {selectedWeekDays.map((day) => {
-          const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
-          const dayRevs = weekReviewsByDay.get(day.dateStr) || [];
+        {(() => {
+          // Generar mapa de orden cronológico continuo en la semana para que cada parte tenga un color pastel distinto
+          let weekCounter = 0;
+          return selectedWeekDays.map((day) => {
+            const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
 
           return (
             <div
@@ -1426,7 +1661,7 @@ const MainApplicationContent: React.FC = () => {
                 data-testid={`planning-day-scroll-${day.dateStr}`}
                 className="p-2 space-y-2.5 min-h-[160px] max-h-[380px] overflow-y-auto overscroll-contain flex-1"
               >
-                {dayWos.length === 0 && dayRevs.length === 0 ? (
+                {dayWos.length === 0 ? (
                   <div className="h-full py-8 text-center flex flex-col items-center justify-center text-slate-400 text-[11px]">
                     <Clock className="w-4 h-4 text-slate-300 mb-1 opacity-60" />
                     <span>Sin trabajos</span>
@@ -1434,10 +1669,12 @@ const MainApplicationContent: React.FC = () => {
                 ) : (
                   <>
                     {dayWos.map((wo) => {
+                      const cardGlobalIdx = weekCounter++;
                       const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
                       const woOps = assignments
                         .filter((a) => a.work_order_id === wo.id && a.is_active)
                         .map((a) => getUserName(a.operator_id));
+                      const palette = planningCardPalettes[cardGlobalIdx % planningCardPalettes.length];
                       return (
                         <div
                           key={wo.id}
@@ -1445,10 +1682,10 @@ const MainApplicationContent: React.FC = () => {
                             setSelectedWorkOrderId(wo.id);
                             navigateTo('work_order_detail');
                           }}
-                          className={`rounded-xl p-3 border transition space-y-2 text-left cursor-pointer ${
+                          className={`rounded-2xl p-3.5 border-2 transition space-y-2.5 text-left cursor-pointer shadow-xs ${
                             finished
-                              ? 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
-                              : 'bg-white border-slate-200 shadow-2xs hover:border-blue-500 hover:shadow-sm'
+                              ? `${palette.bg} ${palette.border} opacity-75 hover:opacity-100`
+                              : `${palette.bg} ${palette.border} ${palette.hoverBorder} hover:shadow-md`
                           }`}
                           title={
                             finished
@@ -1459,10 +1696,8 @@ const MainApplicationContent: React.FC = () => {
                           {/* Hora y situación del parte */}
                           <div className="flex items-center justify-between gap-1 flex-wrap">
                             <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-extrabold text-[11px] shadow-2xs ${
-                                finished
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-indigo-600 text-white'
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg font-black text-[11px] shadow-2xs text-white ${
+                                finished ? 'bg-emerald-600' : 'bg-slate-900'
                               }`}
                             >
                               {finished ? (
@@ -1484,9 +1719,7 @@ const MainApplicationContent: React.FC = () => {
 
                           {/* Nombre del cliente */}
                           <div
-                            className={`font-bold text-xs sm:text-[13px] leading-snug ${
-                              finished ? 'text-slate-600' : 'text-slate-900'
-                            }`}
+                            className={`font-black text-xs sm:text-[13px] leading-snug ${palette.text}`}
                             title={wo.snapshot_customer_name}
                           >
                             {wo.snapshot_customer_name}
@@ -1494,17 +1727,13 @@ const MainApplicationContent: React.FC = () => {
 
                           {/* Operarios asignados */}
                           <div
-                            className={`flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1 border transition ${
-                              finished
-                                ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                : 'bg-slate-50 text-slate-700 border-slate-200/90'
-                            }`}
+                            className={`flex items-center gap-1.5 text-[11px] rounded-xl px-2.5 py-1.5 border transition ${palette.innerBox}`}
                             title={`Operarios asignados: ${woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}`}
                             data-testid={`planning-wo-operators-${wo.id}`}
                           >
                             <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                             <span className="font-extrabold text-slate-900 shrink-0">Op:</span>
-                            <span className="truncate font-semibold text-slate-800">
+                            <span className="truncate font-bold text-slate-800">
                               {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
                             </span>
                           </div>
@@ -1517,7 +1746,7 @@ const MainApplicationContent: React.FC = () => {
                                 e.stopPropagation();
                                 handleOpenReassign(wo);
                               }}
-                              className="w-full py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[10px] font-bold text-center transition cursor-pointer"
+                              className="w-full py-1.5 rounded-xl bg-white/90 hover:bg-white border border-black/15 text-slate-800 text-[10px] font-black text-center transition cursor-pointer shadow-2xs hover:shadow-xs"
                               title="Reasignar operarios al parte (Solo Administrador)"
                             >
                               Reasignar Operarios
@@ -1537,11 +1766,7 @@ const MainApplicationContent: React.FC = () => {
 
                           {/* Trabajo a realizar destacado */}
                           <div
-                            className={`text-xs sm:text-[13px] font-bold leading-snug px-2.5 py-1.5 rounded-lg border transition ${
-                              finished
-                                ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                : 'bg-blue-50/90 text-blue-950 border-blue-200/80 shadow-2xs'
-                            }`}
+                            className={`text-xs font-bold leading-snug px-2.5 py-2 rounded-xl border transition ${palette.innerBox}`}
                             title={wo.planned_work}
                           >
                             <span className="flex items-center gap-1.5">
@@ -1552,32 +1777,13 @@ const MainApplicationContent: React.FC = () => {
                         </div>
                       );
                     })}
-
-                    {/* Revisiones previstas para este día */}
-                    {dayRevs.map((occ) => {
-                      return (
-                        <div
-                          key={occ.id}
-                          data-testid={`planning-review-card-${occ.id}`}
-                          onClick={() => openReviewDetail(occ.id)}
-                          className="bg-amber-50/70 border border-amber-200 rounded-xl p-2 space-y-1 text-left text-xs cursor-pointer hover:border-amber-400 transition"
-                          title="Abrir ficha de esta revisión"
-                        >
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-600 text-white font-bold text-[10px]">
-                            Revisión
-                          </span>
-                          <div className="text-xs sm:text-[13px] font-medium text-slate-800 leading-relaxed">
-                            {occ.notes || 'Revisión periódica'}
-                          </div>
-                        </div>
-                      );
-                    })}
                   </>
                 )}
               </div>
             </div>
           );
-        })}
+          });
+        })()}
       </div>
     </div>
   );
@@ -1917,8 +2123,19 @@ const MainApplicationContent: React.FC = () => {
           </a>
         </div>
 
-        {/* Pie del Sidebar: Versión instalada y Cerrar sesión */}
+        {/* Pie del Sidebar: Versión instalada, Instalar App y Cerrar sesión */}
         <div className="p-3 border-t border-slate-800/80 space-y-2">
+          {!isAppInstalled && (
+            <button
+              type="button"
+              data-testid="sidebar-btn-install-app"
+              onClick={handleInstallApp}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold shadow-md transition cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Instalar Aplicación</span>
+            </button>
+          )}
           <div
             data-testid="sidebar-installed-version"
             className="px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between text-[11px] text-slate-400"
@@ -2025,6 +2242,20 @@ const MainApplicationContent: React.FC = () => {
               <span>Versión:</span>
               <strong className="text-blue-700">v{installedVersion}</strong>
             </span>
+
+            {!isAppInstalled && (
+              <button
+                type="button"
+                data-testid="header-btn-install-app"
+                onClick={handleInstallApp}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0 animate-pulse"
+                title="Instalar aplicación en este dispositivo"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Instalar Aplicación</span>
+                <span className="sm:hidden">Instalar</span>
+              </button>
+            )}
           </div>
 
           {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
@@ -2342,10 +2573,11 @@ const MainApplicationContent: React.FC = () => {
                         </div>
                       ) : (
                         <div className="space-y-3.5">
-                          {(adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).map((wo) => (
+                          {(adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).map((wo, idx) => (
                             <WorkOrderMobileCard
                               key={wo.id}
                               wo={wo}
+                              cardIndex={idx}
                               tz={tz}
                               assignments={assignments}
                               getUserName={getUserName}
@@ -3121,10 +3353,11 @@ const MainApplicationContent: React.FC = () => {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {agendaSortedWorkOrders.map((wo) => (
+                        {agendaSortedWorkOrders.map((wo, idx) => (
                           <WorkOrderMobileCard
                             key={wo.id}
                             wo={wo}
+                            cardIndex={idx}
                             tz={tz}
                             assignments={assignments}
                             getUserName={getUserName}
@@ -3330,7 +3563,8 @@ const MainApplicationContent: React.FC = () => {
                 />
 
                 {currentRoute === 'work_orders_list' && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
                     {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
                       (st) => {
                         const activeColorClass =
@@ -3365,6 +3599,36 @@ const MainApplicationContent: React.FC = () => {
                         );
                       }
                     )}
+                    </div>
+
+                    {/* Selector de filtrado por operario / usuario asignado */}
+                    <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs shadow-2xs shrink-0">
+                      <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span className="font-semibold text-slate-700 shrink-0">Operario asignado:</span>
+                      <select
+                        value={woFilterOperatorId}
+                        onChange={(e) => setWoFilterOperatorId(e.target.value)}
+                        className="bg-transparent font-bold text-slate-900 border-none outline-none cursor-pointer max-w-[200px] truncate"
+                        title="Filtrar partes asignados a este operario (incluso si est asignado con ms compaeros)"
+                      >
+                        <option value="all">Todos los operarios / usuarios</option>
+                        {allProfiles.filter((p) => p.is_active).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
+                          </option>
+                        ))}
+                      </select>
+                      {woFilterOperatorId !== 'all' && (
+                        <button
+                          type="button"
+                          onClick={() => setWoFilterOperatorId('all')}
+                          className="ml-1 text-slate-400 hover:text-red-500 font-bold px-1"
+                          title="Quitar filtro de operario"
+                        >
+                          
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -3400,15 +3664,32 @@ const MainApplicationContent: React.FC = () => {
                           woListFilterStatus === 'all' ? true : w.status === woListFilterStatus
                         )
                     )
-                      .filter(
-                        (w) =>
-                          !woSearch.trim() ||
-                          w.code.toLowerCase().includes(woSearch.toLowerCase()) ||
-                          w.snapshot_customer_name
-                            .toLowerCase()
-                            .includes(woSearch.toLowerCase()) ||
-                          w.planned_work.toLowerCase().includes(woSearch.toLowerCase())
-                      )
+                      .filter((w) => {
+                        // 1. Filtro por operario asignado seleccionado en desplegable
+                        if (woFilterOperatorId !== 'all') {
+                          const isAssigned = assignments.some(
+                            (a) => a.work_order_id === w.id && a.is_active && a.operator_id === woFilterOperatorId
+                          );
+                          if (!isAssigned) return false;
+                        }
+
+                        // 2. Filtro de bsqueda por texto (cdigo, cliente, trabajo, direccin o nombre de operario)
+                        if (!woSearch.trim()) return true;
+                        const query = woSearch.toLowerCase();
+                        if (w.code.toLowerCase().includes(query)) return true;
+                        if (w.snapshot_customer_name.toLowerCase().includes(query)) return true;
+                        if (w.planned_work.toLowerCase().includes(query)) return true;
+                        if ((w.snapshot_address_line || '').toLowerCase().includes(query)) return true;
+                        if ((w.snapshot_city || '').toLowerCase().includes(query)) return true;
+
+                        // Buscar tambin entre todos los operarios asignados al parte (incluso con varios asignados)
+                        const assignedOperatorNames = assignments
+                          .filter((a) => a.work_order_id === w.id && a.is_active)
+                          .map((a) => allProfiles.find((p) => p.id === a.operator_id)?.full_name || '')
+                          .join(' ')
+                          .toLowerCase();
+                        return assignedOperatorNames.includes(query);
+                      })
                       .map((wo) => {
                         const ops = assignments
                           .filter((a) => a.work_order_id === wo.id)
@@ -3693,6 +3974,86 @@ const MainApplicationContent: React.FC = () => {
         />
       )}
 
+      {/* Modal de Ayuda e Instrucciones para Instalar Aplicación */}
+      {showInstallHelpModal && (
+        <div
+          data-testid="modal-install-app-help"
+          className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Instalar Aplicación en este Dispositivo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInstallHelpModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-600">
+              Instala la aplicación para acceder de forma rápida y directa desde tu pantalla de inicio como una app nativa:
+            </p>
+
+            <div className="space-y-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <span>🤖</span>
+                  <span>En Android (Google Chrome):</span>
+                </div>
+                <ol className="list-decimal pl-5 space-y-1 text-slate-600">
+                  <li>Toca el menú de opciones (los <strong>3 puntos ⋮</strong> arriba a la derecha).</li>
+                  <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Añadir a pantalla de inicio"</strong>.</li>
+                  <li>Confirma pulsando en <strong>"Instalar"</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <span>🍎</span>
+                  <span>En iPhone o iPad (Safari):</span>
+                </div>
+                <ol className="list-decimal pl-5 space-y-1 text-slate-600">
+                  <li>Toca el botón <strong>Compartir</strong> (el icono <strong>⎋</strong> con flecha hacia arriba).</li>
+                  <li>Baja en las opciones y selecciona <strong>"Añadir a la pantalla de inicio ⊞"</strong>.</li>
+                  <li>Pulsa en <strong>"Añadir"</strong> en la esquina superior derecha.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    window.localStorage?.setItem('pwa_installed_device', 'true');
+                  } catch {}
+                  setIsAppInstalled(true);
+                  setShowInstallHelpModal(false);
+                  notifySuccessGreen('¡Aplicación marcada como instalada!');
+                }}
+                className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer"
+              >
+                Ya la tengo instalada
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowInstallHelpModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal global de reprogramación de fecha y hora prevista (Admin y Operarios) */}
       {rescheduleWoModal.open && (
         <div
@@ -3706,16 +4067,36 @@ const MainApplicationContent: React.FC = () => {
                 notifyError('Debes indicar una fecha y hora prevista válida.');
                 return;
               }
+              const targetDate = new Date(rescheduleDatetimeInput);
+              if (isNaN(targetDate.getTime())) {
+                notifyError('Debes indicar una fecha y hora prevista válida.');
+                return;
+              }
+              if (targetDate.getTime() < Date.now() - 60 * 1000) {
+                notifyError('No se puede reprogramar un parte con fecha u hora anterior a la actual.');
+                return;
+              }
               const isoTarget = rescheduleDatetimeInput.includes('Z')
                 ? rescheduleDatetimeInput
                 : new Date(rescheduleDatetimeInput).toISOString();
 
+              let reschedWarnings: string[] = [];
               try {
                 const activeOpIds = backend
                   .getWorkOrderAssignments(rescheduleWoModal.workOrderId)
                   .filter((a) => a.is_active)
                   .map((a) => a.operator_id);
                 backend.validateScheduledTimeWithinOperatorSchedules(rescheduleDatetimeInput, activeOpIds);
+
+                const conflicts = backend.findOperatorScheduleConflicts(
+                  rescheduleDatetimeInput,
+                  activeOpIds,
+                  rescheduleWoModal.workOrderId
+                );
+                reschedWarnings = conflicts.map(
+                  (c) =>
+                    `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at, tz)} ${formatTimeES(c.scheduled_at, tz)} h - ${c.customer_name}).`
+                );
               } catch (err: any) {
                 notifyError(err?.message || 'La hora prevista está fuera del horario laboral.');
                 return;
@@ -3723,6 +4104,7 @@ const MainApplicationContent: React.FC = () => {
 
               requestSaveConfirmation({
                 title: 'Confirmar Reprogramación de Fecha y Hora Prevista',
+                warnings: reschedWarnings.length > 0 ? reschedWarnings : undefined,
                 changes: [
                   { label: 'Parte de trabajo', value: rescheduleWoModal.code },
                   {
