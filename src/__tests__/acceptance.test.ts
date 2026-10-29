@@ -208,7 +208,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
   });
 
   it('Escenario 6: Finalizar exige importe y dos respuestas explícitas. La transición es atómica, no se repite y retira el parte del acceso operativo de todos los asignados', () => {
-    // 1. Si hay una jornada abierta en el parte, rechaza finalizar
+    // 1. Las jornadas se cierran automáticamente al finalizar con independencia de horarios o jornadas abiertas
     backend.login('carlos@climalux-demo.es', 'Oper1234!');
     const openWorkSess = backend.addWorkSession({
       work_order_id: 'wo-2',
@@ -217,17 +217,22 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       notes: 'Abierta',
     });
 
-    expect(() =>
-      backend.finalizeWorkOrder({
-        work_order_id: 'wo-2',
-        total_amount_cents: 10000,
-        customer_requests_invoice: true,
-        customer_has_paid: false,
-      })
-    ).toThrow(/jornadas abiertas/);
+    const finalizedWo = backend.finalizeWorkOrder({
+      work_order_id: 'wo-2',
+      total_amount_cents: 10000,
+      customer_requests_invoice: true,
+      customer_has_paid: false,
+    });
+    expect(finalizedWo.status).toBe('terminado');
 
-    // Cerrar la jornada abierta
-    backend.updateWorkSession(openWorkSess.id, { ended_at: '2026-10-21T11:00:00.000Z' });
+    // Comprobar como admin que la jornada abierta se cerró automáticamente
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const closedSess = backend.getWorkSessions('wo-2').find((s) => s.id === openWorkSess.id);
+    expect(closedSess?.ended_at).not.toBeNull();
+
+    // Reabrir para probar validaciones de importe y respuestas obligatorias
+    backend.reopenWorkOrder('wo-2', 'Prueba de validaciones de finalización');
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
 
     // 2. Si falta respuesta explícita a factura o pagado, o importe negativo -> rechaza
     expect(() =>
@@ -1987,5 +1992,79 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
 
     expect(assignedNames).toContain('Juan Carlos');
     expect(assignedNames.every((name) => !name.includes('(') && !name.includes(')'))).toBe(true);
+  });
+
+  it('Control de horario laboral de operarios al crear o reprogramar partes vs apertura y cierre libre', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    // Fijar horario de Carlos Ruiz de 08:00 a 16:00
+    backend.updateUserProfile('usr-oper-1', {
+      work_start_time: '08:00',
+      work_end_time: '16:00',
+    });
+
+    // 1. Crear parte a las 18:30 (fuera de horario de Carlos) -> Debe rechazar con error explicativo
+    expect(() =>
+      backend.createWorkOrder({
+        customer_id: 'cust-1',
+        customer_address_id: 'addr-1',
+        snapshot_customer_name: 'Cliente Horario',
+        snapshot_customer_tax_id: 'B12345678',
+        snapshot_contact_name: 'Contacto',
+        snapshot_contact_phone: '+34600111222',
+        snapshot_contact_email: 'c@horario.es',
+        snapshot_address_line: 'Calle Prueba',
+        snapshot_postal_code: '13001',
+        snapshot_city: 'Ciudad Real',
+        snapshot_province: 'Ciudad Real',
+        planned_work: 'Instalación termo',
+        scheduled_at: '2026-10-30T18:30',
+        initial_notes: '',
+        operator_ids: ['usr-oper-1'],
+      })
+    ).toThrow(/fuera del horario de trabajo/);
+
+    // 2. Crear parte a las 10:30 (dentro de horario de Carlos 08:00-16:00) -> Debe permitirlo
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Horario',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Contacto',
+      snapshot_contact_phone: '+34600111222',
+      snapshot_contact_email: 'c@horario.es',
+      snapshot_address_line: 'Calle Prueba',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Instalación termo',
+      scheduled_at: '2026-10-30T10:30',
+      initial_notes: '',
+      operator_ids: ['usr-oper-1'],
+    });
+    expect(wo.id).toBeTruthy();
+
+    // 3. Reprogramar a las 20:00 (fuera de horario) -> Rechaza
+    expect(() =>
+      backend.rescheduleWorkOrder({
+        work_order_id: wo.id,
+        scheduled_at: '2026-10-31T20:00',
+        reason: 'Cambio de hora',
+      })
+    ).toThrow(/fuera del horario de trabajo/);
+
+    // 4. El operario puede abrir y cerrar el parte independientemente de su horario
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    // Iniciar trabajo
+    const started = backend.startWorkOrder(wo.id);
+    expect(started.status).toBe('en_curso');
+
+    // Finalizar trabajo a cualquier hora sin tener en cuenta horario
+    const finalized = backend.finalizeWorkOrder({
+      work_order_id: wo.id,
+      total_amount_cents: 8000,
+      customer_requests_invoice: false,
+      customer_has_paid: true,
+    });
+    expect(finalized.status).toBe('terminado');
   });
 });

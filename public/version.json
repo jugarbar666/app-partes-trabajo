@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0",
-  "releasedAt": "2026-10-29T17:35:00.000Z",
-  "notes": "Selector visual de fecha y hora con botón Aceptar, confirmación de datos de cliente al solicitar factura, e inicio de sesión limpio para dispositivos nuevos"
+  "version": "1.8.0",
+  "releasedAt": "2026-10-29T18:10:00.000Z",
+  "notes": "Botón modificar materiales utilizados, finalización libre de partes sin bloqueos por jornadas, y validación de horarios laborales al crear o reprogramar partes"
 }

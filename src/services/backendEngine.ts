@@ -1255,6 +1255,41 @@ export class InstallationBackendEngine {
   }
 
   /**
+   * Valida que la fecha y hora previstas para el parte estén dentro del horario laboral
+   * de cada uno de los operarios asignados (Regla de control al crear o reprogramar).
+   */
+  public validateScheduledTimeWithinOperatorSchedules(
+    scheduledIsoOrLocal: string,
+    operatorIds: string[]
+  ): void {
+    if (!scheduledIsoOrLocal || !operatorIds || operatorIds.length === 0) return;
+    const timeMatch = scheduledIsoOrLocal.includes('T')
+      ? scheduledIsoOrLocal.split('T')[1].slice(0, 5)
+      : null;
+    if (!timeMatch) return;
+
+    const company = this.state.company_settings;
+    const defaultStart = company?.default_work_start_time || '08:00';
+    const defaultEnd = company?.default_work_end_time || '18:00';
+
+    for (const opId of operatorIds) {
+      const op = this.state.profiles.find((p) => p.id === opId);
+      if (op) {
+        const opStart = op.work_start_time || defaultStart;
+        const opEnd = op.work_end_time || defaultEnd;
+        const isWithin = opStart <= opEnd
+          ? timeMatch >= opStart && timeMatch <= opEnd
+          : timeMatch >= opStart || timeMatch <= opEnd;
+        if (!isWithin) {
+          throw new ValidationError(
+            `La hora prevista (${timeMatch}) está fuera del horario de trabajo de ${op.full_name} (${opStart} a ${opEnd}).`
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Crea un parte con numeración generada en servidor de forma única y segura (nunca max+1 desde cliente)
    * y guarda instantánea (snapshot) del cliente y dirección del servicio.
    */
@@ -1286,6 +1321,9 @@ export class InstallationBackendEngine {
     if (!params.operator_ids || params.operator_ids.length === 0) {
       throw new ValidationError('Debes asignar al menos un operario al parte.');
     }
+
+    // Validar que la hora prevista esté dentro del horario laboral de los operarios asignados
+    this.validateScheduledTimeWithinOperatorSchedules(params.scheduled_at, params.operator_ids);
 
     // Evitar crear accidentalmente el mismo parte varias veces para un mismo vencimiento de revisión
     if (params.origin_review_occurrence_id) {
@@ -1489,10 +1527,19 @@ export class InstallationBackendEngine {
           : null;
     }
 
+    if (patch.operator_ids && patch.operator_ids.length === 0) {
+      throw new ValidationError('El parte debe tener al menos un operario asignado.');
+    }
+
+    if (patch.scheduled_at !== undefined || patch.operator_ids !== undefined) {
+      const targetScheduled = patch.scheduled_at || wo.scheduled_at;
+      const targetOpIds = patch.operator_ids || this.state.work_order_assignments
+        .filter((a) => a.work_order_id === workOrderId && a.is_active)
+        .map((a) => a.operator_id);
+      this.validateScheduledTimeWithinOperatorSchedules(targetScheduled, targetOpIds);
+    }
+
     if (patch.operator_ids) {
-      if (patch.operator_ids.length === 0) {
-        throw new ValidationError('El parte debe tener al menos un operario asignado.');
-      }
       const nextSet = new Set(patch.operator_ids);
       for (const asg of this.state.work_order_assignments.filter((a) => a.work_order_id === workOrderId)) {
         if (asg.is_active && !nextSet.has(asg.operator_id)) {
@@ -1598,6 +1645,12 @@ export class InstallationBackendEngine {
     if (!parsed) {
       throw new ValidationError('La fecha y hora prevista indicada no es válida.');
     }
+
+    // Validar que la nueva hora prevista esté dentro del horario de los operarios asignados
+    const activeOpIds = this.state.work_order_assignments
+      .filter((a) => a.work_order_id === wo.id && a.is_active)
+      .map((a) => a.operator_id);
+    this.validateScheduledTimeWithinOperatorSchedules(params.scheduled_at, activeOpIds);
 
     const prevScheduled = wo.scheduled_at;
     const newScheduledIso = parsed.toISOString();
@@ -2059,21 +2112,16 @@ export class InstallationBackendEngine {
       throw new ValidationError('Debes responder explícitamente Sí o No a si el cliente ha pagado.');
     }
 
-    // Comprobar que no existan jornadas abiertas en este parte
-    const openSessions = this.state.work_sessions.filter(
-      (s) => s.work_order_id === params.work_order_id && s.ended_at === null
-    );
-    if (openSessions.length > 0) {
-      const owners = openSessions.map((s) => {
-        const prof = this.state.profiles.find((p) => p.id === s.operator_id);
-        return prof ? prof.full_name : s.operator_id;
-      });
-      throw new ValidationError(
-        `No se puede finalizar el parte porque existen jornadas abiertas pendientes de cerrar (${owners.join(', ')}).`
-      );
-    }
-
+    // El operario o administrador puede cerrar el parte con total independencia de su jornada o horario.
+    // Si existen jornadas/sesiones abiertas en este parte, se cierran automáticamente registrando la hora actual.
     const now = new Date().toISOString();
+    this.state.work_sessions.forEach((s) => {
+      if (s.work_order_id === params.work_order_id && s.ended_at === null) {
+        s.ended_at = now;
+        s.updated_at = now;
+      }
+    });
+
     const prevStatus = wo.status;
     if (!wo.started_at) {
       wo.started_at = now;

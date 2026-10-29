@@ -3710,6 +3710,17 @@ const MainApplicationContent: React.FC = () => {
                 ? rescheduleDatetimeInput
                 : new Date(rescheduleDatetimeInput).toISOString();
 
+              try {
+                const activeOpIds = backend
+                  .getWorkOrderAssignments(rescheduleWoModal.workOrderId)
+                  .filter((a) => a.is_active)
+                  .map((a) => a.operator_id);
+                backend.validateScheduledTimeWithinOperatorSchedules(rescheduleDatetimeInput, activeOpIds);
+              } catch (err: any) {
+                notifyError(err?.message || 'La hora prevista está fuera del horario laboral.');
+                return;
+              }
+
               requestSaveConfirmation({
                 title: 'Confirmar Reprogramación de Fecha y Hora Prevista',
                 changes: [

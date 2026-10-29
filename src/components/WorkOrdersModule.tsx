@@ -988,6 +988,10 @@ const WorkOrderDetailLoadedView: React.FC<{
   const [matQty, setMatQty] = useState('1');
   const [matNotes, setMatNotes] = useState('');
 
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
+  const [editMatQty, setEditMatQty] = useState('1');
+  const [editMatNotes, setEditMatNotes] = useState('');
+
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [photoCaption, setPhotoCaption] = useState('');
@@ -1316,6 +1320,40 @@ const WorkOrderDetailLoadedView: React.FC<{
           notes: notesToSave,
         });
         setMatNotes('');
+        refreshLocal();
+      },
+    });
+  };
+
+  const handleSaveEditMaterial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMaterialId) return;
+    const targetMat = materials.find((m) => m.id === editingMaterialId);
+    if (!targetMat) return;
+    const qty = parseFloat(editMatQty.replace(',', '.'));
+    if (Number.isNaN(qty) || qty <= 0) {
+      notifyError('Indica una cantidad válida mayor que cero (admite decimales como 2,5).');
+      return;
+    }
+    const targetId = editingMaterialId;
+    const qtyToSave = qty;
+    const notesToSave = editMatNotes;
+    setEditingMaterialId(null);
+
+    requestSaveConfirmation({
+      title: 'Modificar Material Utilizado',
+      changes: [
+        { label: 'Artículo', value: targetMat.article_name_snapshot },
+        { label: 'Cantidad anterior', value: `${targetMat.quantity} ${targetMat.unit_snapshot}` },
+        { label: 'Nueva cantidad', value: `${qtyToSave} ${targetMat.unit_snapshot}` },
+        { label: 'Notas', value: notesToSave || '—' },
+      ],
+      onConfirm: () => {
+        backend.updateWorkMaterial(targetId, {
+          quantity: qtyToSave,
+          notes: notesToSave,
+        });
+        notifySuccessGreen('Material actualizado correctamente.');
         refreshLocal();
       },
     });
@@ -2079,27 +2117,51 @@ const WorkOrderDetailLoadedView: React.FC<{
                       {m.notes && `· ${m.notes}`}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canEdit}
-                    onClick={() =>
-                      requestDeleteConfirmation({
-                        recordName: `Material ${m.article_name_snapshot}`,
-                        consequence: 'Se retirará el material imputado al parte.',
-                        onConfirm: () => {
-                          backend.deleteWorkMaterial(m.id);
-                          refreshLocal();
-                        },
-                      })
-                    }
-                    className={`px-2.5 py-1 rounded text-xs font-semibold border ${
-                      canEdit
-                        ? 'bg-white text-red-700 border-red-200'
-                        : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
-                    }`}
-                  >
-                    Borrar
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      data-testid={`btn-edit-material-${m.id}`}
+                      onClick={() => {
+                        setEditingMaterialId(m.id);
+                        setEditMatQty(String(m.quantity).replace('.', ','));
+                        setEditMatNotes(m.notes || '');
+                      }}
+                      title={
+                        canEdit
+                          ? 'Modificar cantidad o notas del material'
+                          : 'Solo puedes modificar tus propios materiales'
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold border ${
+                        canEdit
+                          ? 'bg-white hover:bg-blue-50 text-blue-700 border-blue-200 cursor-pointer'
+                          : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
+                      }`}
+                    >
+                      Modificar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() =>
+                        requestDeleteConfirmation({
+                          recordName: `Material ${m.article_name_snapshot}`,
+                          consequence: 'Se retirará el material imputado al parte.',
+                          onConfirm: () => {
+                            backend.deleteWorkMaterial(m.id);
+                            refreshLocal();
+                          },
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold border ${
+                        canEdit
+                          ? 'bg-white hover:bg-red-50 text-red-700 border-red-200 cursor-pointer'
+                          : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
+                      }`}
+                    >
+                      Borrar
+                    </button>
+                  </div>
                 </div>
               );
             })
@@ -2479,6 +2541,85 @@ const WorkOrderDetailLoadedView: React.FC<{
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* VENTANA EMERGENTE: MODIFICAR MATERIAL UTILIZADO */}
+      {editingMaterialId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          {(() => {
+            const mat = materials.find((m) => m.id === editingMaterialId);
+            return (
+              <form
+                onSubmit={handleSaveEditMaterial}
+                className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-md w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
+              >
+                <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+                  <h3 className="font-bold text-base">Modificar Material — {wo.code}</h3>
+                  <button
+                    type="button"
+                    onClick={() => setEditingMaterialId(null)}
+                    className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-4 text-xs flex-1">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <span className="text-slate-500 block text-[11px] mb-0.5">Artículo seleccionado:</span>
+                    <strong className="text-slate-900 text-sm block">{mat?.article_name_snapshot}</strong>
+                    <span className="text-slate-600 text-xs">
+                      Precio de venta: {mat ? formatCentsToEUR(mat.unit_price_cents) : '0,00 €'} / {mat?.unit_snapshot}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 text-sm mb-1.5">
+                      Cantidad utilizada ({mat?.unit_snapshot}) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      data-testid="input-edit-material-qty"
+                      value={editMatQty}
+                      onChange={(e) => setEditMatQty(e.target.value)}
+                      placeholder="Ej. 1 o 2,5"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 text-sm mb-1.5">
+                      Observaciones / Ubicación
+                    </label>
+                    <input
+                      type="text"
+                      data-testid="input-edit-material-notes"
+                      value={editMatNotes}
+                      onChange={(e) => setEditMatNotes(e.target.value)}
+                      placeholder="Ubicación o nota de instalación..."
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="bg-slate-50 px-5 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingMaterialId(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    data-testid="btn-submit-edit-material"
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    Guardar Cambios
+                  </button>
+                </div>
+              </form>
+            );
+          })()}
         </div>
       )}
 
