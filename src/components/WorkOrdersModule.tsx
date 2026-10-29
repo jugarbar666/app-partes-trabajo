@@ -172,9 +172,9 @@ export const WorkOrderCreateModal: React.FC<{
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
-  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState('28000');
-  const [newCustomerCity, setNewCustomerCity] = useState('Madrid');
-  const [newCustomerProvince, setNewCustomerProvince] = useState('Madrid');
+  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState('13001');
+  const [newCustomerCity, setNewCustomerCity] = useState('Ciudad Real');
+  const [newCustomerProvince, setNewCustomerProvince] = useState('Ciudad Real');
   const [newCustomerContactName, setNewCustomerContactName] = useState('');
   const [newCustomerNotes, setNewCustomerNotes] = useState('');
 
@@ -295,9 +295,9 @@ export const WorkOrderCreateModal: React.FC<{
       if (createdAddrs[0]) {
         backend.saveCustomerAddress({
           ...createdAddrs[0],
-          postal_code: newCustomerPostalCode.trim() || '28000',
-          city: newCustomerCity.trim() || 'Madrid',
-          province: newCustomerProvince.trim() || 'Madrid',
+          postal_code: newCustomerPostalCode.trim() || '13001',
+          city: newCustomerCity.trim() || 'Ciudad Real',
+          province: newCustomerProvince.trim() || 'Ciudad Real',
           contact_name: newCustomerContactName.trim() || created.name,
           contact_phone: created.phones[0] || '',
           contact_email: created.emails[0] || '',
@@ -312,9 +312,9 @@ export const WorkOrderCreateModal: React.FC<{
       setContactPhone(created.phones[0] || '');
       setContactEmail(created.emails[0] || '');
       setAddressLine(created.main_address || '');
-      setPostalCode(newCustomerPostalCode.trim() || '28000');
-      setCity(newCustomerCity.trim() || 'Madrid');
-      setProvince(newCustomerProvince.trim() || 'Madrid');
+      setPostalCode(newCustomerPostalCode.trim() || '13001');
+      setCity(newCustomerCity.trim() || 'Ciudad Real');
+      setProvince(newCustomerProvince.trim() || 'Ciudad Real');
       setShowInlineCustomerModal(false);
       setNewCustomerCode('');
       setNewCustomerName('');
@@ -322,9 +322,9 @@ export const WorkOrderCreateModal: React.FC<{
       setNewCustomerPhone('');
       setNewCustomerEmail('');
       setNewCustomerAddress('');
-      setNewCustomerPostalCode('28000');
-      setNewCustomerCity('Madrid');
-      setNewCustomerProvince('Madrid');
+      setNewCustomerPostalCode('13001');
+      setNewCustomerCity('Ciudad Real');
+      setNewCustomerProvince('Ciudad Real');
       setNewCustomerContactName('');
       setNewCustomerNotes('');
     } catch (err: any) {
@@ -801,7 +801,7 @@ export const WorkOrderCreateModal: React.FC<{
                     type="text"
                     value={newCustomerPostalCode}
                     onChange={(e) => setNewCustomerPostalCode(e.target.value)}
-                    placeholder="28000"
+                    placeholder="13001"
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
                   />
                 </div>
@@ -813,7 +813,7 @@ export const WorkOrderCreateModal: React.FC<{
                     type="text"
                     value={newCustomerCity}
                     onChange={(e) => setNewCustomerCity(e.target.value)}
-                    placeholder="Madrid"
+                    placeholder="Ciudad Real"
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
                   />
                 </div>
@@ -825,7 +825,7 @@ export const WorkOrderCreateModal: React.FC<{
                     type="text"
                     value={newCustomerProvince}
                     onChange={(e) => setNewCustomerProvince(e.target.value)}
-                    placeholder="Madrid"
+                    placeholder="Ciudad Real"
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
                   />
                 </div>

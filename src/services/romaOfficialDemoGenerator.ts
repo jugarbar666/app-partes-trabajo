@@ -5,6 +5,8 @@ import {
   InstallationReview,
   ReviewOccurrence,
   ReviewType,
+  ShoppingRequest,
+  ShoppingStatus,
   Supplier,
   WorkEntry,
   WorkMaterial,
@@ -1311,6 +1313,108 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
     });
   });
 
+  // 7. CESTA DE LA COMPRA CON ARTÍCULOS Y PROVEEDORES DE LA BASE DE DATOS
+  const shoppingSpecs: Array<{
+    artIdx: number;
+    quantity: number | null;
+    status: ShoppingStatus;
+    requestedBy: string;
+    notes: string;
+    additionalRequesters?: Array<{ user_id: string; requested_at: string; note?: string }>;
+  }> = [
+    {
+      artIdx: 23, // ART-024: Ánodo de sacrificio de magnesio M8 rosca 3/4" x 400mm para termo
+      quantity: 6,
+      status: 'pending_purchase',
+      requestedBy: operRaulId,
+      notes: 'Reponer stock en furgoneta para las revisiones de termos eléctricos de esta semana',
+      additionalRequesters: [
+        {
+          user_id: operMarcosId,
+          requested_at: '2026-10-29T09:15:00.000Z',
+          note: 'Necesito 2 unidades también para mantenimiento en Gesyre',
+        },
+      ],
+    },
+    {
+      artIdx: 0, // ART-001: Válvula de esfera paso total 1/2" H-H PN40
+      quantity: 12,
+      status: 'pending_purchase',
+      requestedBy: operMarcosId,
+      notes: 'Caja de llaves de corte 1/2" para intervenciones en Campus UCLM',
+    },
+    {
+      artIdx: 3, // ART-004: Latiguillo flexible malla inox 3/8" H - 1/2" H (40 cm)
+      quantity: 20,
+      status: 'pending_purchase',
+      requestedBy: operRaulId,
+      notes: 'Reposición de latiguillos reforzados para lavabos y cisternas (Facultad de Letras y clientes)',
+    },
+    {
+      artIdx: 5, // ART-006: Mecanismo descargador cisterna universal doble pulsador
+      quantity: 5,
+      status: 'pending_purchase',
+      requestedBy: operMarcosId,
+      notes: 'Descargadores universales para averías en comunidades de propietarios',
+    },
+    {
+      artIdx: 18, // ART-019: Válvula reductora de presión regulable con toma manómetro 3/4"
+      quantity: null,
+      status: 'pending_quantity',
+      requestedBy: operRaulId,
+      notes: 'Urgente para regulación de presión en acometida general (pendiente definir cantidad en oficina)',
+    },
+    {
+      artIdx: 26, // ART-027: Termo eléctrico mural vertical/horizontal 80L calderín vitrificado
+      quantity: 1,
+      status: 'pending_purchase',
+      requestedBy: adminId,
+      notes: 'Pedido para sustitución programada en cliente de Ciudad Real',
+    },
+    {
+      artIdx: 29, // ART-030: Purgador automático de aire 1/2" en latón con válvula de retención
+      quantity: null,
+      status: 'pending_quantity',
+      requestedBy: operMarcosId,
+      notes: 'Purgadores automáticos para colectores de calefacción (campaña invierno)',
+    },
+    {
+      artIdx: 22, // ART-023: Válvula de seguridad por sobrepresión 3 bar 1/2" M-H
+      quantity: 4,
+      status: 'purchased',
+      requestedBy: operRaulId,
+      notes: 'Recogido en mostrador del proveedor para calderas y termos',
+    },
+    {
+      artIdx: 12, // ART-013: Grifo monomando de lavabo cromado cartucho cerámico 35mm
+      quantity: 3,
+      status: 'purchased',
+      requestedBy: operMarcosId,
+      notes: 'Entregado en almacén Fontanería Roma',
+    },
+  ];
+
+  const shopping_requests: ShoppingRequest[] = shoppingSpecs.map((item, idx) => {
+    const art = articles[item.artIdx] || articles[0];
+    const reqTime = new Date(new Date(nowIso).getTime() - (idx + 1) * 3600 * 1000).toISOString();
+    return {
+      id: `shop-roma-${idx + 1}`,
+      article_id: art.id,
+      supplier_id: art.supplier_id,
+      purchase_price_cents: art.purchase_price_cents,
+      sale_price_cents: art.sale_price_cents,
+      quantity: item.quantity,
+      status: item.status,
+      requested_by: item.requestedBy,
+      requested_at: reqTime,
+      additional_requesters: item.additionalRequesters || [],
+      purchased_by: item.status === 'purchased' ? adminId : null,
+      purchased_at: item.status === 'purchased' ? nowIso : null,
+      notes: item.notes,
+      updated_at: nowIso,
+    };
+  });
+
   return {
     ...state,
     company_settings: {
@@ -1332,5 +1436,6 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
     work_sessions,
     work_materials,
     work_order_events,
+    shopping_requests,
   };
 }

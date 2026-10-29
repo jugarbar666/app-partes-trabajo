@@ -68,6 +68,12 @@ import {
   WeekDayInfo,
 } from './utils/formatters';
 import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from './config/branchConfig';
+import {
+  fetchRemoteLatestVersion,
+  getInstalledDeviceVersion,
+  LATEST_APP_VERSION,
+  setInstalledDeviceVersion,
+} from './config/versionConfig';
 
 type ActiveRoute =
   | 'dashboard'
@@ -435,6 +441,55 @@ const MainApplicationContent: React.FC = () => {
   >('customers');
   const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
   const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
+
+  // Control de versión instalada en el dispositivo y aviso de nueva versión disponible
+  const [installedVersion, setInstalledVersionState] = useState<string>(() =>
+    getInstalledDeviceVersion()
+  );
+  const [latestVersion, setLatestVersion] = useState<string>(LATEST_APP_VERSION);
+  const hasNewVersionAvailable = installedVersion !== latestVersion;
+
+  useEffect(() => {
+    let active = true;
+    const checkRemoteVersion = async () => {
+      const remoteVer = await fetchRemoteLatestVersion();
+      if (active && remoteVer) {
+        setLatestVersion(remoteVer);
+      }
+    };
+    checkRemoteVersion();
+    const intervalId = setInterval(checkRemoteVersion, 60000);
+    const onFocus = () => {
+      checkRemoteVersion();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', onFocus);
+    }
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', onFocus);
+      }
+    };
+  }, []);
+
+  const handleUpdateInstalledVersion = () => {
+    setInstalledDeviceVersion(latestVersion);
+    setInstalledVersionState(latestVersion);
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        window.caches.keys().then((names) => {
+          names.forEach((name) => window.caches.delete(name));
+        });
+      } catch {
+        // ignore cache clear errors
+      }
+    }
+    notifySuccessGreen(
+      `Aplicación actualizada correctamente en este dispositivo a la última versión (v${latestVersion}).`
+    );
+  };
 
   const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
 
@@ -1745,8 +1800,15 @@ const MainApplicationContent: React.FC = () => {
           </a>
         </div>
 
-        {/* Pie del Sidebar: Cerrar sesión */}
-        <div className="p-3 border-t border-slate-800/80">
+        {/* Pie del Sidebar: Versión instalada y Cerrar sesión */}
+        <div className="p-3 border-t border-slate-800/80 space-y-2">
+          <div
+            data-testid="sidebar-installed-version"
+            className="px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between text-[11px] text-slate-400"
+          >
+            <span>Versión instalada:</span>
+            <strong className="text-blue-400 font-extrabold">v{installedVersion}</strong>
+          </div>
           <button
             type="button"
             onClick={handleLogout}
@@ -1836,6 +1898,15 @@ const MainApplicationContent: React.FC = () => {
             <span className="text-xs text-slate-500 hidden md:inline shrink-0">
               Moneda: <strong className="text-slate-700">{company.currency} (€)</strong> · Zona:{' '}
               <strong className="text-slate-700">{tz}</strong>
+            </span>
+
+            <span
+              data-testid="app-installed-version-badge"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-slate-700 text-[11px] font-bold shrink-0"
+              title={`Versión instalada en este dispositivo: v${installedVersion}`}
+            >
+              <span>Versión:</span>
+              <strong className="text-blue-700">v{installedVersion}</strong>
             </span>
           </div>
 
@@ -1955,6 +2026,51 @@ const MainApplicationContent: React.FC = () => {
             data-testid="banner-offline-warning"
           >
             ⚠️ Conexión perdida con el servidor. Las escrituras, finalizaciones, fichajes y envíos requieren conexión; tus formularios en pantalla se mantienen sin pérdida de datos.
+          </div>
+        )}
+
+        {/* Ventanita de aviso con fondo amarillo cuando hay una nueva versión disponible */}
+        {hasNewVersionAvailable && (
+          <div className="px-4 lg:px-6 xl:px-8 pt-4">
+            <div
+              data-testid="new-version-yellow-window"
+              onClick={handleUpdateInstalledVersion}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleUpdateInstalledVersion();
+                }
+              }}
+              className="bg-yellow-300 hover:bg-yellow-400 border-2 border-yellow-600 text-slate-950 rounded-2xl px-4 py-3 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition"
+            >
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="p-2 rounded-xl bg-yellow-500/40 border border-yellow-700/40 shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-slate-950" />
+                </div>
+                <div className="text-xs sm:text-sm">
+                  <div className="font-extrabold text-slate-950">
+                    ⚠️ Nueva versión disponible (v{latestVersion})
+                  </div>
+                  <div className="text-xs font-medium text-slate-900 mt-0.5">
+                    Versión instalada en este dispositivo: <strong>v{installedVersion}</strong>. Pulsa sobre esta ventana para que la versión instalada en el dispositivo se actualice a la última versión existente.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                data-testid="btn-update-to-latest-version"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleUpdateInstalledVersion();
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-yellow-300 font-extrabold text-xs shrink-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Pulsar para actualizar a v{latestVersion}</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -2138,23 +2254,6 @@ const MainApplicationContent: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            backend.loadCiudadRealDemoDataset();
-                            notifySuccessGreen(
-                              'Datos cargados con éxito: UCLM (Campus Ciudad Real con CAU), Gesyre, clientes adicionales, 25 artículos de fontanería, 20 revisiones, 25 partes y cesta de la compra.'
-                            );
-                            refresh();
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition cursor-pointer shadow-2xs"
-                          title="Cargar catálogo de 25 artículos de fontanería, 20 revisiones (calderas y ánodos), 25 partes diversos y cesta de la compra"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Cargar datos Ciudad Real (UCLM, Gesyre, Clientes, Cesta)</span>
-                        </button>
-                      )}
                       <select
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
@@ -2202,11 +2301,11 @@ const MainApplicationContent: React.FC = () => {
                         {countNoIniciados}
                       </div>
                       <div className="text-[11px] text-blue-100/90 flex items-center gap-1">
-                        <span>Estado Azul · Planificados</span>
+                        <span>Planificados</span>
                       </div>
                     </button>
 
-                    {/* Tarjeta 2: Blanca limpia con métrica en ámbar/naranja */}
+                    {/* Tarjeta 2: Destacada en naranja intenso (como la tarjeta azul) */}
                     <button
                       type="button"
                       data-testid="card-en-curso"
@@ -2214,23 +2313,23 @@ const MainApplicationContent: React.FC = () => {
                         setWoListFilterStatus('en_curso');
                         navigateTo('work_orders_list');
                       }}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-5 text-left shadow-2xs hover:border-amber-400 transition flex flex-col justify-between min-h-[132px]"
+                      className="bg-gradient-to-br from-[#d97706] to-[#ea580c] text-white rounded-2xl p-5 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[132px] cursor-pointer"
                     >
                       <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-medium text-slate-500">
+                        <span className="text-xs font-semibold text-amber-100">
                           2. Partes en curso
                         </span>
-                        <PlayCircle className="w-4 h-4 text-amber-500" />
+                        <PlayCircle className="w-4 h-4 text-amber-200" />
                       </div>
-                      <div className="text-3xl font-extrabold text-amber-600 tracking-tight my-1">
+                      <div className="text-3xl font-extrabold tracking-tight my-1">
                         {countEnCurso}
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        Estado Naranja · En intervención
+                      <div className="text-[11px] text-amber-100/90 flex items-center gap-1">
+                        <span>En intervención</span>
                       </div>
                     </button>
 
-                    {/* Tarjeta 3: Blanca limpia con métrica en verde esmeralda */}
+                    {/* Tarjeta 3: Destacada en verde esmeralda intenso (como la tarjeta azul) */}
                     <button
                       type="button"
                       data-testid="card-pendientes-cierre"
@@ -2238,19 +2337,19 @@ const MainApplicationContent: React.FC = () => {
                         setWoListFilterStatus('terminado');
                         navigateTo('work_orders_list');
                       }}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-5 text-left shadow-2xs hover:border-emerald-400 transition flex flex-col justify-between min-h-[132px]"
+                      className="bg-gradient-to-br from-[#047857] to-[#059669] text-white rounded-2xl p-5 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[132px] cursor-pointer"
                     >
                       <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-medium text-slate-500">
+                        <span className="text-xs font-semibold text-emerald-100">
                           3. Finalizados pdtes. cierre
                         </span>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                       </div>
-                      <div className="text-3xl font-extrabold text-emerald-600 tracking-tight my-1">
+                      <div className="text-3xl font-extrabold tracking-tight my-1">
                         {countPendientesCierre}
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        Estado Verde · Total: {formatCentsToEUR(totalFinishedCents)}
+                      <div className="text-[11px] text-emerald-100/90 flex items-center gap-1">
+                        <span>Total: {formatCentsToEUR(totalFinishedCents)}</span>
                       </div>
                     </button>
 
@@ -3046,24 +3145,38 @@ const MainApplicationContent: React.FC = () => {
               {currentRoute === 'work_orders_list' && (
                 <div className="flex flex-wrap gap-2">
                   {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
-                    (st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setWoListFilterStatus(st)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition ${
-                          woListFilterStatus === st
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {st === 'all'
-                          ? 'Todos los estados activos'
+                    (st) => {
+                      const activeColorClass =
+                        st === 'no_iniciado'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : st === 'en_curso'
+                          ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs'
                           : st === 'reabierto'
-                          ? 'REABIERTO'
-                          : st.toUpperCase()}
-                      </button>
-                    )
+                          ? 'bg-[#78350f] text-white border-[#78350f] shadow-xs'
+                          : st === 'terminado'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : st === 'cerrado'
+                          ? 'bg-red-700 text-white border-red-700 shadow-xs'
+                          : 'bg-slate-900 text-white border-slate-900 shadow-xs';
+                      return (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setWoListFilterStatus(st)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            woListFilterStatus === st
+                              ? activeColorClass
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {st === 'all'
+                            ? 'Todos los estados activos'
+                            : st === 'reabierto'
+                            ? 'REABIERTO'
+                            : st.toUpperCase()}
+                        </button>
+                      );
+                    }
                   )}
                 </div>
               )}

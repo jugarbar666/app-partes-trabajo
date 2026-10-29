@@ -492,5 +492,50 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       container.remove();
     }
   });
+
+  it('Muestra el número de versión instalada y la ventanita con fondo amarillo cuando hay una nueva versión disponible, actualizándose al pulsar', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { DEVICE_INSTALLED_VERSION_KEY, INITIAL_DEVICE_VERSION, LATEST_APP_VERSION } = await import(
+      '../config/versionConfig'
+    );
+
+    window.localStorage.setItem(DEVICE_INSTALLED_VERSION_KEY, INITIAL_DEVICE_VERSION);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(<App />);
+      });
+
+      // Debe aparecer la versión instalada actual y la ventanita amarilla de nueva versión disponible
+      const badge = container.querySelector('[data-testid="app-installed-version-badge"]');
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain(`v${INITIAL_DEVICE_VERSION}`);
+
+      const yellowWindow = container.querySelector('[data-testid="new-version-yellow-window"]');
+      expect(yellowWindow).not.toBeNull();
+      expect(yellowWindow?.className).toContain('bg-yellow-300');
+      expect(yellowWindow?.textContent).toContain(`Nueva versión disponible (v${LATEST_APP_VERSION})`);
+
+      // Pulsar en el aviso amarillo para actualizar la versión instalada en el dispositivo
+      await act(async () => {
+        (yellowWindow as HTMLElement).click();
+      });
+
+      // Tras pulsar, la versión instalada pasa a ser la última y desaparece la ventana amarilla
+      expect(badge?.textContent).toContain(`v${LATEST_APP_VERSION}`);
+      expect(container.querySelector('[data-testid="new-version-yellow-window"]')).toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
 });
 

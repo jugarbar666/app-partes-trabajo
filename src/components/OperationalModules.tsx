@@ -295,7 +295,7 @@ export const ReviewsAndNotificationsModule: React.FC<{
             type="text"
             value={cityFilter}
             onChange={(e) => setCityFilter(e.target.value)}
-            placeholder="Ej. Madrid, Alcobendas..."
+            placeholder="Ej. Ciudad Real, Miguelturra, Puertollano..."
             className="w-full px-2.5 py-1.5 rounded border border-slate-300"
           />
         </div>

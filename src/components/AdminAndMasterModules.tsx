@@ -90,18 +90,18 @@ export const MasterDataAndUsersModule: React.FC<{
   const [custPhone, setCustPhone] = useState('');
   const [custEmail, setCustEmail] = useState('');
   const [custAddress, setCustAddress] = useState('');
-  const [custPostalCode, setCustPostalCode] = useState('28000');
-  const [custCity, setCustCity] = useState('Madrid');
-  const [custProvince, setCustProvince] = useState('Madrid');
+  const [custPostalCode, setCustPostalCode] = useState('13001');
+  const [custCity, setCustCity] = useState('Ciudad Real');
+  const [custProvince, setCustProvince] = useState('Ciudad Real');
   const [custNotes, setCustNotes] = useState('');
 
   // Estado formulario Domicilio/Instalación
   const [addrCustomerId, setAddrCustomerId] = useState('');
   const [addrAlias, setAddrAlias] = useState('');
   const [addrLine, setAddrLine] = useState('');
-  const [addrPostal, setAddrPostal] = useState('28000');
-  const [addrCity, setAddrCity] = useState('Madrid');
-  const [addrProvince, setAddrProvince] = useState('Madrid');
+  const [addrPostal, setAddrPostal] = useState('13001');
+  const [addrCity, setAddrCity] = useState('Ciudad Real');
+  const [addrProvince, setAddrProvince] = useState('Ciudad Real');
   const [addrContact, setAddrContact] = useState('');
   const [addrPhone, setAddrPhone] = useState('');
 
@@ -342,17 +342,17 @@ export const MasterDataAndUsersModule: React.FC<{
       setCustPhone('');
       setCustEmail('');
       setCustAddress('');
-      setCustPostalCode('28000');
-      setCustCity('Madrid');
-      setCustProvince('Madrid');
+      setCustPostalCode('13001');
+      setCustCity('Ciudad Real');
+      setCustProvince('Ciudad Real');
       setCustNotes('');
     } else if (activeTab === 'addresses') {
       setAddrCustomerId('');
       setAddrAlias('');
       setAddrLine('');
-      setAddrPostal('28000');
-      setAddrCity('Madrid');
-      setAddrProvince('Madrid');
+      setAddrPostal('13001');
+      setAddrCity('Ciudad Real');
+      setAddrProvince('Ciudad Real');
       setAddrContact('');
       setAddrPhone('');
     } else if (activeTab === 'articles') {
@@ -1215,9 +1215,9 @@ export const MasterDataAndUsersModule: React.FC<{
                       setCustPhone('');
                       setCustEmail('');
                       setCustAddress('');
-                      setCustPostalCode('28000');
-                      setCustCity('Madrid');
-                      setCustProvince('Madrid');
+                      setCustPostalCode('13001');
+                      setCustCity('Ciudad Real');
+                      setCustProvince('Ciudad Real');
                       setCustNotes('');
                       refresh();
                     },
@@ -1325,7 +1325,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       type="text"
                       value={custPostalCode}
                       onChange={(e) => setCustPostalCode(e.target.value)}
-                      placeholder="28000"
+                      placeholder="13001"
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-sm"
                     />
                   </div>
@@ -1337,7 +1337,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       type="text"
                       value={custCity}
                       onChange={(e) => setCustCity(e.target.value)}
-                      placeholder="Madrid"
+                      placeholder="Ciudad Real"
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-sm"
                     />
                   </div>
@@ -1349,7 +1349,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       type="text"
                       value={custProvince}
                       onChange={(e) => setCustProvince(e.target.value)}
-                      placeholder="Madrid"
+                      placeholder="Ciudad Real"
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-sm"
                     />
                   </div>
@@ -2503,9 +2503,9 @@ export const AdminSystemModule: React.FC<{
   const [compAddress, setCompAddress] = useState(
     settings.address || 'Polígono Industrial Empresarial, Nave 14'
   );
-  const [compPostalCode, setCompPostalCode] = useState(settings.postal_code || '28022');
-  const [compCity, setCompCity] = useState(settings.city || 'Madrid');
-  const [compProvince, setCompProvince] = useState(settings.province || 'Madrid');
+  const [compPostalCode, setCompPostalCode] = useState(settings.postal_code || '13001');
+  const [compCity, setCompCity] = useState(settings.city || 'Ciudad Real');
+  const [compProvince, setCompProvince] = useState(settings.province || 'Ciudad Real');
   const [compNotifEmail, setCompNotifEmail] = useState(settings.notification_email);
   const [compPrefix, setCompPrefix] = useState(settings.work_order_prefix);
   const [compTimezone, setCompTimezone] = useState(sanitizeTimezone(settings.timezone));
@@ -3368,7 +3368,7 @@ export const AdminSystemModule: React.FC<{
                   required
                   value={compPostalCode}
                   onChange={(e) => setCompPostalCode(e.target.value)}
-                  placeholder="Ej. 28022"
+                  placeholder="Ej. 13001"
                   className="w-full px-3 py-2 rounded-lg border border-slate-300"
                 />
               </div>
@@ -3381,7 +3381,7 @@ export const AdminSystemModule: React.FC<{
                   required
                   value={compCity}
                   onChange={(e) => setCompCity(e.target.value)}
-                  placeholder="Ej. Madrid"
+                  placeholder="Ej. Ciudad Real"
                   className="w-full px-3 py-2 rounded-lg border border-slate-300"
                 />
               </div>
@@ -3394,7 +3394,7 @@ export const AdminSystemModule: React.FC<{
                   required
                   value={compProvince}
                   onChange={(e) => setCompProvince(e.target.value)}
-                  placeholder="Ej. Madrid"
+                  placeholder="Ej. Ciudad Real"
                   className="w-full px-3 py-2 rounded-lg border border-slate-300"
                 />
               </div>

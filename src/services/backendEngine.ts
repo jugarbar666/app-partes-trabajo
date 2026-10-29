@@ -124,19 +124,28 @@ export class InstallationBackendEngine {
         }
       }
 
-      // 2. Si no se pudo cargar o está vacío, inicializar según effectiveMode
+      // 2. Si no hay base de datos previa en el dispositivo, inicializar por primera vez
       if (!loadedFromStorage || !this.state) {
         this.state =
           effectiveMode === 'demo'
             ? createDemoSeedState(installationId)
-            : createCleanDatabaseState(installationId);
-      }
-
-      // 3. Poblar los 30 artículos de fontanería, 10 revisiones y 30 partes para las próximas 4 semanas
-      // utilizando los clientes y proveedores que el usuario ha introducido en la base de datos
-      if (effectiveMode === 'clean' && !(this.state as any)._romaOfficialDemoSeededV2) {
+            : populateRomaOfficialDemoData(createCleanDatabaseState(installationId));
+      } else if (
+        effectiveMode === 'clean' &&
+        (this.state.work_orders || []).length === 0 &&
+        (this.state.articles || []).length === 0
+      ) {
+        // Solo si la base de datos estaba sin inicializar partes/artículos
         this.state = populateRomaOfficialDemoData(this.state);
-        (this.state as any)._romaOfficialDemoSeededV2 = true;
+      } else if (
+        effectiveMode === 'clean' &&
+        (this.state.shopping_requests || []).length === 0 &&
+        !(this.state as any)._romaShoppingSeededV1
+      ) {
+        // Preservar intactos todos los datos existentes de la base de datos y añadir únicamente la cesta si estaba vacía
+        const generated = populateRomaOfficialDemoData(this.state);
+        this.state.shopping_requests = generated.shopping_requests;
+        (this.state as any)._romaShoppingSeededV1 = true;
       }
 
       this.persist();
