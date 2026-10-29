@@ -23,6 +23,8 @@ import {
   Trash2,
   AlertTriangle,
   ArrowRight,
+  MailCheck,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -138,6 +140,8 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
   const [usrRole, setUsrRole] = useState<'operario' | 'admin' | ''>('');
+  const [usrWorkStartTime, setUsrWorkStartTime] = useState('08:00');
+  const [usrWorkEndTime, setUsrWorkEndTime] = useState('18:00');
   const [usrTempPassword, setUsrTempPassword] = useState('Clima-2026!');
 
   // Modal de resumen con enlace y credenciales tras invitar
@@ -385,76 +389,80 @@ export const MasterDataAndUsersModule: React.FC<{
       setUsrEmail('');
       setUsrPhone('');
       setUsrRole('');
+      setUsrWorkStartTime('08:00');
+      setUsrWorkEndTime('18:00');
       setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
     }
     setShowCreateModal(true);
   };
 
   return (
-    <div className="space-y-5">
-      <ScreenHeaderBar
-        title="Datos Maestros y Administración de Usuarios"
-        subtitle="Clientes, domicilios/instalaciones, artículos, proveedores, tipos de revisión y usuarios con ciclo activo/inactivo"
-        onBack={onBack}
-        searchTerm={search}
-        onSearchChange={setSearch}
-        actions={
-          <button
-            type="button"
-            onClick={handleOpenCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
-          </button>
-        }
-      />
-
-      {/* Pestañas de maestros */}
-      <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200">
-        {[
-          { key: 'customers', label: `Clientes (${customers.length})`, icon: Building2 },
-          {
-            key: 'addresses',
-            label: `Domicilios/Instalaciones (${addresses.length})`,
-            icon: Building2,
-          },
-          { key: 'articles', label: `Artículos (${articles.length})`, icon: Package },
-          { key: 'suppliers', label: `Proveedores (${suppliers.length})`, icon: Truck },
-          {
-            key: 'review_types',
-            label: `Tipos de Revisión (${reviewTypes.length})`,
-            icon: CalendarClock,
-          },
-          { key: 'users', label: `Usuarios y Roles (${profiles.length})`, icon: Users },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.key;
-          return (
+    <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+      <div className="shrink-0 bg-[#f4f6fa] space-y-3">
+        <ScreenHeaderBar
+          title="Datos Maestros y Administración de Usuarios"
+          subtitle="Clientes, domicilios/instalaciones, artículos, proveedores, tipos de revisión y usuarios con ciclo activo/inactivo"
+          onBack={onBack}
+          searchTerm={search}
+          onSearchChange={setSearch}
+          actions={
             <button
-              key={tab.key}
               type="button"
-              onClick={() => {
-                setActiveTab(tab.key as typeof activeTab);
-                setShowCreateModal(false);
-                setEditingId(null);
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition ${
-                active
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-              }`}
+              onClick={handleOpenCreate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
             >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
+              <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
             </button>
-          );
-        })}
+          }
+        />
+
+        {/* Pestañas de maestros */}
+        <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+          {[
+            { key: 'customers', label: `Clientes (${customers.length})`, icon: Building2 },
+            {
+              key: 'addresses',
+              label: `Domicilios/Instalaciones (${addresses.length})`,
+              icon: Building2,
+            },
+            { key: 'articles', label: `Artículos (${articles.length})`, icon: Package },
+            { key: 'suppliers', label: `Proveedores (${suppliers.length})`, icon: Truck },
+            {
+              key: 'review_types',
+              label: `Tipos de Revisión (${reviewTypes.length})`,
+              icon: CalendarClock,
+            },
+            { key: 'users', label: `Usuarios y Roles (${profiles.length})`, icon: Users },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab.key as typeof activeTab);
+                  setShowCreateModal(false);
+                  setEditingId(null);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition ${
+                  active
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* 1. LISTADO DE CLIENTES */}
       {activeTab === 'customers' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-700">Acciones con Clientes:</span>
             </div>
@@ -478,7 +486,7 @@ export const MasterDataAndUsersModule: React.FC<{
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {customers
             .filter(
               (c) =>
@@ -595,7 +603,7 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 2. LISTADO DE DOMICILIOS / INSTALACIONES */}
       {activeTab === 'addresses' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {addresses.map((a) => {
             const cust = customers.find((c) => c.id === a.customer_id);
             return (
@@ -672,7 +680,7 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 3. LISTADO DE ARTÍCULOS */}
       {activeTab === 'articles' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {articles
             .filter(
               (a) => !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q)
@@ -759,8 +767,8 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 4. LISTADO DE PROVEEDORES */}
       {activeTab === 'suppliers' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-700">Acciones con Proveedores:</span>
             </div>
@@ -793,7 +801,7 @@ export const MasterDataAndUsersModule: React.FC<{
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
             {suppliers
               .filter(
                 (s) =>
@@ -907,7 +915,7 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 5. LISTADO DE TIPOS DE REVISIÓN */}
       {activeTab === 'review_types' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {reviewTypes.map((rt) => (
             <div key={rt.id} className="p-4 flex items-center justify-between gap-3">
               <div>
@@ -976,7 +984,7 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 6. LISTADO DE USUARIOS Y ROLES */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
+        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {profiles.map((u) => {
             const isSelf = u.id === currentUser.id;
             return (
@@ -1008,8 +1016,15 @@ export const MasterDataAndUsersModule: React.FC<{
                       </span>
                     )}
                   </div>
-                  <div className="text-slate-600">
-                    DNI: {u.dni || '—'} · Tel: {u.phone || '—'}
+                  <div className="text-slate-600 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                    <span>DNI: {u.dni || '—'}</span>
+                    <span>·</span>
+                    <span>Tel: {u.phone || '—'}</span>
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      <Clock className="w-3 h-3 text-indigo-600" />
+                      Jornada habitual: <strong>{u.work_start_time || '08:00'}</strong> a <strong>{u.work_end_time || '18:00'}</strong>
+                    </span>
                   </div>
                 </div>
 
@@ -1024,6 +1039,8 @@ export const MasterDataAndUsersModule: React.FC<{
                       setUsrDni(u.dni || '');
                       setUsrPhone(u.phone || '');
                       setUsrRole(u.role);
+                      setUsrWorkStartTime(u.work_start_time || '08:00');
+                      setUsrWorkEndTime(u.work_end_time || '18:00');
                       setShowCreateModal(true);
                     }}
                     className="px-3 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
@@ -1899,6 +1916,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
                       { label: 'Rol asignado', value: validRole },
+                      { label: 'Jornada habitual', value: `${usrWorkStartTime || '08:00'} a ${usrWorkEndTime || '18:00'}` },
                       ...(isEdit ? [] : [{ label: 'Contraseña temporal', value: usrTempPassword }]),
                     ],
                     onConfirm: () => {
@@ -1909,6 +1927,8 @@ export const MasterDataAndUsersModule: React.FC<{
                             dni: usrDni,
                             phone: usrPhone,
                             role: validRole,
+                            work_start_time: usrWorkStartTime || '08:00',
+                            work_end_time: usrWorkEndTime || '18:00',
                           });
                           notifySuccessGreen('Datos del usuario actualizados correctamente.');
                           setEditingId(null);
@@ -1919,6 +1939,8 @@ export const MasterDataAndUsersModule: React.FC<{
                             email: usrEmail,
                             phone: usrPhone,
                             role: validRole,
+                            work_start_time: usrWorkStartTime || '08:00',
+                            work_end_time: usrWorkEndTime || '18:00',
                             initial_password: usrTempPassword,
                           });
                           setInvitationSummaryModal({
@@ -1933,6 +1955,8 @@ export const MasterDataAndUsersModule: React.FC<{
                         setUsrDni('');
                         setUsrEmail('');
                         setUsrPhone('');
+                        setUsrWorkStartTime('08:00');
+                        setUsrWorkEndTime('18:00');
                         setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
                         refresh();
                       } catch (err: any) {
@@ -1990,6 +2014,42 @@ export const MasterDataAndUsersModule: React.FC<{
                   <option value="operario">Rol: Operario</option>
                   <option value="admin">Rol: Administrador</option>
                 </select>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Jornada Habitual Individual (para Fichajes y Cierre)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Horario propio e independiente asignado a este trabajador para la apertura y cierre automático de jornadas.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Hora habitual de entrada *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={usrWorkStartTime}
+                        onChange={(e) => setUsrWorkStartTime(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Hora habitual de salida *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={usrWorkEndTime}
+                        onChange={(e) => setUsrWorkEndTime(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-mono font-semibold bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 {!editingId ? (
                   <div className="space-y-1.5 pt-1">
@@ -2472,20 +2532,24 @@ export const MasterDataAndUsersModule: React.FC<{
 // =============================================================================
 export const AdminSystemModule: React.FC<{
   backend: InstallationBackendEngine;
-  initialSection?: 'audit' | 'backups' | 'settings';
+  initialSection?: 'audit' | 'notifications' | 'backups' | 'settings';
   filterEntityId?: string;
   onBack: () => void;
   onRefresh: () => void;
 }> = ({ backend, initialSection = 'audit', filterEntityId = '', onBack, onRefresh }) => {
   const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
-  const [section, setSection] = useState(initialSection);
+  const [section, setSection] = useState<'audit' | 'notifications' | 'backups' | 'settings'>(initialSection);
   const [tick, setTick] = useState(0);
   const refresh = () => {
     setTick((t) => t + 1);
     onRefresh();
   };
 
-  const auditEntries = useMemo(() => backend.getAuditLog(), [backend, tick]);
+  const auditEntries = useMemo(
+    () => backend.getAuditLog().filter((a) => a.module !== 'backups'),
+    [backend, tick]
+  );
+  const outbox = useMemo(() => backend.getNotificationOutbox(), [backend, tick]);
   const backupJobs = useMemo(() => backend.getBackupJobs(), [backend, tick]);
   const settings = useMemo(() => backend.getCompanySettings(), [backend, tick]);
   const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
@@ -2763,47 +2827,53 @@ export const AdminSystemModule: React.FC<{
   };
 
   return (
-    <div className="space-y-5">
-      <ScreenHeaderBar
-        title="Auditoría, Copias de Seguridad y Configuración de Empresa"
-        subtitle="Trazabilidad inmutable en servidor, copias automáticas diarias de escritorio / manuales y parámetros de la instalación"
-        onBack={onBack}
-      />
+    <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+      <div className="shrink-0 bg-[#f4f6fa] space-y-3">
+        <ScreenHeaderBar
+          title={
+            section === 'settings'
+              ? 'Configuración de Empresa'
+              : section === 'backups'
+              ? 'Copias de Seguridad y Restauración'
+              : 'Auditoría Técnica y Trazabilidad'
+          }
+          subtitle={
+            section === 'settings'
+              ? 'Ficha de datos fiscales, logotipo corporativo, correo de avisos y parámetros generales de la instalación'
+              : section === 'backups'
+              ? 'Copias manuales, copia automática en primera apertura diaria de escritorio y restauración verificada'
+              : 'Trazabilidad inmutable en servidor y registro de cola de notificaciones automáticas'
+          }
+          onBack={onBack}
+        />
 
-      <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200">
-        <button
-          type="button"
-          onClick={() => setSection('audit')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold ${
-            section === 'audit' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" /> Auditoría y Trazabilidad ({auditEntries.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSection('backups')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold ${
-            section === 'backups' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
-          }`}
-        >
-          <DatabaseBackup className="w-4 h-4" /> Copias de Seguridad y Restauración (
-          {backupJobs.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSection('settings')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold ${
-            section === 'settings' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
-          }`}
-        >
-          <Settings className="w-4 h-4" /> Configuración de Empresa
-        </button>
+        {(section === 'audit' || section === 'notifications') && (
+          <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setSection('audit')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${
+                section === 'audit' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" /> Auditoría y Trazabilidad ({auditEntries.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection('notifications')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${
+                section === 'notifications' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <MailCheck className="w-4 h-4" /> Cola de Notificaciones de Servidor ({outbox.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {section === 'audit' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
             <select
               value={auditUserFilter}
               onChange={(e) => setAuditUserFilter(e.target.value)}
@@ -2828,7 +2898,6 @@ export const AdminSystemModule: React.FC<{
               <option value="avisos">Avisos</option>
               <option value="compras">Compras</option>
               <option value="fichaje">Fichaje</option>
-              <option value="backups">Backups</option>
               <option value="importacion">Importación</option>
               <option value="usuarios">Usuarios</option>
             </select>
@@ -2854,9 +2923,9 @@ export const AdminSystemModule: React.FC<{
             />
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900 text-white">
+              <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
                 <tr>
                   <th className="p-3">Fecha Servidor</th>
                   <th className="p-3">Actor</th>
@@ -2890,9 +2959,85 @@ export const AdminSystemModule: React.FC<{
         </div>
       )}
 
+      {section === 'notifications' && (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5 text-xs">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <MailCheck className="w-4 h-4 text-blue-600" />
+                Registro de Cola de Notificaciones de Servidor (`notification_outbox` — {outbox.length})
+              </h3>
+              <p className="text-slate-600">
+                Cola técnica de avisos automáticos de revisiones con control de deduplicación, destinatario e intentos de envío.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const res = backend.processNotificationQueue();
+                notifySuccessGreen(
+                  `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
+                );
+                refresh();
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" /> Ejecutar Tarea Programada de Avisos Ahora
+            </button>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
+                <tr>
+                  <th className="p-3">Clave Deduplicación</th>
+                  <th className="p-3">Tipo de Aviso</th>
+                  <th className="p-3">Fecha Vencimiento</th>
+                  <th className="p-3">Fecha Programada Envío</th>
+                  <th className="p-3">Destinatario</th>
+                  <th className="p-3">Estado / Intentos</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {outbox.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-slate-500">
+                      No hay registros en la cola de notificaciones del servidor en este momento.
+                    </td>
+                  </tr>
+                ) : (
+                  outbox.map((n) => (
+                    <tr key={n.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono text-[11px]">{n.dedup_key}</td>
+                      <td className="p-3 font-semibold">{n.notice_type}</td>
+                      <td className="p-3">{formatDateES(n.due_date)}</td>
+                      <td className="p-3 font-semibold">{formatDateES(n.scheduled_date)}</td>
+                      <td className="p-3">{n.recipient_email}</td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded font-bold ${
+                            n.status === 'sent'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : n.status === 'failed'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {n.status} ({n.attempts} int.)
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {section === 'backups' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1 text-xs">
               <h3 className="text-sm font-bold text-slate-900">
                 Copias Manuales y Copia Automática en Primera Apertura Diaria de Escritorio
@@ -2945,7 +3090,7 @@ export const AdminSystemModule: React.FC<{
           </div>
 
           {/* GUÍA EXPLICATIVA CLARA SOBRE CÓMO FUNCIONA LA RESTAURACIÓN */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-2">
+          <div className="shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 space-y-1.5">
             <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
               <ShieldCheck className="w-4 h-4 text-blue-600" />
               ¿Cómo funcionan y cómo se restauran las copias de seguridad?
@@ -2974,7 +3119,7 @@ export const AdminSystemModule: React.FC<{
 
           {isolatedRestoreVerifyMsg && (
             <div
-              className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 text-xs text-emerald-950 font-medium"
+              className="shrink-0 bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 font-medium"
               data-testid="isolated-restore-success-banner"
             >
               ✓ {isolatedRestoreVerifyMsg}
@@ -3128,9 +3273,9 @@ export const AdminSystemModule: React.FC<{
             </div>
           )}
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900 text-white">
+              <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
                 <tr>
                   <th className="p-3">Fecha Local</th>
                   <th className="p-3">Tipo Disparador</th>
@@ -3254,7 +3399,7 @@ export const AdminSystemModule: React.FC<{
               },
             });
           }}
-          className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 text-xs"
+          className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 p-5 space-y-4 text-xs overflow-y-auto overscroll-contain"
         >
           <h3 className="text-sm font-bold text-slate-900">
             Ficha de Datos de la Empresa y Configuración de la Instalación

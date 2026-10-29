@@ -2,7 +2,7 @@
  * Control de versión instalada en el dispositivo y detección de nuevas versiones disponibles.
  */
 
-export const LATEST_APP_VERSION = '1.5.0';
+export const LATEST_APP_VERSION = '1.6.0';
 export const INITIAL_DEVICE_VERSION = '1.4.0';
 export const DEVICE_INSTALLED_VERSION_KEY = 'agy_roma_device_installed_version';
 

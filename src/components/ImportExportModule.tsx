@@ -636,10 +636,11 @@ export const ImportExportModule: React.FC<{
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2">
       <ScreenHeaderBar
-        title="Importación Excel y Exportación Excel / PDF"
-        subtitle="Mapeo de columnas, previsualización, validaciones por fila, claves de coincidencia y protección frente a fórmulas"
+        title="Importación / Exportación"
+        subtitle="Mapeo de columnas, previsualización, validaciones por fila, claves de coincidencia y selección de formato de exportación"
         onBack={onBack}
         actions={
           company.logo_url ? (
@@ -652,6 +653,7 @@ export const ImportExportModule: React.FC<{
           ) : undefined
         }
       />
+      </div>
 
       {/* Aviso explícito de que exportar listados no equivale a una copia de seguridad */}
       <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3 text-xs text-amber-900">

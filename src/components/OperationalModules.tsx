@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   CalendarClock,
   Calendar,
-  MailCheck,
   ShoppingCart,
   Clock,
   FileText,
@@ -55,7 +54,6 @@ export const ReviewsAndNotificationsModule: React.FC<{
   const todayLocal = getCurrentLocalDate(backend.getCompanySettings().timezone);
   const reviews = useMemo(() => backend.getInstallationReviews(), [backend, tick]);
   const occurrences = useMemo(() => backend.getReviewOccurrences(), [backend, tick]);
-  const outbox = useMemo(() => backend.getNotificationOutbox(), [backend, tick]);
   const customers = useMemo(() => backend.getCustomers(true), [backend, tick]);
   const addresses = useMemo(() => backend.getCustomerAddresses(undefined, true), [backend, tick]);
   const reviewTypes = useMemo(() => backend.getReviewTypes(true), [backend, tick]);
@@ -226,39 +224,41 @@ export const ReviewsAndNotificationsModule: React.FC<{
   };
 
   return (
-    <div className="space-y-5">
-      <ScreenHeaderBar
-        title="Revisiones Periódicas de Instalaciones y Avisos Automáticos"
-        subtitle="Control de vencimientos, generación de partes vinculados y cola de avisos por correo (1 mes, 1 semana, mismo día)"
-        onBack={onBack}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const res = backend.processNotificationQueue();
-                notifySuccessGreen(
-                  `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
-                );
-                refresh();
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold"
-            >
-              <Send className="w-3.5 h-3.5" /> Ejecutar Tarea Programada de Avisos Ahora
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenCreateReview}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Nueva Revisión Periódica
-            </button>
-          </div>
-        }
-      />
+    <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
+      <div className="shrink-0 bg-[#f4f6fa]">
+        <ScreenHeaderBar
+          title="Revisiones Periódicas de Instalaciones y Avisos Automáticos"
+          subtitle="Control de vencimientos, generación de partes vinculados y cola de avisos por correo (1 mes, 1 semana, mismo día)"
+          onBack={onBack}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const res = backend.processNotificationQueue();
+                  notifySuccessGreen(
+                    `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
+                  );
+                  refresh();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold"
+              >
+                <Send className="w-3.5 h-3.5" /> Ejecutar Tarea Programada de Avisos Ahora
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreateReview}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nueva Revisión Periódica
+              </button>
+            </div>
+          }
+        />
+      </div>
 
       {/* Filtros obligatorios */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+      <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
         <div>
           <label className="block font-semibold text-slate-700 mb-1">Situación</label>
           <select
@@ -322,7 +322,7 @@ export const ReviewsAndNotificationsModule: React.FC<{
       </div>
 
       {/* Leyenda explicativa de las señales de alerta de revisiones */}
-      <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-4 text-xs">
+      <div className="shrink-0 bg-slate-50 rounded-xl border border-slate-200 p-2.5 flex flex-wrap items-center gap-4 text-xs">
         <span className="font-extrabold text-slate-800">Señales de Alerta:</span>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black text-white font-extrabold text-[11px] shadow-2xs">
           ⛔ Alerta Negra: Caducada (vencimiento superado)
@@ -336,8 +336,8 @@ export const ReviewsAndNotificationsModule: React.FC<{
       </div>
 
       {/* Listado cronológico de vencimientos y ejecuciones */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-900 text-white text-xs font-bold flex items-center justify-between">
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
+        <div className="shrink-0 px-4 py-3 bg-slate-900 text-white text-xs font-bold flex items-center justify-between">
           <span className="flex items-center gap-2">
             <CalendarClock className="w-4 h-4 text-blue-400" />
             Vencimientos e Historial de Revisiones ({filteredOccurrences.length})
@@ -345,7 +345,7 @@ export const ReviewsAndNotificationsModule: React.FC<{
           <span>Ordenado por próximo vencimiento ascendente</span>
         </div>
 
-        <div className="divide-y divide-slate-200">
+        <div className="flex-1 min-h-0 divide-y divide-slate-200 overflow-y-auto overscroll-contain">
           {filteredOccurrences.map(({ occ, rev, cust, addr, rType }) => {
             const isDone = occ.status === 'realizada';
             const alertInfo = getReviewAlertInfo(occ.due_date, todayLocal);
@@ -522,52 +522,6 @@ export const ReviewsAndNotificationsModule: React.FC<{
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Cola de notificaciones automáticas con estado y deduplicación */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <MailCheck className="w-4 h-4 text-blue-600" />
-          Registro de Cola de Notificaciones de Servidor (`notification_outbox` — {outbox.length})
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-700">
-              <tr>
-                <th className="p-2">Clave Deduplicación</th>
-                <th className="p-2">Tipo de Aviso</th>
-                <th className="p-2">Fecha Vencimiento</th>
-                <th className="p-2">Fecha Programada Envío</th>
-                <th className="p-2">Destinatario</th>
-                <th className="p-2">Estado / Intentos</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {outbox.map((n) => (
-                <tr key={n.id}>
-                  <td className="p-2 font-mono text-[11px]">{n.dedup_key}</td>
-                  <td className="p-2 font-semibold">{n.notice_type}</td>
-                  <td className="p-2">{formatDateES(n.due_date)}</td>
-                  <td className="p-2 font-semibold">{formatDateES(n.scheduled_date)}</td>
-                  <td className="p-2">{n.recipient_email}</td>
-                  <td className="p-2">
-                    <span
-                      className={`px-2 py-0.5 rounded font-bold ${
-                        n.status === 'sent'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : n.status === 'failed'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {n.status} ({n.attempts} int.)
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 
@@ -974,41 +928,43 @@ export const ShoppingListModule: React.FC<{
   };
 
   return (
-    <div className="space-y-5">
-      <ScreenHeaderBar
-        title="Lista de Compra de Materiales"
-        subtitle={
-          isAdmin
-            ? 'Gestión de solicitudes de operarios, asignación de unidades y confirmación de compra'
-            : 'Solicita material seleccionando únicamente un artículo existente del catálogo'
-        }
-        onBack={onBack}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && (
+    <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+      <div className="shrink-0 bg-[#f4f6fa]">
+        <ScreenHeaderBar
+          title="Lista de Compra de Materiales"
+          subtitle={
+            isAdmin
+              ? 'Gestión de solicitudes de operarios, asignación de unidades y confirmación de compra'
+              : 'Solicita material seleccionando únicamente un artículo existente del catálogo'
+          }
+          onBack={onBack}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdmin && (
+                <button
+                  type="button"
+                  data-testid="btn-open-new-article-from-shopping"
+                  onClick={() => {
+                    setReturnToShoppingModal(false);
+                    openNewArticleModal();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold"
+                >
+                  <Plus className="w-4 h-4" /> Alta de Artículo
+                </button>
+              )}
               <button
                 type="button"
-                data-testid="btn-open-new-article-from-shopping"
-                onClick={() => {
-                  setReturnToShoppingModal(false);
-                  openNewArticleModal();
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold"
+                data-testid="btn-open-add-shopping-modal"
+                onClick={() => { setSelectedArticleId(''); setAdminQty('1'); setNotes(''); setShowAddShoppingModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm"
               >
-                <Plus className="w-4 h-4" /> Alta de Artículo
+                <Plus className="w-4 h-4" /> Añadir Artículo a Lista de Compra
               </button>
-            )}
-            <button
-              type="button"
-              data-testid="btn-open-add-shopping-modal"
-              onClick={() => { setSelectedArticleId(''); setAdminQty('1'); setNotes(''); setShowAddShoppingModal(true); }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Añadir Artículo a Lista de Compra
-            </button>
-          </div>
-        }
-      />
+            </div>
+          }
+        />
+      </div>
 
       {/* Modal emergente: alta de artículo en catálogo desde la lista de compra */}
       {showNewArticleModal && isAdmin && (
@@ -1244,11 +1200,11 @@ export const ShoppingListModule: React.FC<{
       )}
 
       {/* Lista pendiente de compra */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-900 text-white text-xs font-bold">
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
+        <div className="shrink-0 px-4 py-3 bg-slate-900 text-white text-xs font-bold">
           Artículos Pendientes de Compra ({pendingList.length})
         </div>
-        <div className="divide-y divide-slate-200">
+        <div className="flex-1 min-h-0 divide-y divide-slate-200 overflow-y-auto overscroll-contain">
           {pendingList.map((item) => {
             const art = articles.find((a) => a.id === item.article_id);
             const sup = suppliers.find((s) => s.id === item.supplier_id);
@@ -1380,7 +1336,7 @@ export const ShoppingListModule: React.FC<{
 
       {/* Histórico administrativo de compras realizadas */}
       {isAdmin && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+        <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 space-y-2 max-h-36 overflow-y-auto overscroll-contain">
           <h3 className="text-xs font-bold uppercase text-slate-700">
             Histórico Administrativo de Productos Comprados ({historyList.length})
           </h3>
@@ -1443,27 +1399,6 @@ export const AttendanceAndReportsModule: React.FC<{
   const [filterWorkerId, setFilterWorkerId] = useState<string>('all');
   const [filterFrom, setFilterFrom] = useState(defaultFrom);
   const [filterTo, setFilterTo] = useState(defaultTo);
-
-  // Horario habitual por defecto configurable por el Administrador
-  const [defaultWorkStartTime, setDefaultWorkStartTime] = useState(
-    company.default_work_start_time || '08:00'
-  );
-  const [defaultWorkEndTime, setDefaultWorkEndTime] = useState(
-    company.default_work_end_time || '18:00'
-  );
-
-  const handleSaveDefaultWorkSchedule = () => {
-    try {
-      backend.updateCompanySettings({
-        default_work_start_time: defaultWorkStartTime,
-        default_work_end_time: defaultWorkEndTime,
-      });
-      notifySuccessGreen(`Horario habitual guardado: ${defaultWorkStartTime} a ${defaultWorkEndTime}`);
-      refresh();
-    } catch (err: any) {
-      notifyError(err?.message || 'Error al guardar el horario habitual');
-    }
-  };
 
   const handleRunAutoResolveAttendance = () => {
     try {
@@ -1585,58 +1520,60 @@ export const AttendanceAndReportsModule: React.FC<{
   };
 
   return (
-    <div className="space-y-5">
-      <ScreenHeaderBar
-        title="Fichaje y Control Horario"
-        subtitle="Fichaje en directo con hora del servidor, cálculo real de duración (medianoche y horario de verano) e informes PDF con firmas"
-        onBack={onBack}
-        actions={
-          isAdmin && (
-            <div className="flex flex-wrap items-center gap-2">
-              {company.logo_url && (
-                <img
-                  src={company.logo_url}
-                  alt={company.company_name}
-                  className="h-8 max-w-[120px] object-contain rounded border border-slate-200 bg-white p-0.5"
-                />
-              )}
-              <button
-                type="button"
-                data-testid="btn-download-attendance-pdf"
-                onClick={handleDownloadAttendancePDF}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
-              >
-                <FileText className="w-3.5 h-3.5" /> Exportar Informe PDF Oficial con Bloques de Firma
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingSessionId(undefined);
-                  setAdminReason('');
-                  setShowAdminModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
-              >
-                <Plus className="w-3.5 h-3.5" /> + Añadir Fichaje (Admin)
-              </button>
-            </div>
-          )
-        }
-      />
+    <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
+      <div className="shrink-0 bg-[#f4f6fa]">
+        <ScreenHeaderBar
+          title="Fichaje y Control Horario"
+          subtitle="Fichaje en directo con hora del servidor, cálculo real de duración (medianoche y horario de verano) e informes PDF con firmas"
+          onBack={onBack}
+          actions={
+            isAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                {company.logo_url && (
+                  <img
+                    src={company.logo_url}
+                    alt={company.company_name}
+                    className="h-8 max-w-[120px] object-contain rounded border border-slate-200 bg-white p-0.5"
+                  />
+                )}
+                <button
+                  type="button"
+                  data-testid="btn-download-attendance-pdf"
+                  onClick={handleDownloadAttendancePDF}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Exportar Informe PDF Oficial con Bloques de Firma
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSessionId(undefined);
+                    setAdminReason('');
+                    setShowAdminModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                >
+                  <Plus className="w-3.5 h-3.5" /> + Añadir Fichaje (Admin)
+                </button>
+              </div>
+            )
+          }
+        />
+      </div>
 
-      {/* Panel de configuración de horario habitual y cierre automático para Administradores */}
+      {/* Panel de información de cierre automático por jornada individual de cada trabajador */}
       {isAdmin && (
-        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="shrink-0 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-3 sm:p-4 shadow-sm space-y-2">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-sm font-extrabold text-white">
-                  Horario Habitual de Jornada para Fichajes Automáticos
+                <Clock className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-xs sm:text-sm font-extrabold text-white">
+                  Cierre Automático de Fichajes por Jornada Individual
                 </h3>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Si un operario no ficha la entrada, la salida o ambas, el sistema asignará este horario por defecto al finalizar la jornada para evitar fichajes colgados o pendientes.
+              <p className="text-[11px] text-slate-300 mt-1 max-w-3xl leading-relaxed">
+                Cada trabajador cuenta con su propio horario de entrada y salida habitual fijado de forma independiente en su ficha (<span className="text-indigo-200 font-semibold">Datos Maestros &gt; Usuarios y Roles</span>). Al ejecutar el cierre automático o finalizar la jornada, el sistema aplica el horario individual asignado a cada operario.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1644,61 +1581,32 @@ export const AttendanceAndReportsModule: React.FC<{
                 type="button"
                 data-testid="btn-auto-resolve-attendance"
                 onClick={handleRunAutoResolveAttendance}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs"
-                title="Comprobar jornadas pendientes y completar con el horario por defecto"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                title="Comprobar jornadas pendientes y completar con el horario individual asignado a cada trabajador"
               >
                 <Check className="w-3.5 h-3.5" /> Ejecutar Cierre Automático Ahora
               </button>
             </div>
           </div>
-
-          <div className="bg-white/10 backdrop-blur-xs rounded-xl p-3 border border-white/15 flex flex-wrap items-center gap-4 text-xs">
-            <div className="flex items-center gap-2">
-              <label className="font-semibold text-slate-200">Hora de entrada fijada:</label>
-              <input
-                type="time"
-                value={defaultWorkStartTime}
-                onChange={(e) => setDefaultWorkStartTime(e.target.value)}
-                className="px-2.5 py-1 rounded bg-white text-slate-900 font-mono font-bold text-xs border border-white/30"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="font-semibold text-slate-200">Hora de salida fijada:</label>
-              <input
-                type="time"
-                value={defaultWorkEndTime}
-                onChange={(e) => setDefaultWorkEndTime(e.target.value)}
-                className="px-2.5 py-1 rounded bg-white text-slate-900 font-mono font-bold text-xs border border-white/30"
-              />
-            </div>
-            <button
-              type="button"
-              data-testid="btn-save-default-schedule"
-              onClick={handleSaveDefaultWorkSchedule}
-              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition"
-            >
-              Guardar Horario Habitual
-            </button>
-            <span className="text-[11px] text-slate-300 italic">
-              * Cualquier fichaje fijado por defecto se podrá modificar posteriormente desde el botón Corregir.
-            </span>
-          </div>
         </div>
       )}
 
       {/* Panel de fichaje en directo para el usuario actual */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="text-xs font-bold uppercase text-slate-500">
-            Tu Estado Actual de Jornada ({currentUser.full_name})
+      <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="text-xs font-bold uppercase text-slate-500 flex flex-wrap items-center gap-2">
+            <span>Tu Estado Actual de Jornada ({currentUser.full_name})</span>
+            <span className="text-[11px] font-normal text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+              🕒 Horario asignado: <strong>{currentUser.work_start_time || '08:00'}</strong> a <strong>{currentUser.work_end_time || '18:00'}</strong>
+            </span>
           </div>
           {openSession ? (
-            <div className="text-sm font-bold text-emerald-700">
+            <div className="text-xs sm:text-sm font-bold text-emerald-700">
               ● JORNADA ABIERTA — Entrada registrada a las{' '}
               {formatDateTimeES(openSession.clock_in_at, tz)}
             </div>
           ) : (
-            <div className="text-sm font-bold text-slate-700">
+            <div className="text-xs sm:text-sm font-bold text-slate-700">
               ○ Fuera de jornada (Sin entrada abierta)
             </div>
           )}
@@ -1710,13 +1618,13 @@ export const AttendanceAndReportsModule: React.FC<{
             value={workerNote}
             onChange={(e) => setWorkerNote(e.target.value)}
             placeholder="Observaciones del fichaje (opcional)..."
-            className="px-3 py-2 rounded-lg border border-slate-300 text-xs w-64"
+            className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs w-64"
           />
           <button
             type="button"
             data-testid="btn-direct-clock-toggle"
             onClick={handleClockInOrOut}
-            className={`px-4 py-2 rounded-lg text-white text-xs font-bold shadow-xs ${
+            className={`px-4 py-1.5 rounded-lg text-white text-xs font-bold shadow-xs ${
               openSession
                 ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-emerald-600 hover:bg-emerald-700'
@@ -1729,7 +1637,7 @@ export const AttendanceAndReportsModule: React.FC<{
 
       {/* Filtros administrativos de escritorio */}
       {isAdmin && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs items-end">
+        <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs items-end">
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Trabajador</label>
             <select
@@ -1771,9 +1679,9 @@ export const AttendanceAndReportsModule: React.FC<{
       )}
 
       {/* Tabla con todos los campos mínimos exigidos en el apartado 13 */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-slate-900 text-white">
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
             <tr>
               <th className="p-3">Trabajador</th>
               <th className="p-3">Fecha completa</th>

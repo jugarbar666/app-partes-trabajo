@@ -54,6 +54,8 @@ export interface UserProfile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  work_start_time?: string;
+  work_end_time?: string;
   must_change_password?: boolean;
   column_preferences: Record<string, string[]>;
   created_at: string;

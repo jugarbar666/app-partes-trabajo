@@ -559,6 +559,48 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(closedCarlos?.worker_notes_out).toContain('Cierre automático');
   });
 
+  it('Escenario 12c: La jornada laboral es independiente por trabajador en su ficha individual y el cierre automático usa sus horas específicas', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Crear o editar trabajadores asignándoles horarios de entrada y salida distintos
+    const profiles = backend.getProfiles();
+    const carlos = profiles.find((p) => p.email === 'carlos@climalux-demo.es')!;
+    const lucia = profiles.find((p) => p.email === 'lucia@climalux-demo.es')!;
+
+    backend.updateUserProfile(carlos.id, {
+      work_start_time: '07:00',
+      work_end_time: '15:00',
+    });
+    backend.updateUserProfile(lucia.id, {
+      work_start_time: '09:30',
+      work_end_time: '19:30',
+    });
+
+    const updatedCarlos = backend.getProfiles().find((p) => p.id === carlos.id)!;
+    const updatedLucia = backend.getProfiles().find((p) => p.id === lucia.id)!;
+
+    expect(updatedCarlos.work_start_time).toBe('07:00');
+    expect(updatedCarlos.work_end_time).toBe('15:00');
+    expect(updatedLucia.work_start_time).toBe('09:30');
+    expect(updatedLucia.work_end_time).toBe('19:30');
+
+    // 2. Carlos tiene un fichaje que quedó abierto ayer; el cierre automático debe cerrarlo a las 15:00 (su hora propia)
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    const openCarlos = backend.clockIn('Entrada Carlos turno mañana', '2026-10-24T05:00:00.000Z');
+
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const result = backend.autoResolvePendingAttendance({
+      referenceNowIso: '2026-10-25T16:00:00.000Z',
+      targetDateCivil: '2026-10-24',
+    });
+
+    expect(result.closedSessionsCount).toBeGreaterThanOrEqual(1);
+
+    const closed = backend.getAttendanceSessions(false).find((s) => s.id === openCarlos.id);
+    expect(closed?.clock_out_at).not.toBeNull();
+    expect(closed?.worker_notes_out).toContain('15:00');
+  });
+
   it('Escenario 13: Importar valida relaciones, datos incorrectos y coincidencias antes de escribir; exportar protege frente a fórmulas', () => {
     // Protección frente a inyección de fórmulas en Excel
     expect(sanitizeSpreadsheetCell('=SUM(A1:A10)')).toBe("'=SUM(A1:A10)");

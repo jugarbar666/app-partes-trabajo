@@ -423,6 +423,8 @@ export class InstallationBackendEngine {
     email: string;
     phone: string;
     role: UserRole;
+    work_start_time?: string;
+    work_end_time?: string;
     initial_password?: string;
   }): UserProfile & { invitationLink: string; temporaryPassword: string } {
     this.assertOnline();
@@ -448,6 +450,8 @@ export class InstallationBackendEngine {
       phone: params.phone.trim(),
       role: params.role,
       is_active: true,
+      work_start_time: params.work_start_time || '08:00',
+      work_end_time: params.work_end_time || '18:00',
       must_change_password: true, // Obligado a cambiar la contraseña temporal la primera vez que entre
       column_preferences: {},
       created_at: now,
@@ -587,7 +591,7 @@ export class InstallationBackendEngine {
 
   public updateUserProfile(
     targetUserId: string,
-    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active'>>
+    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active' | 'work_start_time' | 'work_end_time'>>
   ): UserProfile {
     this.assertOnline();
     const admin = this.requireAdmin();
@@ -3578,9 +3582,9 @@ export class InstallationBackendEngine {
   }
 
   /**
-   * Cierre y generación automática de fichajes según el horario habitual fijado por el Administrador:
-   * 1. Cierra sesiones que hayan quedado abiertas pasada la hora habitual de salida o de días anteriores.
-   * 2. Si un operario en activo no fichó entrada o salida (o ninguna de las dos), asigna el horario por defecto.
+   * Cierre y generación automática de fichajes según el horario habitual individual de cada trabajador:
+   * 1. Cierra sesiones que hayan quedado abiertas pasada la hora habitual de salida del propio trabajador o de días anteriores.
+   * 2. Si un operario en activo no fichó entrada o salida (o ninguna de las dos), asigna su horario individual por defecto.
    */
   public autoResolvePendingAttendance(params?: {
     targetDateCivil?: string;
@@ -3590,8 +3594,8 @@ export class InstallationBackendEngine {
     this.assertOnline();
     const company = this.state.company_settings;
     const tz = company.timezone || 'Europe/Madrid';
-    const startTime = company.default_work_start_time || '08:00';
-    const endTime = company.default_work_end_time || '18:00';
+    const fallbackStartTime = company.default_work_start_time || '08:00';
+    const fallbackEndTime = company.default_work_end_time || '18:00';
     const todayStr = getCurrentLocalDate(tz);
     const nowTime = formatTimeES(params?.referenceNowIso || new Date().toISOString(), tz);
 
@@ -3599,22 +3603,24 @@ export class InstallationBackendEngine {
     let createdSessionsCount = 0;
     const nowIso = params?.referenceNowIso || new Date().toISOString();
 
-    // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida o en días anteriores
+    // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida del propio trabajador o en días anteriores
     for (const s of this.state.attendance_sessions) {
       if (s.is_deleted || s.clock_out_at !== null) continue;
+      const worker = this.state.profiles.find((p) => p.id === s.user_id);
+      const workerEndTime = worker?.work_end_time || fallbackEndTime;
       const sInDate = getLocalDateString(s.clock_in_at, tz) || todayStr;
       const isPastDay = sInDate < todayStr;
-      const isTodayPastShift = sInDate === todayStr && nowTime >= endTime;
+      const isTodayPastShift = sInDate === todayStr && nowTime >= workerEndTime;
 
       if (isPastDay || isTodayPastShift) {
-        let exitIso = combineLocalDateAndTimeToIso(sInDate, endTime, tz);
+        let exitIso = combineLocalDateAndTimeToIso(sInDate, workerEndTime, tz);
         if (new Date(exitIso).getTime() <= new Date(s.clock_in_at).getTime()) {
           exitIso = new Date(new Date(s.clock_in_at).getTime() + 60000).toISOString();
         }
         s.clock_out_at = exitIso;
         s.worker_notes_out = [
           s.worker_notes_out,
-          `Cierre automático fin de jornada (${endTime})`,
+          `Cierre automático fin de jornada (${workerEndTime})`,
         ]
           .filter(Boolean)
           .join(' / ');
@@ -3625,14 +3631,18 @@ export class InstallationBackendEngine {
 
     // 2. Si un operario no fichó en la jornada (ni entrada ni salida), o al pulsar completar / fin de jornada:
     const targetDate = params?.targetDateCivil || todayStr;
-    const isTargetFinished = targetDate < todayStr || (targetDate === todayStr && nowTime >= endTime);
 
-    if (params?.completeMissingWorkers || isTargetFinished) {
-      const activeOperators = this.state.profiles.filter(
-        (p) => p.is_active && (p.role === 'operario' || p.role === 'admin')
-      );
+    const activeOperators = this.state.profiles.filter(
+      (p) => p.is_active && (p.role === 'operario' || p.role === 'admin')
+    );
 
-      for (const op of activeOperators) {
+    for (const op of activeOperators) {
+      const opStartTime = op.work_start_time || fallbackStartTime;
+      const opEndTime = op.work_end_time || fallbackEndTime;
+      const isOpTargetFinished =
+        targetDate < todayStr || (targetDate === todayStr && nowTime >= opEndTime);
+
+      if (params?.completeMissingWorkers || isOpTargetFinished) {
         const hasSession = this.state.attendance_sessions.some((s) => {
           if (s.is_deleted || s.user_id !== op.id) return false;
           const inDate = getLocalDateString(s.clock_in_at, tz);
@@ -3640,17 +3650,17 @@ export class InstallationBackendEngine {
           return inDate === targetDate || outDate === targetDate;
         });
 
-        if (!hasSession && (params?.completeMissingWorkers || targetDate < todayStr)) {
-          const inIso = combineLocalDateAndTimeToIso(targetDate, startTime, tz);
-          const outIso = combineLocalDateAndTimeToIso(targetDate, endTime, tz);
+        if (!hasSession) {
+          const inIso = combineLocalDateAndTimeToIso(targetDate, opStartTime, tz);
+          const outIso = combineLocalDateAndTimeToIso(targetDate, opEndTime, tz);
 
           const autoSession: AttendanceSession = {
             id: genId('att'),
             user_id: op.id,
             clock_in_at: inIso,
             clock_out_at: outIso,
-            worker_notes_in: `Fichaje por defecto fin de jornada (${startTime})`,
-            worker_notes_out: `Fichaje por defecto fin de jornada (${endTime})`,
+            worker_notes_in: `Fichaje por defecto fin de jornada (${opStartTime})`,
+            worker_notes_out: `Fichaje por defecto fin de jornada (${opEndTime})`,
             is_deleted: false,
             deleted_at: null,
             deleted_by: null,

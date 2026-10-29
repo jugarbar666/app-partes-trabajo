@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Menu,
   X,
@@ -35,6 +35,7 @@ import {
   MapPin,
   BookOpen,
   RotateCcw,
+  Edit3,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
 import { WorkOrder, WorkOrderAssignment } from './types/domain';
@@ -55,6 +56,7 @@ import { AdminSystemModule, MasterDataAndUsersModule } from './components/AdminA
 import { ImportExportModule } from './components/ImportExportModule';
 import {
   cleanOperatorName,
+  calculateReviewNoticeSchedule,
   formatCentsToEUR,
   formatDateES,
   formatDateTimeES,
@@ -294,7 +296,8 @@ const WorkOrderMobileCard: React.FC<{
 
 const MainApplicationContent: React.FC = () => {
   const backend = defaultBackend;
-  const { notifySuccessGreen, notifyError, requestSaveConfirmation } = useUIConfirmation();
+  const { notifySuccessGreen, notifyError, requestSaveConfirmation, requestDeleteConfirmation } =
+    useUIConfirmation();
 
   const [tick, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
@@ -432,6 +435,27 @@ const MainApplicationContent: React.FC = () => {
   const [quickShopModalOpen, setQuickShopModalOpen] = useState(false);
   const [quickShopArticleId, setQuickShopArticleId] = useState('');
 
+  // Modal de ficha / detalle directo de una Revisión Periódica al pulsar sobre ella
+  const [selectedReviewOccurrenceId, setSelectedReviewOccurrenceId] = useState<string | null>(null);
+  const [reviewDetailRescheduleOpen, setReviewDetailRescheduleOpen] = useState(false);
+  const [reviewDetailRescheduleDate, setReviewDetailRescheduleDate] = useState('');
+  const [reviewDetailRescheduleNotes, setReviewDetailRescheduleNotes] = useState('');
+  const [reviewDetailEditOpen, setReviewDetailEditOpen] = useState(false);
+  const [reviewDetailEditCustomerId, setReviewDetailEditCustomerId] = useState('');
+  const [reviewDetailEditAddressId, setReviewDetailEditAddressId] = useState('');
+  const [reviewDetailEditTypeId, setReviewDetailEditTypeId] = useState('');
+  const [reviewDetailEditNextDate, setReviewDetailEditNextDate] = useState('');
+  const [reviewDetailEditStatus, setReviewDetailEditStatus] = useState<
+    'pendiente' | 'programada' | 'realizada' | 'cancelada'
+  >('pendiente');
+  const [reviewDetailEditNotes, setReviewDetailEditNotes] = useState('');
+
+  const openReviewDetail = (occurrenceId: string) => {
+    setSelectedReviewOccurrenceId(occurrenceId);
+    setReviewDetailRescheduleOpen(false);
+    setReviewDetailEditOpen(false);
+  };
+
   const [auditEntityFilter, setAuditEntityFilter] = useState('');
   const [adminInitialSection, setAdminInitialSection] = useState<'audit' | 'backups' | 'settings'>(
     'audit'
@@ -559,6 +583,41 @@ const MainApplicationContent: React.FC = () => {
       // Si está offline, no marca la copia como realizada y reintentará al recuperar red
     }
   }, [loggedUser?.id]);
+
+  // Medición dinámica de la altura de la cabecera fija del Panel de Control y de Agenda para anclar debajo el Planing Semanal o las cabeceras de Partes/Revisiones
+  const dashboardStickyTopRef = useRef<HTMLDivElement | null>(null);
+  const agendaStickyTopRef = useRef<HTMLDivElement | null>(null);
+  const [dashboardStickyOffset, setDashboardStickyOffset] = useState<number>(196);
+  const [agendaStickyOffset, setAgendaStickyOffset] = useState<number>(96);
+
+  useEffect(() => {
+    const updateOffsets = () => {
+      if (dashboardStickyTopRef.current) {
+        const h = dashboardStickyTopRef.current.offsetHeight;
+        if (h > 0) setDashboardStickyOffset(Math.max(0, h - 1));
+      }
+      if (agendaStickyTopRef.current) {
+        const h = agendaStickyTopRef.current.offsetHeight;
+        if (h > 0) setAgendaStickyOffset(Math.max(0, h - 1));
+      }
+    };
+    updateOffsets();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateOffsets);
+      if (dashboardStickyTopRef.current) ro.observe(dashboardStickyTopRef.current);
+      if (agendaStickyTopRef.current) ro.observe(agendaStickyTopRef.current);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', updateOffsets);
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', updateOffsets);
+      }
+    };
+  });
 
   // Pantalla de Acceso y Recuperación de Cuenta
   if (!loggedUser) {
@@ -1175,88 +1234,142 @@ const MainApplicationContent: React.FC = () => {
   const pctArchivado = Math.max(0, 100 - pctNoIniciado - pctEnCurso - pctTerminado);
 
   // PLANING SEMANAL INTERACTIVO REUTILIZABLE (INICIO Y AGENDA)
-  const renderWeeklyPlanningSection = () => (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4" data-testid="weekly-planning-board">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-extrabold text-base text-slate-900">
-                Planing Semanal de Trabajos y Horarios
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
-                {totalWeekWorkOrders} {totalWeekWorkOrders === 1 ? 'parte' : 'partes'}
-              </span>
+  const renderWeeklyPlanningSection = (stickyTopOffset: number = 0) => (
+    <div className="flex flex-col" data-testid="weekly-planning-board">
+      {/* Cabecera fija del Planing Semanal + Los 5 días de la semana con máscara opaca bg-[#f4f6fa] para ocultar cualquier contenido al desplazar */}
+      <div
+        className="sticky z-20 bg-[#f4f6fa] pt-2"
+        style={{ top: `${stickyTopOffset}px` }}
+      >
+        <div className="bg-white rounded-t-2xl border border-slate-200 px-5 pt-3.5 pb-3 space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Calendar className="w-5 h-5" />
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Semana del {selectedWeekDays[0].formattedDate} al{' '}
-              {selectedWeekDays[selectedWeekDays.length - 1].formattedDate} (Lunes a Viernes)
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-extrabold text-base text-slate-900">
+                  Planing Semanal de Trabajos y Horarios
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                  {totalWeekWorkOrders} {totalWeekWorkOrders === 1 ? 'parte' : 'partes'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Semana del {selectedWeekDays[0].formattedDate} al{' '}
+                {selectedWeekDays[selectedWeekDays.length - 1].formattedDate} (Lunes a Viernes)
+              </p>
+            </div>
+          </div>
+
+          {/* BOTONES PARA CAMBIAR ENTRE SEMANA ACTUAL Y SIGUIENTE */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="btn-agenda-current-week"
+              onClick={() => setAgendaWeekOffset(0)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                agendaWeekOffset === 0
+                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Semana Actual ({currentWeekRangeLabel})</span>
+              {agendaWeekOffset === 0 && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              data-testid="btn-agenda-next-week"
+              onClick={() => setAgendaWeekOffset(1)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                agendaWeekOffset === 1
+                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <ArrowRight className="w-4 h-4" />
+              <span>Semana Siguiente ({nextWeekRangeLabel})</span>
+              {agendaWeekOffset === 1 && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              )}
+            </button>
+
+            <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+              <button
+                type="button"
+                title="Semana anterior"
+                onClick={() => setAgendaWeekOffset((p) => p - 1)}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                title="Semana posterior"
+                onClick={() => setAgendaWeekOffset((p) => p + 1)}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* BOTONES PARA CAMBIAR ENTRE SEMANA ACTUAL Y SIGUIENTE */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            data-testid="btn-agenda-current-week"
-            onClick={() => setAgendaWeekOffset(0)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              agendaWeekOffset === 0
-                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Semana Actual ({currentWeekRangeLabel})</span>
-            {agendaWeekOffset === 0 && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            data-testid="btn-agenda-next-week"
-            onClick={() => setAgendaWeekOffset(1)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              agendaWeekOffset === 1
-                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <ArrowRight className="w-4 h-4" />
-            <span>Semana Siguiente ({nextWeekRangeLabel})</span>
-            {agendaWeekOffset === 1 && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
-          </button>
-
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
-            <button
-              type="button"
-              title="Semana anterior"
-              onClick={() => setAgendaWeekOffset((p) => p - 1)}
-              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              title="Semana posterior"
-              onClick={() => setAgendaWeekOffset((p) => p + 1)}
-              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+        {/* FILA FIJA DE CABECERAS DE LOS 5 DÍAS DE LA SEMANA (LUNES A VIERNES) EN ESCRITORIO */}
+        <div className="hidden md:grid md:grid-cols-5 gap-3.5">
+          {selectedWeekDays.map((day) => {
+            const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
+            return (
+              <div
+                key={`sticky-day-header-${day.dateStr}`}
+                className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                  day.isToday
+                    ? 'bg-blue-600 text-white border-blue-500 ring-2 ring-blue-200 shadow-2xs'
+                    : 'bg-slate-50/80 text-slate-900 border-slate-200'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-xs">
+                      {day.weekdayName}
+                    </span>
+                    {day.isToday && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black tracking-wide">
+                        HOY
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={`text-[11px] ${
+                      day.isToday ? 'text-blue-100' : 'text-slate-500'
+                    }`}
+                  >
+                    {day.dayNumber} {day.monthShort}
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    day.isToday
+                      ? 'bg-blue-700 text-blue-100'
+                      : 'bg-white border border-slate-200 text-slate-600'
+                  }`}
+                >
+                  {dayWos.length}
+                </span>
+              </div>
+            );
+          })}
+        </div>
         </div>
       </div>
 
       {/* CUADRÍCULA DE LOS 5 DÍAS LABORABLES (LUNES A VIERNES) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start">
+      <div className="bg-white rounded-b-2xl border-x border-b border-slate-200 p-5 pt-3.5 grid grid-cols-1 md:grid-cols-5 gap-3.5 items-stretch shadow-xs">
         {selectedWeekDays.map((day) => {
           const dayWos = weekWorkOrdersByDay.get(day.dateStr) || [];
           const dayRevs = weekReviewsByDay.get(day.dateStr) || [];
@@ -1270,9 +1383,9 @@ const MainApplicationContent: React.FC = () => {
                   : 'bg-slate-50/50 border-slate-200'
               }`}
             >
-              {/* Cabecera del día */}
+              {/* Cabecera del día (visible en móvil < md donde los días se apilan en 1 columna) */}
               <div
-                className={`p-3 border-b flex items-center justify-between ${
+                className={`md:hidden p-3 border-b flex items-center justify-between ${
                   day.isToday
                     ? 'bg-blue-600 text-white border-blue-500'
                     : 'bg-white text-slate-900 border-slate-200'
@@ -1308,8 +1421,11 @@ const MainApplicationContent: React.FC = () => {
                 </span>
               </div>
 
-              {/* Lista de trabajos y horas del día */}
-              <div className="p-2 space-y-2.5 min-h-[140px] flex-1">
+              {/* Lista de trabajos y horas del día con scroll independiente al situar el ratón sobre el día */}
+              <div
+                data-testid={`planning-day-scroll-${day.dateStr}`}
+                className="p-2 space-y-2.5 min-h-[160px] max-h-[380px] overflow-y-auto overscroll-contain flex-1"
+              >
                 {dayWos.length === 0 && dayRevs.length === 0 ? (
                   <div className="h-full py-8 text-center flex flex-col items-center justify-center text-slate-400 text-[11px]">
                     <Clock className="w-4 h-4 text-slate-300 mb-1 opacity-60" />
@@ -1442,9 +1558,10 @@ const MainApplicationContent: React.FC = () => {
                       return (
                         <div
                           key={occ.id}
-                          onClick={() => navigateTo('reviews')}
+                          data-testid={`planning-review-card-${occ.id}`}
+                          onClick={() => openReviewDetail(occ.id)}
                           className="bg-amber-50/70 border border-amber-200 rounded-xl p-2 space-y-1 text-left text-xs cursor-pointer hover:border-amber-400 transition"
-                          title="Gestionar revisión"
+                          title="Abrir ficha de esta revisión"
                         >
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-600 text-white font-bold text-[10px]">
                             Revisión
@@ -1466,16 +1583,16 @@ const MainApplicationContent: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen flex bg-[#f4f6fa] text-slate-900">
+    <div className="h-screen overflow-hidden flex bg-[#f4f6fa] text-slate-900">
       {/* =====================================================================
-          BARRA LATERAL IZQUIERDA OSCURA A TODA ALTURA (ESTILO PANEL DE CONTROL)
+          BARRA LATERAL IZQUIERDA OSCURA A TODA ALTURA (SIEMPRE VISIBLE EN ESCRITORIO)
           En móvil permanece recogida y se abre con su botón (Regla 5)
       ===================================================================== */}
       <aside
         data-testid="sidebar-navigation"
         className={`${
           mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 flex' : 'hidden'
-        } lg:flex lg:sticky lg:top-0 lg:h-screen w-64 shrink-0 bg-[#0b1120] text-slate-300 flex-col border-r border-slate-800/80 select-none`}
+        } md:flex md:h-screen w-64 shrink-0 bg-[#0b1120] text-slate-300 flex-col border-r border-slate-800/80 select-none`}
       >
         {/* Cabecera de marca en Sidebar */}
         <div className="px-4 py-4 flex items-center justify-between border-b border-slate-800/80">
@@ -1508,7 +1625,7 @@ const MainApplicationContent: React.FC = () => {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden p-1 rounded text-slate-400 hover:text-white"
+              className="md:hidden p-1 rounded text-slate-400 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1728,7 +1845,7 @@ const MainApplicationContent: React.FC = () => {
                 }`}
               >
                 <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                <span>Importar Excel</span>
+                <span>Importación / Exportación</span>
               </button>
 
               <button
@@ -1821,18 +1938,18 @@ const MainApplicationContent: React.FC = () => {
       </aside>
 
       {/* =====================================================================
-          COLUMNA PRINCIPAL DERECHA (BARRA SUPERIOR BLANCA + CONTENIDO CENTRAL)
+          COLUMNA PRINCIPAL DERECHA (BARRA SUPERIOR FIJA + CONTENIDO DESPLAZABLE)
       ===================================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden pb-20">
-        {/* Barra Superior Blanca (idéntica a la captura: insignia azul a la izquierda, metadatos de rol/moneda/zona horaria, botón recargar y CTA azul a la derecha) */}
-        <header className="sticky top-0 z-30 bg-white border-b border-slate-200/90 px-3 sm:px-4 lg:px-7 py-2.5 flex items-center justify-between gap-2 max-w-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen min-w-0 max-w-full overflow-hidden">
+        {/* Barra Superior Blanca Fija */}
+        <header className="shrink-0 z-30 bg-white border-b border-slate-200/90 px-3 sm:px-4 lg:px-7 py-2.5 flex items-center justify-between gap-2 max-w-full">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full">
             {/* Botón de menú móvil */}
             <button
               type="button"
               data-testid="btn-toggle-mobile-menu"
               onClick={() => setMobileMenuOpen((o) => !o)}
-              className="lg:hidden p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 shrink-0"
+              className="md:hidden p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 shrink-0"
               aria-label="Abrir o cerrar menú de navegación"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -2074,72 +2191,87 @@ const MainApplicationContent: React.FC = () => {
           </div>
         )}
 
-        {/* Contenedor central de vistas */}
-        <main className="flex-1 w-full px-4 lg:px-6 xl:px-8 py-6">
+        {/* Contenedor central de vistas con desplazamiento vertical propio (o fijo en pantallas de listado para que las cabeceras jamás desaparezcan al llegar al final) */}
+        <main
+          className={`flex-1 min-h-0 w-full px-4 lg:px-6 xl:px-8 ${
+            currentRoute === 'work_orders_list' ||
+            currentRoute === 'archived_work_orders' ||
+            currentRoute === 'reviews' ||
+            currentRoute === 'shopping' ||
+            currentRoute === 'attendance' ||
+            currentRoute === 'masters' ||
+            currentRoute === 'admin_system' ||
+            (currentRoute === 'dashboard' && !isAdmin)
+              ? 'flex flex-col overflow-hidden pb-16 pt-3'
+              : 'overflow-y-auto pb-24'
+          }`}
+        >
           {/* =================================================================
               1. PANEL DE CONTROL PRINCIPAL (ESTILO CAPTURA DE REFERENCIA)
           ================================================================= */}
           {currentRoute === 'dashboard' && (
-            <div className="space-y-6">
+            <div className={isAdmin ? 'space-y-4' : 'flex-1 min-h-0 flex flex-col overflow-hidden'}>
               {isAdmin ? (
                 <>
                   {/* VISTA MÓVIL EXCLUSIVA DE ADMINISTRADOR (md:hidden): PARTES PENDIENTES EN FORMATO TARJETAS (IGUAL A LA DEL OPERARIO) */}
-                  <div className="block md:hidden space-y-4" data-testid="admin-mobile-home-view">
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <h1 className="text-base font-extrabold text-slate-900 truncate">
-                            Partes Pendientes ({pendingAdminWorkOrders.length})
-                          </h1>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            Próximos trabajos por hora prevista (ascendente)
-                          </p>
+                  <div className="block md:hidden space-y-3" data-testid="admin-mobile-home-view">
+                    <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2">
+                      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <h1 className="text-base font-extrabold text-slate-900 truncate">
+                              Partes Pendientes ({pendingAdminWorkOrders.length})
+                            </h1>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              Próximos trabajos por hora prevista (ascendente)
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCreateWoModalProps({ open: true })}
+                            className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Nuevo</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setCreateWoModalProps({ open: true })}
-                          className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Nuevo</span>
-                        </button>
-                      </div>
 
-                      {/* Selector de filtro rápido en móvil */}
-                      <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setAdminMobileFilter('pendientes')}
-                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                            adminMobileFilter === 'pendientes'
-                              ? 'bg-blue-600 text-white shadow-2xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          Pendientes ({pendingAdminWorkOrders.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminMobileFilter('todos')}
-                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                            adminMobileFilter === 'todos'
-                              ? 'bg-blue-600 text-white shadow-2xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          Todos ({agendaSortedWorkOrders.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminMobileShowDashboard(!adminMobileShowDashboard)}
-                          className={`ml-auto px-2.5 py-1.5 rounded-lg font-semibold text-[11px] border cursor-pointer ${
-                            adminMobileShowDashboard
-                              ? 'bg-amber-50 border-amber-300 text-amber-900'
-                              : 'bg-white border-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {adminMobileShowDashboard ? 'Ver Partes' : '📊 Métricas'}
-                        </button>
+                        {/* Selector de filtro rápido en móvil */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setAdminMobileFilter('pendientes')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                              adminMobileFilter === 'pendientes'
+                                ? 'bg-blue-600 text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            Pendientes ({pendingAdminWorkOrders.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminMobileFilter('todos')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                              adminMobileFilter === 'todos'
+                                ? 'bg-blue-600 text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            Todos ({agendaSortedWorkOrders.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminMobileShowDashboard(!adminMobileShowDashboard)}
+                            className={`ml-auto px-2.5 py-1.5 rounded-lg font-semibold text-[11px] border cursor-pointer ${
+                              adminMobileShowDashboard
+                                ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                : 'bg-white border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {adminMobileShowDashboard ? 'Ver Partes' : '📊 Métricas'}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -2241,200 +2373,215 @@ const MainApplicationContent: React.FC = () => {
                   </div>
 
                   {/* VISTA ESCRITORIO DE ADMINISTRADOR (hidden md:block): PANEL DE CONTROL COMPLETO */}
-                  <div className="hidden md:block space-y-6">
-                    {/* Tarjeta de Cabecera del Panel de Control con selectores de Mes y Año */}
-                  <div className="bg-white rounded-2xl border border-slate-200/90 px-6 py-4 shadow-2xs flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <h1 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                        Panel de Control y Resumen Operativo de Partes
-                      </h1>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Los partes archivados quedan excluidos de los contadores operativos en curso.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
-                      >
-                        {MONTHS_ES.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(e.target.value)}
-                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
-                      >
-                        <option value="2026">2026</option>
-                        <option value="2025">2025</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* LAS 5 TARJETAS OBLIGATORIAS DEL ADMINISTRADOR CON EL DISEÑO DE LA CAPTURA */}
-                  <div
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
-                    data-testid="admin-dashboard-five-cards"
-                  >
-                    {/* Tarjeta 1: Destacada en azul marino intenso (como la 1ª tarjeta de la imagen) */}
-                    <button
-                      type="button"
-                      data-testid="card-no-iniciados"
-                      onClick={() => {
-                        setWoListFilterStatus('no_iniciado');
-                        navigateTo('work_orders_list');
-                      }}
-                      className="bg-gradient-to-br from-[#1e3a8a] to-[#1d4ed8] text-white rounded-2xl p-5 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[132px]"
+                  <div className="hidden md:block space-y-3">
+                    {/* Cabecera fija del Panel de Control + Las 5 tarjetas de estado */}
+                    <div
+                      ref={dashboardStickyTopRef}
+                      className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2.5 space-y-3 border-b border-slate-200/80"
                     >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-semibold text-blue-100">
-                          1. Partes no iniciados
-                        </span>
-                        <ClipboardList className="w-4 h-4 text-blue-200" />
-                      </div>
-                      <div className="text-3xl font-extrabold tracking-tight my-1">
-                        {countNoIniciados}
-                      </div>
-                      <div className="text-[11px] text-blue-100/90 flex items-center gap-1">
-                        <span>Planificados</span>
-                      </div>
-                    </button>
-
-                    {/* Tarjeta 2: Destacada en naranja intenso (como la tarjeta azul) */}
-                    <button
-                      type="button"
-                      data-testid="card-en-curso"
-                      onClick={() => {
-                        setWoListFilterStatus('en_curso');
-                        navigateTo('work_orders_list');
-                      }}
-                      className="bg-gradient-to-br from-[#d97706] to-[#ea580c] text-white rounded-2xl p-5 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[132px] cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-semibold text-amber-100">
-                          2. Partes en curso
-                        </span>
-                        <PlayCircle className="w-4 h-4 text-amber-200" />
-                      </div>
-                      <div className="text-3xl font-extrabold tracking-tight my-1">
-                        {countEnCurso}
-                      </div>
-                      <div className="text-[11px] text-amber-100/90 flex items-center gap-1">
-                        <span>En intervención</span>
-                      </div>
-                    </button>
-
-                    {/* Tarjeta 3: Destacada en verde esmeralda intenso (como la tarjeta azul) */}
-                    <button
-                      type="button"
-                      data-testid="card-pendientes-cierre"
-                      onClick={() => {
-                        setWoListFilterStatus('terminado');
-                        navigateTo('work_orders_list');
-                      }}
-                      className="bg-gradient-to-br from-[#047857] to-[#059669] text-white rounded-2xl p-5 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[132px] cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-semibold text-emerald-100">
-                          3. Finalizados pdtes. cierre
-                        </span>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                      </div>
-                      <div className="text-3xl font-extrabold tracking-tight my-1">
-                        {countPendientesCierre}
-                      </div>
-                      <div className="text-[11px] text-emerald-100/90 flex items-center gap-1">
-                        <span>Total: {formatCentsToEUR(totalFinishedCents)}</span>
-                      </div>
-                    </button>
-
-                    {/* Tarjeta 4: Blanca limpia con métrica en azul/índigo */}
-                    <button
-                      type="button"
-                      data-testid="card-revisiones-pendientes"
-                      onClick={() => navigateTo('reviews')}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-5 text-left shadow-2xs hover:border-blue-400 transition flex flex-col justify-between min-h-[132px]"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-medium text-slate-500">
-                          4. Revisiones pendientes
-                        </span>
-                        <CalendarClock className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div className="flex items-center gap-2.5 my-1 flex-wrap">
-                        <div className="text-3xl font-extrabold text-blue-600 tracking-tight">
-                          {countRevisionesPendientes}
-                        </div>
-                        {hasUpcomingOrDueReview && (
-                          <span
-                            data-testid="aviso-revision-proxima"
-                            className="animacion-parpadeo inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-extrabold select-none"
-                            style={{ animation: 'parpadeo-aviso 1s infinite ease-in-out' }}
-                          >
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            <span>Revisión próxima a realizar</span>
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        Vencimientos activos en agenda
-                      </div>
-                    </button>
-
-                    {/* Tarjeta 5: Blanca limpia con enlace «Pulsa para revisar ↗» como la última tarjeta de la imagen */}
-                    <button
-                      type="button"
-                      data-testid="card-lista-compra"
-                      onClick={() => navigateTo('shopping')}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-5 text-left shadow-2xs hover:border-amber-400 transition flex flex-col justify-between min-h-[132px]"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-medium text-slate-500">
-                          5. Cesta / Lista de compra
-                        </span>
-                        <AlertCircle className="w-4 h-4 text-amber-500" />
-                      </div>
-                      <div className="text-3xl font-extrabold text-amber-600 tracking-tight my-1">
-                        {pendingShoppingCount}
-                      </div>
-                      <div className="text-[11px] font-semibold text-blue-600 flex items-center gap-0.5">
-                        <span>Pulsa para revisar</span>
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </div>
-                    </button>
-                  </div>
-
-                  {/* PLANING SEMANAL DE TRABAJOS Y HORARIOS EN EL INICIO */}
-                  {renderWeeklyPlanningSection()}
-
-                  {/* SECCIÓN PRINCIPAL: DOS COLUMNAS EN ESCRITORIO (PARTES Y REVISIONES) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                    {/* COLUMNA 1: LISTADO GENERAL DE PARTES DE MÁS RECIENTE A MÁS ANTIGUO (REGLA 5 OBLIGATORIA) */}
-                    <div className="bg-white rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
-                      <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                      {/* Tarjeta de Cabecera del Panel de Control con selectores de Mes y Año */}
+                      <div className="bg-white rounded-2xl border border-slate-200/90 px-5 py-3 shadow-2xs flex flex-wrap items-center justify-between gap-4">
                         <div>
-                          <h2 className="text-sm font-extrabold text-slate-900">
-                            Listado General de Partes (Por fecha y hora prevista ascendente)
-                          </h2>
+                          <h1 className="text-base lg:text-lg font-extrabold text-slate-900 tracking-tight">
+                            Panel de Control y Resumen Operativo de Partes
+                          </h1>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Pulsa sobre cualquier parte para abrir su ficha completa, aportaciones, firma o cierre administrativo
+                            Los partes archivados quedan excluidos de los contadores operativos en curso.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => navigateTo('agenda')}
-                          className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 shrink-0"
-                        >
-                          Ver Agenda por Fecha Prevista →
-                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
+                          >
+                            {MONTHS_ES.map((m) => (
+                              <option key={m.value} value={m.value}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
+                          >
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                          </select>
+                        </div>
                       </div>
 
-                      <div className="divide-y divide-slate-100" data-testid="dashboard-wo-list">
+                      {/* LAS 5 TARJETAS OBLIGATORIAS DEL ADMINISTRADOR CON EL DISEÑO DE LA CAPTURA */}
+                      <div
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5"
+                        data-testid="admin-dashboard-five-cards"
+                      >
+                        {/* Tarjeta 1: Destacada en azul marino intenso (como la 1ª tarjeta de la imagen) */}
+                        <button
+                          type="button"
+                          data-testid="card-no-iniciados"
+                          onClick={() => {
+                            setWoListFilterStatus('no_iniciado');
+                            navigateTo('work_orders_list');
+                          }}
+                          className="bg-gradient-to-br from-[#1e3a8a] to-[#1d4ed8] text-white rounded-2xl p-4 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[104px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-semibold text-blue-100">
+                              1. Partes no iniciados
+                            </span>
+                            <ClipboardList className="w-4 h-4 text-blue-200" />
+                          </div>
+                          <div className="text-2xl lg:text-3xl font-extrabold tracking-tight my-0.5">
+                            {countNoIniciados}
+                          </div>
+                          <div className="text-[11px] text-blue-100/90 flex items-center gap-1">
+                            <span>Planificados</span>
+                          </div>
+                        </button>
+
+                        {/* Tarjeta 2: Destacada en naranja intenso (como la tarjeta azul) */}
+                        <button
+                          type="button"
+                          data-testid="card-en-curso"
+                          onClick={() => {
+                            setWoListFilterStatus('en_curso');
+                            navigateTo('work_orders_list');
+                          }}
+                          className="bg-gradient-to-br from-[#d97706] to-[#ea580c] text-white rounded-2xl p-4 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[104px] cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-semibold text-amber-100">
+                              2. Partes en curso
+                            </span>
+                            <PlayCircle className="w-4 h-4 text-amber-200" />
+                          </div>
+                          <div className="text-2xl lg:text-3xl font-extrabold tracking-tight my-0.5">
+                            {countEnCurso}
+                          </div>
+                          <div className="text-[11px] text-amber-100/90 flex items-center gap-1">
+                            <span>En intervención</span>
+                          </div>
+                        </button>
+
+                        {/* Tarjeta 3: Destacada en verde esmeralda intenso (como la tarjeta azul) */}
+                        <button
+                          type="button"
+                          data-testid="card-pendientes-cierre"
+                          onClick={() => {
+                            setWoListFilterStatus('terminado');
+                            navigateTo('work_orders_list');
+                          }}
+                          className="bg-gradient-to-br from-[#047857] to-[#059669] text-white rounded-2xl p-4 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[104px] cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-semibold text-emerald-100">
+                              3. Finalizados pdtes. cierre
+                            </span>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                          </div>
+                          <div className="text-2xl lg:text-3xl font-extrabold tracking-tight my-0.5">
+                            {countPendientesCierre}
+                          </div>
+                          <div className="text-[11px] text-emerald-100/90 flex items-center gap-1">
+                            <span>Total: {formatCentsToEUR(totalFinishedCents)}</span>
+                          </div>
+                        </button>
+
+                        {/* Tarjeta 4: Blanca limpia con métrica en azul/índigo */}
+                        <button
+                          type="button"
+                          data-testid="card-revisiones-pendientes"
+                          onClick={() => navigateTo('reviews')}
+                          className="bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-2xs hover:border-blue-400 transition flex flex-col justify-between min-h-[104px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-medium text-slate-500">
+                              4. Revisiones pendientes
+                            </span>
+                            <CalendarClock className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="flex items-center gap-2 my-0.5 flex-wrap">
+                            <div className="text-2xl lg:text-3xl font-extrabold text-blue-600 tracking-tight">
+                              {countRevisionesPendientes}
+                            </div>
+                            {hasUpcomingOrDueReview && (
+                              <span
+                                data-testid="aviso-revision-proxima"
+                                className="animacion-parpadeo inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-extrabold select-none"
+                                style={{ animation: 'parpadeo-aviso 1s infinite ease-in-out' }}
+                              >
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                                <span>Revisión próxima a realizar</span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            Vencimientos activos en agenda
+                          </div>
+                        </button>
+
+                        {/* Tarjeta 5: Blanca limpia con enlace «Pulsa para revisar ↗» como la última tarjeta de la imagen */}
+                        <button
+                          type="button"
+                          data-testid="card-lista-compra"
+                          onClick={() => navigateTo('shopping')}
+                          className="bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-2xs hover:border-amber-400 transition flex flex-col justify-between min-h-[104px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-medium text-slate-500">
+                              5. Cesta / Lista de compra
+                            </span>
+                            <AlertCircle className="w-4 h-4 text-amber-500" />
+                          </div>
+                          <div className="text-2xl lg:text-3xl font-extrabold text-amber-600 tracking-tight my-0.5">
+                            {pendingShoppingCount}
+                          </div>
+                          <div className="text-[11px] font-semibold text-blue-600 flex items-center gap-0.5">
+                            <span>Pulsa para revisar</span>
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* PLANING SEMANAL DE TRABAJOS Y HORARIOS EN EL INICIO (su cabecera + días de la semana se mantienen fijos hasta que termina la semana) */}
+                    {renderWeeklyPlanningSection(dashboardStickyOffset)}
+
+                    {/* SECCIÓN PRINCIPAL: DOS COLUMNAS EN ESCRITORIO (PARTES Y REVISIONES)
+                        Al terminar la visualización del planing, quedan fijas las cabeceras de Listado de Partes y Listado de Próximas Revisiones */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* COLUMNA 1: LISTADO GENERAL DE PARTES */}
+                      <div className="flex flex-col">
+                        <div
+                          className="sticky z-20 bg-[#f4f6fa] pt-2"
+                          style={{ top: `${dashboardStickyOffset}px` }}
+                        >
+                          <div className="bg-white rounded-t-2xl border border-slate-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                            <div>
+                              <h2 className="text-sm font-extrabold text-slate-900">
+                                Listado General de Partes (Por fecha y hora prevista ascendente)
+                              </h2>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Pulsa sobre cualquier parte para abrir su ficha completa, aportaciones, firma o cierre administrativo
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigateTo('agenda')}
+                              className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 shrink-0 cursor-pointer"
+                            >
+                              Ver Agenda por Fecha Prevista →
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          className="bg-white rounded-b-2xl border-x border-b border-slate-200/90 divide-y divide-slate-100 max-h-[520px] overflow-y-auto overscroll-contain shadow-2xs"
+                          data-testid="dashboard-wo-list"
+                        >
                         {dashboardSortedWorkOrders.map((wo) => {
                           const woOps = assignments
                             .filter((a) => a.work_order_id === wo.id)
@@ -2597,27 +2744,35 @@ const MainApplicationContent: React.FC = () => {
                     </div>
 
                     {/* COLUMNA 2: LISTADO DIRECTO DE PRÓXIMAS REVISIONES EN EL PANEL DE CONTROL */}
-                    <div className="bg-white rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
-                      <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                            <CalendarClock className="w-4 h-4 text-blue-600 shrink-0" />
-                            Listado de Próximas Revisiones Periódicas (Por fecha de vencimiento ascendente)
-                          </h2>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Consulta directamente las revisiones pendientes y genera su parte de trabajo o abre la gestión de revisiones
-                          </p>
+                    <div className="flex flex-col">
+                      <div
+                        className="sticky z-20 bg-[#f4f6fa] pt-2"
+                        style={{ top: `${dashboardStickyOffset}px` }}
+                      >
+                        <div className="bg-white rounded-t-2xl border border-slate-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                          <div>
+                            <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <CalendarClock className="w-4 h-4 text-blue-600 shrink-0" />
+                              Listado de Próximas Revisiones Periódicas (Por fecha de vencimiento ascendente)
+                            </h2>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Consulta directamente las revisiones pendientes y genera su parte de trabajo o abre la gestión de revisiones
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigateTo('reviews')}
+                            className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 shrink-0 cursor-pointer"
+                          >
+                            Ver Todas las Revisiones y Avisos →
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => navigateTo('reviews')}
-                          className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 shrink-0"
-                        >
-                          Ver Todas las Revisiones y Avisos →
-                        </button>
                       </div>
 
-                      <div className="divide-y divide-slate-100" data-testid="dashboard-reviews-list">
+                      <div
+                        className="bg-white rounded-b-2xl border-x border-b border-slate-200/90 divide-y divide-slate-100 max-h-[520px] overflow-y-auto overscroll-contain shadow-2xs"
+                        data-testid="dashboard-reviews-list"
+                      >
                         {upcomingDashboardReviews.length === 0 ? (
                           <div className="p-6 text-center text-xs text-slate-500">
                             No hay revisiones periódicas pendientes en este momento.
@@ -2630,7 +2785,7 @@ const MainApplicationContent: React.FC = () => {
                               <div
                                 key={occ.id}
                                 data-testid={`dashboard-review-row-${occ.id}`}
-                                onClick={() => navigateTo('reviews')}
+                                onClick={() => openReviewDetail(occ.id)}
                                 className={`px-5 py-4 hover:bg-slate-50/90 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition ${alertInfo.borderCardClass}`}
                               >
                                 <div className="flex items-start gap-3.5 min-w-0 flex-1">
@@ -2719,7 +2874,7 @@ const MainApplicationContent: React.FC = () => {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      navigateTo('reviews');
+                                      openReviewDetail(occ.id);
                                     }}
                                     className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shrink-0 cursor-pointer"
                                   >
@@ -2945,51 +3100,55 @@ const MainApplicationContent: React.FC = () => {
                 </>
               ) : (
                 /* PANTALLA INICIAL DESPEJADA DEL OPERARIO (Regla 5 y Regla 7) */
-                <div className="space-y-4" data-testid="operator-home-view">
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-                    <div>
-                      <h1 className="text-lg font-extrabold text-slate-900">
-                        Mis Partes de Trabajo Asignados ({agendaSortedWorkOrders.length})
-                      </h1>
-                      <p className="text-xs text-slate-500">
-                        Ordenados por fecha y hora previstas de realización (ascendente)
-                      </p>
+                <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden" data-testid="operator-home-view">
+                  <div className="shrink-0 bg-[#f4f6fa]">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                      <div>
+                        <h1 className="text-lg font-extrabold text-slate-900">
+                          Mis Partes de Trabajo Asignados ({agendaSortedWorkOrders.length})
+                        </h1>
+                        <p className="text-xs text-slate-500">
+                          Ordenados por fecha y hora previstas de realización (ascendente)
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  {agendaSortedWorkOrders.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
-                      No tienes partes pendientes o en curso asignados en este momento.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {agendaSortedWorkOrders.map((wo) => (
-                        <WorkOrderMobileCard
-                          key={wo.id}
-                          wo={wo}
-                          tz={tz}
-                          assignments={assignments}
-                          getUserName={getUserName}
-                          isAdmin={isAdmin}
-                          onReassign={handleOpenReassign}
-                          onOpenDetail={(id) => {
-                            setSelectedWorkOrderId(id);
-                            navigateTo('work_order_detail');
-                          }}
-                          onReschedule={(targetWo) => {
-                            setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
-                            setRescheduleReasonInput('');
-                            setRescheduleWoModal({
-                              open: true,
-                              workOrderId: targetWo.id,
-                              code: targetWo.code,
-                              currentScheduledAt: targetWo.scheduled_at,
-                            });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
+                    {agendaSortedWorkOrders.length === 0 ? (
+                      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
+                        No tienes partes pendientes o en curso asignados en este momento.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {agendaSortedWorkOrders.map((wo) => (
+                          <WorkOrderMobileCard
+                            key={wo.id}
+                            wo={wo}
+                            tz={tz}
+                            assignments={assignments}
+                            getUserName={getUserName}
+                            isAdmin={isAdmin}
+                            onReassign={handleOpenReassign}
+                            onOpenDetail={(id) => {
+                              setSelectedWorkOrderId(id);
+                              navigateTo('work_order_detail');
+                            }}
+                            onReschedule={(targetWo) => {
+                              setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
+                              setRescheduleReasonInput('');
+                              setRescheduleWoModal({
+                                open: true,
+                                workOrderId: targetWo.id,
+                                code: targetWo.code,
+                                currentScheduledAt: targetWo.scheduled_at,
+                              });
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -2997,23 +3156,35 @@ const MainApplicationContent: React.FC = () => {
 
           {/* 2. AGENDA OPERATIVA DIFERENCIADA */}
           {currentRoute === 'agenda' && (
-            <div className="space-y-6">
-              <ScreenHeaderBar
-                title="Agenda Operativa de Trabajos y Revisiones"
-                subtitle="Partes ordenados por el trabajo que tengamos que realizar antes en el día por fecha y hora previstas (ascendente: el primero a ejecutar arriba)"
-                onBack={navigateBack}
-              />
+            <div className="space-y-3">
+              <div
+                ref={agendaStickyTopRef}
+                className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2 border-b border-slate-200/80"
+              >
+                <ScreenHeaderBar
+                  title="Agenda Operativa de Trabajos y Revisiones"
+                  subtitle="Partes ordenados por el trabajo que tengamos que realizar antes en el día por fecha y hora previstas (ascendente: el primero a ejecutar arriba)"
+                  onBack={navigateBack}
+                />
+              </div>
 
               {/* PLANING SEMANAL INTERACTIVO */}
-              {renderWeeklyPlanningSection()}
+              {renderWeeklyPlanningSection(agendaStickyOffset)}
 
               {/* LISTADOS DETALLADOS COMPLEMENTARIOS */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 shadow-2xs">
-                  <h2 className="font-bold text-sm text-slate-900">
-                    1. Agenda de Partes por Fecha y Hora Previstas (Ascendente: primero a ejecutar arriba)
-                  </h2>
-                  <div className="divide-y divide-slate-100 text-xs">
+                <div className="flex flex-col">
+                  <div
+                    className="sticky z-20 bg-[#f4f6fa] pt-2"
+                    style={{ top: `${agendaStickyOffset}px` }}
+                  >
+                    <div className="bg-white rounded-t-2xl px-5 py-3.5 border border-slate-200 shadow-xs">
+                      <h2 className="font-bold text-sm text-slate-900">
+                        1. Agenda de Partes por Fecha y Hora Previstas (Ascendente: primero a ejecutar arriba)
+                      </h2>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-b-2xl border-x border-b border-slate-200 p-5 pt-2 divide-y divide-slate-100 text-xs flex-1 shadow-2xs">
                     {agendaSortedWorkOrders.map((wo) => {
                       const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
                       return (
@@ -3075,11 +3246,18 @@ const MainApplicationContent: React.FC = () => {
                 </div>
 
                 {isAdmin && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 shadow-2xs">
-                    <h2 className="font-bold text-sm text-slate-900">
-                      2. Próximas Revisiones por Vencimiento (Ascendente)
-                    </h2>
-                    <div className="divide-y divide-slate-100 text-xs">
+                  <div className="flex flex-col">
+                    <div
+                      className="sticky z-20 bg-[#f4f6fa] pt-2"
+                      style={{ top: `${agendaStickyOffset}px` }}
+                    >
+                      <div className="bg-white rounded-t-2xl px-5 py-3.5 border border-slate-200 shadow-xs">
+                        <h2 className="font-bold text-sm text-slate-900">
+                          2. Próximas Revisiones por Vencimiento (Ascendente)
+                        </h2>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-b-2xl border-x border-b border-slate-200 p-5 pt-2 divide-y divide-slate-100 text-xs flex-1 shadow-2xs">
                       {reviewOccurrences
                         .filter((o) => o.status !== 'realizada' && o.status !== 'cancelada')
                         .sort((a, b) => a.due_date.localeCompare(b.due_date))
@@ -3087,7 +3265,11 @@ const MainApplicationContent: React.FC = () => {
                           const todayLocal = getCurrentLocalDate(tz);
                           const alertInfo = getReviewAlertInfo(o.due_date, todayLocal);
                           return (
-                            <div key={o.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
+                            <div
+                              key={o.id}
+                              onClick={() => openReviewDetail(o.id)}
+                              className="py-3 flex flex-wrap items-center justify-between gap-2 cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition"
+                            >
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full font-black text-xs border ${alertInfo.badgeClass}`}>
                                   {alertInfo.shortLabel}
@@ -3099,10 +3281,13 @@ const MainApplicationContent: React.FC = () => {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => navigateTo('reviews')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openReviewDetail(o.id);
+                                }}
                                 className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 font-semibold shrink-0 cursor-pointer"
                               >
-                                Gestionar
+                                Abrir →
                               </button>
                             </div>
                           );
@@ -3117,73 +3302,77 @@ const MainApplicationContent: React.FC = () => {
           {/* 3. LISTADO GENERAL FILTRABLE DE PARTES */}
           {(currentRoute === 'work_orders_list' ||
             currentRoute === 'archived_work_orders') && (
-            <div className="space-y-4">
-              <ScreenHeaderBar
-                title={
-                  currentRoute === 'archived_work_orders'
-                    ? 'Archivo Histórico de Partes Cerrados'
-                    : 'Listado de Partes de Trabajo'
-                }
-                subtitle="Búsqueda, filtros conservados en sesión y selector de columnas visibles por usuario"
-                onBack={navigateBack}
-                searchTerm={woSearch}
-                onSearchChange={setWoSearch}
-                availableColumns={[
-                  { key: 'code', label: 'Número de Parte' },
-                  { key: 'customer', label: 'Cliente' },
-                  { key: 'address', label: 'Dirección Servicio' },
-                  { key: 'planned_work', label: 'Trabajo a Realizar' },
-                  { key: 'scheduled_at', label: 'Fecha Programada' },
-                  { key: 'created_at', label: 'Fecha de Alta' },
-                  { key: 'operators', label: 'Operarios Asignados' },
-                  { key: 'status', label: 'Estado' },
-                ]}
-                visibleColumns={visibleWoColumns}
-                onToggleColumn={handleToggleWoColumn}
-              />
+            <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+              {/* Cabecera fija con buscador y filtros de estado */}
+              <div className="shrink-0 bg-[#f4f6fa] space-y-3">
+                <ScreenHeaderBar
+                  title={
+                    currentRoute === 'archived_work_orders'
+                      ? 'Archivo Histórico de Partes Cerrados'
+                      : 'Listado de Partes de Trabajo'
+                  }
+                  subtitle="Búsqueda, filtros conservados en sesión y selector de columnas visibles por usuario"
+                  onBack={navigateBack}
+                  searchTerm={woSearch}
+                  onSearchChange={setWoSearch}
+                  availableColumns={[
+                    { key: 'code', label: 'Número de Parte' },
+                    { key: 'customer', label: 'Cliente' },
+                    { key: 'address', label: 'Dirección Servicio' },
+                    { key: 'planned_work', label: 'Trabajo a Realizar' },
+                    { key: 'scheduled_at', label: 'Fecha Programada' },
+                    { key: 'created_at', label: 'Fecha de Alta' },
+                    { key: 'operators', label: 'Operarios Asignados' },
+                    { key: 'status', label: 'Estado' },
+                  ]}
+                  visibleColumns={visibleWoColumns}
+                  onToggleColumn={handleToggleWoColumn}
+                />
 
-              {currentRoute === 'work_orders_list' && (
-                <div className="flex flex-wrap gap-2">
-                  {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
-                    (st) => {
-                      const activeColorClass =
-                        st === 'no_iniciado'
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : st === 'en_curso'
-                          ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs'
-                          : st === 'reabierto'
-                          ? 'bg-[#78350f] text-white border-[#78350f] shadow-xs'
-                          : st === 'terminado'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : st === 'cerrado'
-                          ? 'bg-red-700 text-white border-red-700 shadow-xs'
-                          : 'bg-slate-900 text-white border-slate-900 shadow-xs';
-                      return (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() => setWoListFilterStatus(st)}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                            woListFilterStatus === st
-                              ? activeColorClass
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          {st === 'all'
-                            ? 'Todos los estados activos'
+                {currentRoute === 'work_orders_list' && (
+                  <div className="flex flex-wrap gap-2">
+                    {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
+                      (st) => {
+                        const activeColorClass =
+                          st === 'no_iniciado'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : st === 'en_curso'
+                            ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs'
                             : st === 'reabierto'
-                            ? 'REABIERTO'
-                            : st.toUpperCase()}
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
-              )}
+                            ? 'bg-[#78350f] text-white border-[#78350f] shadow-xs'
+                            : st === 'terminado'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : st === 'cerrado'
+                            ? 'bg-red-700 text-white border-red-700 shadow-xs'
+                            : 'bg-slate-900 text-white border-slate-900 shadow-xs';
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => setWoListFilterStatus(st)}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                              woListFilterStatus === st
+                                ? activeColorClass
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {st === 'all'
+                              ? 'Todos los estados activos'
+                              : st === 'reabierto'
+                              ? 'REABIERTO'
+                              : st.toUpperCase()}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+              </div>
 
-              <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-2xs">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#0b1120] text-white">
+              {/* Contenedor con desplazamiento exclusivo para las filas de partes, manteniendo fija la cabecera de columnas */}
+              <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 overflow-auto overscroll-contain shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 z-20 bg-[#0b1120] text-white shadow-sm">
                     <tr>
                       {visibleWoColumns.includes('code') && <th className="p-3.5">N.º Parte</th>}
                       {visibleWoColumns.includes('customer') && <th className="p-3.5">Cliente</th>}
@@ -3397,7 +3586,7 @@ const MainApplicationContent: React.FC = () => {
       {/* BARRA INFERIOR PERSISTENTE EN MÓVIL Y ACCESO RÁPIDO (Regla 5 y Escenario 18) */}
       <div
         data-testid="persistent-mobile-action-bar"
-        className="fixed bottom-0 right-0 left-0 lg:left-64 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 px-4 lg:px-8 py-2.5 shadow-lg flex items-center justify-between gap-3"
+        className="fixed bottom-0 right-0 left-0 md:left-64 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 px-4 lg:px-8 py-2.5 shadow-lg flex items-center justify-between gap-3"
       >
         <div className="flex items-center gap-3">
           <button
@@ -3793,6 +3982,530 @@ const MainApplicationContent: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal global de Ficha de Revisión Periódica (se abre directamente al pulsar sobre cualquier revisión) */}
+      {selectedReviewOccurrenceId && (() => {
+        const occ = reviewOccurrences.find((o) => o.id === selectedReviewOccurrenceId);
+        if (!occ) return null;
+        const rev = installationReviews.find((r) => r.id === occ.installation_review_id);
+        const cust = customersCatalog.find((c) => c.id === rev?.customer_id);
+        const addr = addressesCatalog.find((a) => a.id === rev?.customer_address_id);
+        const rType = reviewTypesCatalog.find((rt) => rt.id === rev?.review_type_id);
+        const isDone = occ.status === 'realizada';
+        const alertInfo = getReviewAlertInfo(occ.due_date, todayLocalDate);
+        const sched = calculateReviewNoticeSchedule(occ.due_date);
+        const linkedWo = occ.linked_work_order_id
+          ? activeWorkOrders.find(
+              (w) => w.id === occ.linked_work_order_id || w.code === occ.linked_work_order_id
+            ) ||
+            archivedWorkOrders.find(
+              (w) => w.id === occ.linked_work_order_id || w.code === occ.linked_work_order_id
+            )
+          : null;
+        const availableAddressesForEdit = addressesCatalog.filter(
+          (a) => a.customer_id === reviewDetailEditCustomerId
+        );
+
+        return (
+          <div
+            data-testid="modal-review-detail"
+            className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-xs my-6">
+              {/* Cabecera del modal */}
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold shrink-0 ${
+                      isDone ? 'bg-emerald-100 text-emerald-700' : alertInfo.iconBgClass
+                    }`}
+                  >
+                    <CalendarClock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                        {rType?.name || 'Revisión Periódica'}
+                      </h3>
+                      {isDone ? (
+                        <span className="px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px]">
+                          ✓ Realizada
+                        </span>
+                      ) : (
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full font-black text-[11px] border shadow-2xs ${alertInfo.badgeClass}`}
+                        >
+                          {alertInfo.label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      Ficha directa de revisión periódica e instalación
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReviewOccurrenceId(null)}
+                  className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer px-2 py-1"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Datos principales de la revisión */}
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase text-slate-400 block">
+                      Fecha de Vencimiento
+                    </span>
+                    <span className={`text-sm font-extrabold ${isDone ? 'text-slate-900' : alertInfo.textClass}`}>
+                      {formatDateES(occ.due_date)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold uppercase text-slate-400 block">
+                      Tarifa / Periodicidad
+                    </span>
+                    <span className="text-sm font-extrabold text-slate-900">
+                      {formatCentsToEUR(rType?.suggested_price_cents ?? null)}{' '}
+                      <span className="text-xs font-normal text-slate-500">
+                        (cada {rType?.periodicity_value} {rType?.periodicity_unit})
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                  <div>
+                    <span className="font-bold text-slate-700">Cliente: </span>
+                    <span className="font-extrabold text-slate-900">{cust?.name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-700">Instalación / Domicilio: </span>
+                    <span className="text-slate-800">
+                      {addr?.alias ? `${addr.alias} — ` : ''}
+                      {addr?.address_line} ({addr?.city})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-700">Trabajo / Observaciones: </span>
+                    <span className="text-slate-800 font-medium">
+                      {occ.notes || rev?.notes || 'Revisión periódica programada'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 pt-1">
+                    Hitos de aviso: 1 mes antes ({formatDateES(sched.oneMonthBefore)}) · 1 semana antes ({formatDateES(sched.oneWeekBefore)}) · Mismo día ({formatDateES(sched.sameDay)})
+                  </div>
+                </div>
+
+                {occ.linked_work_order_id && (
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                    <span className="text-blue-800 font-bold">
+                      🔗 Parte de trabajo vinculado: {linkedWo?.code || occ.linked_work_order_id}
+                    </span>
+                    {linkedWo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedReviewOccurrenceId(null);
+                          setSelectedWorkOrderId(linkedWo.id);
+                          navigateTo('work_order_detail');
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
+                      >
+                        Abrir Parte Vinculado →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Subformulario desplegable: Reprogramar fecha de vencimiento */}
+              {reviewDetailRescheduleOpen && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!reviewDetailRescheduleDate) {
+                      notifyError('Indica una fecha de vencimiento válida.');
+                      return;
+                    }
+                    requestSaveConfirmation({
+                      title: 'Confirmar Reprogramación de Revisión',
+                      changes: [
+                        {
+                          label: 'Revisión',
+                          value: `${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}`,
+                        },
+                        { label: 'Fecha anterior', value: formatDateES(occ.due_date) },
+                        { label: 'Nueva fecha', value: formatDateES(reviewDetailRescheduleDate) },
+                      ],
+                      onConfirm: () => {
+                        try {
+                          backend.rescheduleReviewOccurrence({
+                            occurrence_id: occ.id,
+                            new_due_date: reviewDetailRescheduleDate,
+                            notes: reviewDetailRescheduleNotes.trim() || undefined,
+                          });
+                          notifySuccessGreen('Fecha de revisión reprogramada con éxito.');
+                          setReviewDetailRescheduleOpen(false);
+                          refresh();
+                        } catch (err: any) {
+                          notifyError(err?.message || 'Error al reprogramar la revisión.');
+                        }
+                      },
+                    });
+                  }}
+                  className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3"
+                >
+                  <div className="font-extrabold text-blue-950 text-xs">
+                    📅 Reprogramar Fecha de Vencimiento
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Nueva fecha de vencimiento *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={reviewDetailRescheduleDate}
+                        onChange={(e) => setReviewDetailRescheduleDate(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Notas / Motivo (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={reviewDetailRescheduleNotes}
+                        onChange={(e) => setReviewDetailRescheduleNotes(e.target.value)}
+                        placeholder="Motivo del cambio..."
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReviewDetailRescheduleOpen(false)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                    >
+                      Guardar Nueva Fecha
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Subformulario desplegable: Modificar datos de la revisión */}
+              {reviewDetailEditOpen && rev && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const targetAddrId =
+                      reviewDetailEditAddressId || availableAddressesForEdit[0]?.id;
+                    if (!targetAddrId) {
+                      notifyError('El cliente seleccionado debe tener un domicilio/instalación.');
+                      return;
+                    }
+                    requestSaveConfirmation({
+                      title: 'Confirmar Modificación de Revisión Periódica',
+                      changes: [
+                        {
+                          label: 'Cliente',
+                          value:
+                            customersCatalog.find((c) => c.id === reviewDetailEditCustomerId)
+                              ?.name || reviewDetailEditCustomerId,
+                        },
+                        {
+                          label: 'Tipo de revisión',
+                          value:
+                            reviewTypesCatalog.find((t) => t.id === reviewDetailEditTypeId)?.name ||
+                            reviewDetailEditTypeId,
+                        },
+                        {
+                          label: 'Próximo vencimiento',
+                          value: formatDateES(reviewDetailEditNextDate),
+                        },
+                        { label: 'Estado', value: reviewDetailEditStatus.toUpperCase() },
+                      ],
+                      onConfirm: () => {
+                        try {
+                          backend.saveInstallationReview({
+                            id: rev.id,
+                            customer_id: reviewDetailEditCustomerId,
+                            customer_address_id: targetAddrId,
+                            review_type_id: reviewDetailEditTypeId,
+                            origin_work_order_id: rev.origin_work_order_id,
+                            last_review_date: rev.last_review_date,
+                            next_review_date: reviewDetailEditNextDate,
+                            status: reviewDetailEditStatus,
+                            notes: reviewDetailEditNotes,
+                          });
+                          notifySuccessGreen('Revisión periódica modificada con éxito.');
+                          setReviewDetailEditOpen(false);
+                          refresh();
+                        } catch (err: any) {
+                          notifyError(err?.message || 'Error al modificar la revisión.');
+                        }
+                      },
+                    });
+                  }}
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3"
+                >
+                  <div className="font-extrabold text-slate-900 text-xs">
+                    ✏️ Modificar Datos de la Revisión Periódica
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Cliente *</label>
+                      <select
+                        value={reviewDetailEditCustomerId}
+                        onChange={(e) => {
+                          const cid = e.target.value;
+                          setReviewDetailEditCustomerId(cid);
+                          const addrs = addressesCatalog.filter((a) => a.customer_id === cid);
+                          setReviewDetailEditAddressId(addrs[0]?.id || '');
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        {customersCatalog.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Instalación / Domicilio *
+                      </label>
+                      <select
+                        value={reviewDetailEditAddressId}
+                        onChange={(e) => setReviewDetailEditAddressId(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        {availableAddressesForEdit.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.alias ? `${a.alias} — ` : ''}
+                            {a.address_line} ({a.city})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Tipo de Revisión *
+                      </label>
+                      <select
+                        value={reviewDetailEditTypeId}
+                        onChange={(e) => setReviewDetailEditTypeId(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        {reviewTypesCatalog.map((rt) => (
+                          <option key={rt.id} value={rt.id}>
+                            {rt.name} ({formatCentsToEUR(rt.suggested_price_cents)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Próximo vencimiento *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={reviewDetailEditNextDate}
+                        onChange={(e) => setReviewDetailEditNextDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Estado *</label>
+                      <select
+                        value={reviewDetailEditStatus}
+                        onChange={(e) =>
+                          setReviewDetailEditStatus(
+                            e.target.value as typeof reviewDetailEditStatus
+                          )
+                        }
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
+                      >
+                        <option value="pendiente">Pendiente</option>
+                        <option value="programada">Programada</option>
+                        <option value="realizada">Realizada</option>
+                        <option value="cancelada">Cancelada</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Notas</label>
+                      <input
+                        type="text"
+                        value={reviewDetailEditNotes}
+                        onChange={(e) => setReviewDetailEditNotes(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReviewDetailEditOpen(false)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                    >
+                      Guardar Cambios
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Acciones directas sobre esta revisión */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
+                <div className="flex flex-wrap items-center gap-2">
+                  {!isDone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewDetailEditOpen(false);
+                        setReviewDetailRescheduleDate(occ.due_date);
+                        setReviewDetailRescheduleNotes(occ.notes || '');
+                        setReviewDetailRescheduleOpen((prev) => !prev);
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Reprogramar</span>
+                    </button>
+                  )}
+
+                  {rev && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewDetailRescheduleOpen(false);
+                        setReviewDetailEditCustomerId(rev.customer_id);
+                        setReviewDetailEditAddressId(rev.customer_address_id);
+                        setReviewDetailEditTypeId(rev.review_type_id);
+                        setReviewDetailEditNextDate(rev.next_review_date);
+                        setReviewDetailEditStatus(rev.status);
+                        setReviewDetailEditNotes(rev.notes || '');
+                        setReviewDetailEditOpen((prev) => !prev);
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Modificar</span>
+                    </button>
+                  )}
+
+                  {rev && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        requestDeleteConfirmation({
+                          recordName: `Mantenimiento «${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}»`,
+                          consequence:
+                            'Se eliminará este plan de mantenimiento periódico y todos sus vencimientos asociados.',
+                          requireReason: false,
+                          onConfirm: () => {
+                            backend.deleteInstallationReview(rev.id);
+                            setSelectedReviewOccurrenceId(null);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Borrar</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {!isDone && !occ.linked_work_order_id && rev && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedReviewOccurrenceId(null);
+                        setCreateWoModalProps({
+                          open: true,
+                          customerId: rev.customer_id,
+                          addressId: rev.customer_address_id,
+                          plannedWork: `${rType?.name || 'Revisión periódica'} — Vencimiento ${formatDateES(
+                            occ.due_date
+                          )}`,
+                          scheduledAt: `${occ.due_date}T09:00`,
+                          occurrenceId: occ.id,
+                          amountCents: rType?.suggested_price_cents ?? null,
+                        });
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-xs"
+                    >
+                      + Generar Parte
+                    </button>
+                  )}
+
+                  {!isDone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        requestSaveConfirmation({
+                          title: 'Confirmar Realización de Vencimiento y Programar Siguiente',
+                          changes: [
+                            { label: 'Revisión', value: rType?.name || '' },
+                            { label: 'Vencimiento completado', value: formatDateES(occ.due_date) },
+                            {
+                              label: 'Comportamiento',
+                              value:
+                                'Se marcará este vencimiento en el histórico y se calculará la siguiente fecha según periodicidad.',
+                            },
+                          ],
+                          onConfirm: () => {
+                            backend.completeReviewOccurrenceAndScheduleNext({
+                              occurrence_id: occ.id,
+                              completed_date: todayLocalDate,
+                            });
+                            setSelectedReviewOccurrenceId(null);
+                            refresh();
+                          },
+                        });
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer shadow-xs"
+                    >
+                      ✓ Confirmar Realización
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReviewOccurrenceId(null)}
+                    className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
