@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import {
+  DateTimePickerField,
   EmailActionLink,
   PhoneActionLinks,
   PhoneInputField,
@@ -577,12 +578,11 @@ export const WorkOrderCreateModal: React.FC<{
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Fecha y hora previstas *
               </label>
-              <input
-                type="datetime-local"
+              <DateTimePickerField
+                value={scheduledAt}
+                onChange={setScheduledAt}
                 required
-                value={scheduledAt.slice(0, 16)}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                testId="input-wo-scheduled-at"
               />
             </div>
             <div>
@@ -1049,6 +1049,11 @@ const WorkOrderDetailLoadedView: React.FC<{
     }
   }, [wo?.scheduled_at]);
 
+  const currentCustomer = useMemo(() => {
+    if (!wo.customer_id) return null;
+    return backend.getCustomers(true).find((c) => c.id === wo.customer_id) || null;
+  }, [backend, wo.customer_id, tick]);
+
   // Formulario de Finalización Atómica (Regla 8)
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [finalizeAmountStr, setFinalizeAmountStr] = useState(
@@ -1061,6 +1066,101 @@ const WorkOrderDetailLoadedView: React.FC<{
   >('unset');
   const [finalizeHasPaid, setFinalizeHasPaid] = useState<'unset' | 'yes' | 'no'>('unset');
   const [finalizeObservations, setFinalizeObservations] = useState(wo.final_observations || '');
+
+  // Ficha del Cliente para Facturación (al contestar Sí solicita factura)
+  const [showCustomerInvoiceModal, setShowCustomerInvoiceModal] = useState(false);
+  const [invoiceCustName, setInvoiceCustName] = useState('');
+  const [invoiceCustTaxId, setInvoiceCustTaxId] = useState('');
+  const [invoiceCustContact, setInvoiceCustContact] = useState('');
+  const [invoiceCustPhone, setInvoiceCustPhone] = useState('');
+  const [invoiceCustEmail, setInvoiceCustEmail] = useState('');
+  const [invoiceCustAddress, setInvoiceCustAddress] = useState('');
+  const [invoiceCustPostalCode, setInvoiceCustPostalCode] = useState('');
+  const [invoiceCustCity, setInvoiceCustCity] = useState('');
+  const [invoiceCustProvince, setInvoiceCustProvince] = useState('');
+  const [invoiceCustNotes, setInvoiceCustNotes] = useState('');
+  const [invoiceDataConfirmed, setInvoiceDataConfirmed] = useState(false);
+
+  const handleOpenCustomerInvoiceModal = () => {
+    const cust =
+      currentCustomer ||
+      (wo.customer_id ? backend.getCustomers(true).find((c) => c.id === wo.customer_id) : null);
+    setInvoiceCustName(cust?.name || wo.snapshot_customer_name || '');
+    setInvoiceCustTaxId(cust?.tax_id || '');
+    setInvoiceCustContact(cust?.contact_name || wo.snapshot_contact_name || '');
+    setInvoiceCustPhone((cust?.phones && cust.phones[0]) || wo.snapshot_contact_phone || '');
+    setInvoiceCustEmail((cust?.emails && cust.emails[0]) || wo.snapshot_contact_email || '');
+    setInvoiceCustAddress(cust?.main_address || wo.snapshot_address_line || '');
+    setInvoiceCustPostalCode(cust?.postal_code || wo.snapshot_postal_code || '');
+    setInvoiceCustCity(cust?.city || wo.snapshot_city || '');
+    setInvoiceCustProvince(cust?.province || wo.snapshot_province || '');
+    setInvoiceCustNotes(cust?.notes || '');
+    setShowCustomerInvoiceModal(true);
+  };
+
+  const handleSaveCustomerInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoiceCustName.trim()) {
+      notifyError('El nombre o razón social del cliente es obligatorio para emitir la factura.');
+      return;
+    }
+    if (!invoiceCustTaxId.trim()) {
+      notifyError('El NIF / CIF / DNI es obligatorio para emitir la factura.');
+      return;
+    }
+
+    requestSaveConfirmation({
+      title: 'Confirmar Datos del Cliente para Factura',
+      changes: [
+        { label: 'Razón Social / Nombre', value: invoiceCustName.trim() },
+        { label: 'NIF / CIF / DNI', value: invoiceCustTaxId.trim() },
+        ...(invoiceCustContact.trim()
+          ? [{ label: 'Persona de contacto', value: invoiceCustContact.trim() }]
+          : []),
+        ...(invoiceCustPhone.trim() ? [{ label: 'Teléfono', value: invoiceCustPhone.trim() }] : []),
+        ...(invoiceCustEmail.trim()
+          ? [{ label: 'Email para factura', value: invoiceCustEmail.trim() }]
+          : []),
+        {
+          label: 'Dirección Fiscal',
+          value: `${invoiceCustAddress.trim()} ${invoiceCustPostalCode.trim()} ${invoiceCustCity.trim()} (${invoiceCustProvince.trim()})`.trim(),
+        },
+        ...(invoiceCustNotes.trim()
+          ? [{ label: 'Observaciones factura', value: invoiceCustNotes.trim() }]
+          : []),
+        {
+          label: 'Efecto',
+          value: 'Se actualizarán los datos de la ficha del cliente en el sistema para la emisión de la factura.',
+        },
+      ],
+      onConfirm: () => {
+        try {
+          if (wo.customer_id) {
+            backend.updateCustomerInvoiceDetails(wo.customer_id, {
+              name: invoiceCustName.trim(),
+              tax_id: invoiceCustTaxId.trim(),
+              contact_name: invoiceCustContact.trim(),
+              phones: [invoiceCustPhone.trim()].filter(Boolean),
+              emails: [invoiceCustEmail.trim()].filter(Boolean),
+              main_address: invoiceCustAddress.trim(),
+              postal_code: invoiceCustPostalCode.trim(),
+              city: invoiceCustCity.trim(),
+              province: invoiceCustProvince.trim(),
+              notes: invoiceCustNotes.trim(),
+            });
+          }
+          setInvoiceDataConfirmed(true);
+          setShowCustomerInvoiceModal(false);
+          notifySuccessGreen(
+            'Datos del cliente para factura confirmados y actualizados correctamente.'
+          );
+          refreshLocal();
+        } catch (err: any) {
+          notifyError(err?.message || 'Error al actualizar los datos del cliente.');
+        }
+      },
+    });
+  };
 
   useEffect(() => {
     if (wo?.total_amount_cents !== null && wo?.total_amount_cents !== undefined) {
@@ -1231,6 +1331,12 @@ const WorkOrderDetailLoadedView: React.FC<{
     if (finalizeRequestsInvoice === 'unset' || finalizeHasPaid === 'unset') {
       notifyError(
         'Debes responder explícitamente Sí o No tanto a «¿El cliente solicita factura?» como a «¿El cliente ha pagado?».');
+      return;
+    }
+
+    if (finalizeRequestsInvoice === 'yes' && !invoiceDataConfirmed) {
+      notifyError('Por favor, confirma los datos del cliente en su ficha para la emisión de la factura antes de finalizar.');
+      handleOpenCustomerInvoiceModal();
       return;
     }
 
@@ -3258,15 +3364,45 @@ const WorkOrderDetailLoadedView: React.FC<{
                 <select
                   data-testid="select-finalize-invoice"
                   value={finalizeRequestsInvoice}
-                  onChange={(e) =>
-                    setFinalizeRequestsInvoice(e.target.value as 'unset' | 'yes' | 'no')
-                  }
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+                  onChange={(e) => {
+                    const val = e.target.value as 'unset' | 'yes' | 'no';
+                    setFinalizeRequestsInvoice(val);
+                    if (val === 'yes') {
+                      handleOpenCustomerInvoiceModal();
+                    } else {
+                      setInvoiceDataConfirmed(false);
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white font-medium"
                 >
                   <option value="unset">-- Selecciona respuesta explícita --</option>
                   <option value="yes">SÍ solicita factura</option>
                   <option value="no">NO solicita factura</option>
                 </select>
+
+                {finalizeRequestsInvoice === 'yes' && (
+                  <div className="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <span>Ficha del cliente para emisión de factura</span>
+                      </div>
+                      <p className="text-[11px] text-blue-800">
+                        {invoiceDataConfirmed
+                          ? '✓ Datos confirmados y ficha del cliente actualizada.'
+                          : '⚠️ Pendiente de revisar y confirmar datos del cliente.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="btn-open-invoice-customer-modal"
+                      onClick={handleOpenCustomerInvoiceModal}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-2xs whitespace-nowrap"
+                    >
+                      {invoiceDataConfirmed ? 'Revisar / Modificar Ficha' : 'Abrir Ficha de Facturación'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -3303,6 +3439,206 @@ const WorkOrderDetailLoadedView: React.FC<{
           </div>
         );
       })()}
+
+      {/* MODAL FICHA DEL CLIENTE PARA FACTURACIÓN (AL SOLICITAR FACTURA) */}
+      {showCustomerInvoiceModal && (
+        <div
+          data-testid="modal-customer-invoice-details"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 space-y-4 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <span>Ficha del Cliente para Emisión de Factura</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Parte <strong>{wo.code}</strong> · Verifica o completa los datos del cliente para la factura.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomerInvoiceModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-xl p-3 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <span>ℹ️</span>
+                <span>Datos asignados al cliente</span>
+              </div>
+              <p className="text-slate-600 text-[11px]">
+                A continuación se muestran los datos que tiene asignados este cliente. Puedes modificarlos o rellenar los campos que falten. Al pulsar en confirmar, el sistema te pedirá confirmación y se actualizará su ficha oficial.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveCustomerInvoice} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Razón Social / Nombre Completo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  data-testid="input-invoice-customer-name"
+                  value={invoiceCustName}
+                  onChange={(e) => setInvoiceCustName(e.target.value)}
+                  placeholder="Nombre o empresa para la factura..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    NIF / CIF / DNI *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    data-testid="input-invoice-customer-taxid"
+                    value={invoiceCustTaxId}
+                    onChange={(e) => setInvoiceCustTaxId(e.target.value)}
+                    placeholder="Ej. B13520226 o 12345678X"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Persona de Contacto
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="input-invoice-customer-contact"
+                    value={invoiceCustContact}
+                    onChange={(e) => setInvoiceCustContact(e.target.value)}
+                    placeholder="Persona de contacto"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Teléfono de Contacto
+                  </label>
+                  <PhoneInputField
+                    value={invoiceCustPhone}
+                    onChange={setInvoiceCustPhone}
+                    placeholder="Teléfono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Correo Electrónico (para envío de factura)
+                  </label>
+                  <input
+                    type="email"
+                    data-testid="input-invoice-customer-email"
+                    value={invoiceCustEmail}
+                    onChange={(e) => setInvoiceCustEmail(e.target.value)}
+                    placeholder="facturacion@ejemplo.com"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Dirección Fiscal Completa *
+                </label>
+                <input
+                  type="text"
+                  required
+                  data-testid="input-invoice-customer-address"
+                  value={invoiceCustAddress}
+                  onChange={(e) => setInvoiceCustAddress(e.target.value)}
+                  placeholder="Calle, plaza, número, piso..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Código Postal
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="input-invoice-customer-postal"
+                    value={invoiceCustPostalCode}
+                    onChange={(e) => setInvoiceCustPostalCode(e.target.value)}
+                    placeholder="13001"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Población / Ciudad
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="input-invoice-customer-city"
+                    value={invoiceCustCity}
+                    onChange={(e) => setInvoiceCustCity(e.target.value)}
+                    placeholder="Ciudad Real"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Provincia
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="input-invoice-customer-province"
+                    value={invoiceCustProvince}
+                    onChange={(e) => setInvoiceCustProvince(e.target.value)}
+                    placeholder="Ciudad Real"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Observaciones para la Factura
+                </label>
+                <textarea
+                  rows={2}
+                  data-testid="textarea-invoice-customer-notes"
+                  value={invoiceCustNotes}
+                  onChange={(e) => setInvoiceCustNotes(e.target.value)}
+                  placeholder="Número de pedido, forma de pago acordada, etc."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomerInvoiceModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                >
+                  Volver al Parte
+                </button>
+                <button
+                  type="submit"
+                  data-testid="btn-confirm-customer-invoice-data"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+                >
+                  Confirmar y Actualizar Ficha de Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL REPROGRAMAR FECHA Y HORA PREVISTA (ADMIN Y OPERARIOS) */}
       {showRescheduleModal && (
@@ -3379,13 +3715,11 @@ const WorkOrderDetailLoadedView: React.FC<{
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Nueva fecha y hora prevista *
               </label>
-              <input
-                type="datetime-local"
-                required
-                data-testid="input-reschedule-datetime"
+              <DateTimePickerField
                 value={rescheduleDateStr}
-                onChange={(e) => setRescheduleDateStr(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900"
+                onChange={setRescheduleDateStr}
+                required
+                testId="input-reschedule-datetime"
               />
             </div>
 

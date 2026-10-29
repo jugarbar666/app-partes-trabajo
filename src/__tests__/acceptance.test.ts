@@ -320,6 +320,36 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(backend.getWorkOrderById('wo-4').snapshot_customer_name).toContain('Los Olivos');
   });
 
+  it('Actualización de datos del cliente para factura al cerrar parte: operario puede actualizar datos fiscales del cliente si solicita factura', () => {
+    // 1. Operario autenticado
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    const wo = backend.getWorkOrderById('wo-2');
+    expect(wo.customer_id).toBeDefined();
+
+    // 2. Operario actualiza los datos del cliente para la factura
+    const updatedCustomer = backend.updateCustomerInvoiceDetails(wo.customer_id!, {
+      name: 'COMUNIDAD DE PROPIETARIOS RESIDENCIAL LOS OLIVOS (FACTURA)',
+      tax_id: 'H28123456',
+      contact_name: 'Dpto. Administración de Fincas',
+      phones: ['+34 911 223 344'],
+      emails: ['facturas@comunidadlosolivos.es'],
+      main_address: 'Av. de la Castellana 120, Portal 1',
+      postal_code: '28046',
+      city: 'Madrid',
+      province: 'Madrid',
+      notes: 'Solicita enviar la factura en formato PDF con referencia del parte',
+    });
+
+    expect(updatedCustomer.name).toBe('COMUNIDAD DE PROPIETARIOS RESIDENCIAL LOS OLIVOS (FACTURA)');
+    expect(updatedCustomer.tax_id).toBe('H28123456');
+    expect(updatedCustomer.emails).toContain('facturas@comunidadlosolivos.es');
+
+    // 3. Verificar en la base de datos que la ficha del cliente quedó actualizada
+    const custFromDb = backend.getCustomers(true).find((c) => c.id === wo.customer_id);
+    expect(custFromDb?.tax_id).toBe('H28123456');
+    expect(custFromDb?.emails[0]).toBe('facturas@comunidadlosolivos.es');
+  });
+
   it('Escenario 8: Crear un parte desde una revisión conserva el vínculo y no genera duplicados ante repetición de la solicitud', () => {
     const woFromRev = backend.createWorkOrder({
       customer_id: 'cust-1',

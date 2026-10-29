@@ -12,7 +12,7 @@ import {
   Send,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
-import { ScreenHeaderBar, useUIConfirmation, SearchableSelect } from './CommonUI';
+import { ScreenHeaderBar, useUIConfirmation, SearchableSelect, DateTimePickerField } from './CommonUI';
 import {
   calculateDuration,
   calculateReviewNoticeSchedule,
@@ -1853,24 +1853,22 @@ export const AttendanceAndReportsModule: React.FC<{
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Entrada *</label>
-                <input
-                  type="datetime-local"
-                  required
+                <DateTimePickerField
                   value={adminClockIn}
-                  onChange={(e) => setAdminClockIn(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-300"
+                  onChange={setAdminClockIn}
+                  required
+                  testId="input-admin-clock-in"
                 />
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Salida</label>
-                <input
-                  type="datetime-local"
+                <DateTimePickerField
                   value={adminClockOut}
-                  onChange={(e) => setAdminClockOut(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-300"
+                  onChange={setAdminClockOut}
+                  testId="input-admin-clock-out"
                 />
               </div>
             </div>

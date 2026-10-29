@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   X,
   ChevronDown,
+  Calendar,
+  Check,
 } from 'lucide-react';
 import {
   normalizePhoneLinks,
@@ -860,6 +862,434 @@ export const ScreenHeaderBar: React.FC<{
             placeholder={searchPlaceholder}
             className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Componente Selector de Fecha y Hora con botón explícito de "Aceptar"
+ * para evitar tener que hacer clic fuera del desplegable para cerrar la selección.
+ */
+export const DateTimePickerField: React.FC<{
+  value: string; // ISO o 'YYYY-MM-DDTHH:mm'
+  onChange: (val: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+  className?: string;
+  placeholder?: string;
+  testId?: string;
+}> = ({
+  value,
+  onChange,
+  required = false,
+  disabled = false,
+  className = '',
+  placeholder = 'DD/MM/AAAA HH:mm',
+  testId,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Parsear valor inicial a fecha ('YYYY-MM-DD') y hora ('HH:mm')
+  const parseVal = (valStr: string) => {
+    if (!valStr) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      return { date: `${year}-${month}-${day}`, time: `${h}:${m}` };
+    }
+    const clean = valStr.includes('Z') ? valStr.slice(0, 16) : valStr;
+    const parts = clean.split('T');
+    const date = parts[0] || new Date().toISOString().slice(0, 10);
+    const time = (parts[1] || '09:00').slice(0, 5);
+    return { date, time };
+  };
+
+  const currentParsed = parseVal(value);
+  const [tempDate, setTempDate] = useState(currentParsed.date);
+  const [tempTime, setTempTime] = useState(currentParsed.time);
+
+  // Parse tempDate into year, month (0-11), day
+  const [tYear, tMonth] = useMemo(() => {
+    const parts = tempDate.split('-');
+    const y = parseInt(parts[0], 10) || new Date().getFullYear();
+    const m = (parseInt(parts[1], 10) || 1) - 1;
+    return [y, m];
+  }, [tempDate]);
+
+  const [viewYear, setViewYear] = useState(tYear);
+  const [viewMonth, setViewMonth] = useState(tMonth);
+
+  // Sincronizar temp con value cuando value cambie externamente
+  useEffect(() => {
+    const p = parseVal(value);
+    setTempDate(p.date);
+    setTempTime(p.time);
+    const parts = p.date.split('-');
+    setViewYear(parseInt(parts[0], 10) || new Date().getFullYear());
+    setViewMonth((parseInt(parts[1], 10) || 1) - 1);
+  }, [value]);
+
+  // Cierre al hacer clic fuera del componente
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen]);
+
+  // Cuando se abre el desplegable
+  const handleOpen = () => {
+    if (disabled) return;
+    const p = parseVal(value);
+    setTempDate(p.date);
+    setTempTime(p.time);
+    const parts = p.date.split('-');
+    setViewYear(parseInt(parts[0], 10) || new Date().getFullYear());
+    setViewMonth((parseInt(parts[1], 10) || 1) - 1);
+    setIsOpen(true);
+  };
+
+  // Al pulsar Aceptar: confirma y cierra
+  const handleAccept = () => {
+    const combined = `${tempDate}T${tempTime || '09:00'}`;
+    onChange(combined);
+    setIsOpen(false);
+  };
+
+  const handleCancel = () => {
+    const p = parseVal(value);
+    setTempDate(p.date);
+    setTempTime(p.time);
+    setIsOpen(false);
+  };
+
+  const handleSetToday = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    setTempDate(dateStr);
+    setViewYear(y);
+    setViewMonth(now.getMonth());
+  };
+
+  const monthNames = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(y => y - 1);
+    } else {
+      setViewMonth(m => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(y => y + 1);
+    } else {
+      setViewMonth(m => m + 1);
+    }
+  };
+
+  // Celdas de la cuadrícula mensual del calendario
+  const calendarCells = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+    const startOffset = (firstDay + 6) % 7; // Lunes = 0
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const prevMonthDays = new Date(viewYear, viewMonth, 0).getDate();
+
+    const cells: Array<{ day: number; isCurrentMonth: boolean; dateStr: string }> = [];
+
+    // Días del mes anterior
+    for (let i = startOffset - 1; i >= 0; i--) {
+      const d = prevMonthDays - i;
+      const prevM = viewMonth === 0 ? 12 : viewMonth;
+      const prevY = viewMonth === 0 ? viewYear - 1 : viewYear;
+      const dStr = `${prevY}-${String(prevM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, isCurrentMonth: false, dateStr: dStr });
+    }
+
+    // Días del mes actual
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, isCurrentMonth: true, dateStr: dStr });
+    }
+
+    // Días del mes siguiente para completar cuadrícula
+    const remaining = (7 - (cells.length % 7)) % 7;
+    for (let d = 1; d <= remaining; d++) {
+      const nextM = viewMonth === 11 ? 1 : viewMonth + 2;
+      const nextY = viewMonth === 11 ? viewYear + 1 : viewYear;
+      const dStr = `${nextY}-${String(nextM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, isCurrentMonth: false, dateStr: dStr });
+    }
+
+    return cells;
+  }, [viewYear, viewMonth]);
+
+  const [currentHour, currentMin] = useMemo(() => {
+    const parts = (tempTime || '09:00').split(':');
+    return [parts[0] || '09', parts[1] || '00'];
+  }, [tempTime]);
+
+  // Formato para mostrar en el campo: "23/10/2026 14:05"
+  const formattedDisplay = useMemo(() => {
+    if (!value) return '';
+    try {
+      const p = parseVal(value);
+      const [year, month, day] = p.date.split('-');
+      if (!year || !month || !day) return value;
+      return `${day}/${month}/${year} ${p.time}`;
+    } catch {
+      return value;
+    }
+  }, [value]);
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      {/* Botón / Input disparador que muestra la selección como en la interfaz del usuario */}
+      <div
+        role="button"
+        tabIndex={0}
+        data-testid={testId}
+        onClick={handleOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleOpen();
+          }
+        }}
+        className={`w-full px-3 py-2 rounded-lg border text-left flex items-center justify-between text-sm transition cursor-pointer select-none ${
+          disabled
+            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+            : 'bg-white hover:border-blue-500 border-slate-300 text-slate-900 focus:ring-2 focus:ring-blue-500'
+        }`}
+      >
+        <span className={formattedDisplay ? 'font-semibold text-slate-900' : 'text-slate-400'}>
+          {formattedDisplay || placeholder}
+        </span>
+        <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
+      </div>
+
+      {/* Input oculto nativo para asegurar compatibilidad de forms HTML */}
+      <input
+        type="hidden"
+        value={value ? `${parseVal(value).date}T${parseVal(value).time}` : ''}
+        required={required}
+      />
+
+      {/* Popover flotante con Calendario, Columnas Horas/Minutos y Botón Aceptar */}
+      {isOpen && (
+        <div
+          data-testid={testId ? `${testId}-picker-popover` : 'datetime-picker-popover'}
+          className="absolute left-0 top-full mt-1.5 bg-white rounded-xl shadow-2xl border border-slate-300 p-3 z-50 animate-in fade-in zoom-in-95 duration-100 select-none max-w-[95vw]"
+          style={{ width: '350px' }}
+        >
+          {/* Fila principal: Calendario a la izquierda, Horas y Minutos a la derecha */}
+          <div className="flex gap-2.5 pb-2.5 border-b border-slate-200">
+            {/* Calendario mensual (Izquierda) */}
+            <div className="flex-1 min-w-[200px]">
+              {/* Cabecera del mes y flechas */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-800 capitalize">
+                  {monthNames[viewMonth]} de {viewYear}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="h-6 w-6 rounded flex items-center justify-center hover:bg-slate-100 text-slate-600 font-bold text-sm cursor-pointer"
+                    title="Mes anterior"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="h-6 w-6 rounded flex items-center justify-center hover:bg-slate-100 text-slate-600 font-bold text-sm cursor-pointer"
+                    title="Mes siguiente"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+
+              {/* Días de la semana */}
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-500 mb-1">
+                <span>L</span>
+                <span>M</span>
+                <span>X</span>
+                <span>J</span>
+                <span>V</span>
+                <span>S</span>
+                <span>D</span>
+              </div>
+
+              {/* Celdas de días */}
+              <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                {calendarCells.map((cell, idx) => {
+                  const isSelected = cell.dateStr === tempDate;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setTempDate(cell.dateStr)}
+                      className={`h-6 w-6 mx-auto rounded flex items-center justify-center text-[11px] transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-600 text-white font-bold shadow'
+                          : cell.isCurrentMonth
+                          ? 'text-slate-800 hover:bg-blue-50 hover:text-blue-600 font-medium'
+                          : 'text-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cell.day}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Separador vertical */}
+            <div className="w-px bg-slate-200 self-stretch" />
+
+            {/* Columnas de Horas y Minutos (Derecha, como en la captura) */}
+            <div className="flex gap-1 shrink-0">
+              {/* Columna Horas */}
+              <div className="w-12">
+                <div className="text-[10px] font-bold text-slate-500 text-center mb-1">Hora</div>
+                <div className="h-44 overflow-y-auto space-y-0.5 pr-0.5 border border-slate-100 rounded">
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
+                    const isSelected = h === currentHour;
+                    return (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setTempTime(`${h}:${currentMin}`)}
+                        className={`w-full py-1 text-xs text-center rounded transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-600 text-white font-bold shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {h}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Columna Minutos */}
+              <div className="w-12">
+                <div className="text-[10px] font-bold text-slate-500 text-center mb-1">Min</div>
+                <div className="h-44 overflow-y-auto space-y-0.5 pr-0.5 border border-slate-100 rounded">
+                  {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map((m) => {
+                    const isSelected = m === currentMin;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setTempTime(`${currentHour}:${m}`)}
+                        className={`w-full py-1 text-xs text-center rounded transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-600 text-white font-bold shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Inputs auxiliares invisibles para testing sintético */}
+          <input
+            type="date"
+            data-testid={testId ? `${testId}-date-input` : 'datetime-date-input'}
+            value={tempDate}
+            onChange={(e) => {
+              if (e.target.value) {
+                setTempDate(e.target.value);
+                const parts = e.target.value.split('-');
+                setViewYear(parseInt(parts[0], 10) || viewYear);
+                setViewMonth((parseInt(parts[1], 10) || 1) - 1);
+              }
+            }}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
+          <select
+            data-testid={testId ? `${testId}-hour-select` : 'datetime-hour-select'}
+            value={currentHour}
+            onChange={(e) => setTempTime(`${e.target.value}:${currentMin}`)}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => (
+              <option key={h} value={h}>{h}</option>
+            ))}
+          </select>
+          <select
+            data-testid={testId ? `${testId}-minute-select` : 'datetime-minute-select'}
+            value={currentMin}
+            onChange={(e) => setTempTime(`${currentHour}:${e.target.value}`)}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
+          {/* Resumen de selección actual y Pie inferior con Hoy, Cancelar y ACEPTAR */}
+          <div className="pt-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleSetToday}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+            >
+              Hoy
+            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid={testId ? `${testId}-accept-btn` : 'datetime-accept-btn'}
+                onClick={handleAccept}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1 transition cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Aceptar</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

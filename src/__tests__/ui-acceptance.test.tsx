@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import App from '../App';
-import { WorkOrderStatusBadge, UIConfirmationProvider } from '../components/CommonUI';
+import { WorkOrderStatusBadge, UIConfirmationProvider, DateTimePickerField } from '../components/CommonUI';
 import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from '../config/branchConfig';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
@@ -530,6 +530,176 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       // Tras pulsar, la versión instalada pasa a ser la última y desaparece la ventana amarilla
       expect(badge?.textContent).toContain(`v${LATEST_APP_VERSION}`);
       expect(container.querySelector('[data-testid="new-version-yellow-window"]')).toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('Identificación de dispositivo nuevo: solicita identificarse, campos en blanco, sin lista de usuarios autorizados y recuerda de forma persistente', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { DEVICE_LOGGED_USER_ID_KEY } = await import('../App');
+
+    // 1. Simular un dispositivo nuevo sin usuario vinculado en localStorage
+    window.localStorage.setItem('agy_test_simulate_new_device', 'true');
+    window.localStorage.removeItem(DEVICE_LOGGED_USER_ID_KEY);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(<App />);
+      });
+
+      // Debe mostrar la pantalla de inicio de sesión con campos en blanco y sin usuarios autorizados abajo
+      expect(container.textContent).toContain('Iniciar Sesión');
+      expect(container.textContent).not.toContain('Usuarios autorizados');
+      expect(container.textContent).not.toContain('Seleccionar usuario');
+
+      const inputs = Array.from(container.querySelectorAll('input'));
+      const textInput = inputs.find((i) => i.type === 'text') as HTMLInputElement;
+      const passInput = inputs.find((i) => i.type === 'password') as HTMLInputElement;
+      expect(textInput.value).toBe('');
+      expect(passInput.value).toBe('');
+
+      // 2. Vincular usuario rellenando sus credenciales
+      await act(async () => {
+        textInput.value = 'Juan Carlos';
+        textInput.dispatchEvent(new Event('input', { bubbles: true }));
+        textInput.dispatchEvent(new Event('change', { bubbles: true }));
+        passInput.value = 'anromago678*';
+        passInput.dispatchEvent(new Event('input', { bubbles: true }));
+        passInput.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      const form = container.querySelector('form');
+      expect(form).not.toBeNull();
+
+      await act(async () => {
+        form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+
+      // Ahora el usuario queda logueado y el dispositivo recuerda su ID
+      expect(container.textContent).toContain('Cerrar sesión');
+      const savedUser = window.localStorage.getItem(DEVICE_LOGGED_USER_ID_KEY);
+      expect(savedUser).not.toBeNull();
+
+      // 3. Al pulsar cerrar sesión, el dispositivo limpia memoria, los campos vuelven a estar en blanco y sin usuarios autorizados
+      const logoutBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Cerrar sesión')
+      );
+      expect(logoutBtn).toBeDefined();
+
+      await act(async () => {
+        logoutBtn!.click();
+      });
+
+      expect(window.localStorage.getItem(DEVICE_LOGGED_USER_ID_KEY)).toBeNull();
+      expect(container.textContent).toContain('Iniciar Sesión');
+      expect(container.textContent).not.toContain('Usuarios autorizados');
+      expect(container.textContent).not.toContain('Seleccionar usuario');
+
+      const inputsAfterLogout = Array.from(container.querySelectorAll('input'));
+      const textAfter = inputsAfterLogout.find((i) => i.type === 'text') as HTMLInputElement;
+      const passAfter = inputsAfterLogout.find((i) => i.type === 'password') as HTMLInputElement;
+      expect(textAfter.value).toBe('');
+      expect(passAfter.value).toBe('');
+    } finally {
+      window.localStorage.removeItem('agy_test_simulate_new_device');
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('DateTimePickerField abre popover con desplegables de fecha y hora, y el botón Aceptar confirma y cierra la selección', async () => {
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    let selectedValue = '2026-10-30T09:00';
+    const handleChange = vi.fn((val: string) => {
+      selectedValue = val;
+    });
+
+    try {
+      await act(async () => {
+        root.render(
+          <DateTimePickerField
+            value={selectedValue}
+            onChange={handleChange}
+            testId="test-dtp"
+          />
+        );
+      });
+
+      // El botón inicial debe mostrar la fecha formateada
+      const triggerBtn = container.querySelector('[data-testid="test-dtp"]') as HTMLButtonElement;
+      expect(triggerBtn).toBeTruthy();
+      expect(triggerBtn.textContent).toContain('30/10/2026');
+      expect(triggerBtn.textContent).toContain('09:00');
+
+      // Popover no debe estar abierto aún
+      expect(container.querySelector('[data-testid="test-dtp-picker-popover"]')).toBeNull();
+
+      // Al pulsar el botón, se abre el popover
+      await act(async () => {
+        triggerBtn.click();
+      });
+
+      const popover = container.querySelector('[data-testid="test-dtp-picker-popover"]');
+      expect(popover).toBeTruthy();
+
+      // Cambiar fecha
+      const dateInput = container.querySelector('[data-testid="test-dtp-date-input"]') as HTMLInputElement;
+      expect(dateInput).toBeTruthy();
+      await act(async () => {
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        nativeSetter?.call(dateInput, '2026-11-05');
+        dateInput.dispatchEvent(new Event('input', { bubbles: true }));
+        dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // Cambiar hora a '15'
+      const hourSelect = container.querySelector('[data-testid="test-dtp-hour-select"]') as HTMLSelectElement;
+      expect(hourSelect).toBeTruthy();
+      await act(async () => {
+        hourSelect.value = '15';
+        hourSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // Cambiar minuto a '30'
+      const minSelect = container.querySelector('[data-testid="test-dtp-minute-select"]') as HTMLSelectElement;
+      expect(minSelect).toBeTruthy();
+      await act(async () => {
+        minSelect.value = '30';
+        minSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // Pulsar botón Aceptar
+      const acceptBtn = container.querySelector('[data-testid="test-dtp-accept-btn"]') as HTMLButtonElement;
+      expect(acceptBtn).toBeTruthy();
+      expect(acceptBtn.textContent).toContain('Aceptar');
+
+      await act(async () => {
+        acceptBtn.click();
+      });
+
+      // Debe haber llamado a handleChange con el valor combinado
+      expect(handleChange).toHaveBeenCalledWith('2026-11-05T15:30');
+
+      // Popover debe haberse cerrado
+      expect(container.querySelector('[data-testid="test-dtp-picker-popover"]')).toBeNull();
     } finally {
       await act(async () => {
         root.unmount();

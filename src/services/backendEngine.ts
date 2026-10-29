@@ -727,6 +727,53 @@ export class InstallationBackendEngine {
     return list.map((c) => ({ ...c, phones: [...c.phones], emails: [...c.emails] }));
   }
 
+  public updateCustomerInvoiceDetails(
+    customerId: string,
+    invoiceData: {
+      name: string;
+      tax_id: string;
+      contact_name?: string;
+      phones?: string[];
+      emails?: string[];
+      main_address: string;
+      postal_code?: string;
+      city?: string;
+      province?: string;
+      notes?: string;
+    }
+  ): Customer {
+    this.assertOnline();
+    const actor = this.getCurrentUser();
+    if (!invoiceData.name.trim()) {
+      throw new ValidationError('El nombre o razón social del cliente es obligatorio para la factura.');
+    }
+    const idx = this.state.customers.findIndex((c) => c.id === customerId);
+    if (idx === -1) throw new ValidationError('Cliente no encontrado.');
+
+    const prev = this.state.customers[idx];
+    const updated: Customer = {
+      ...prev,
+      name: invoiceData.name.trim(),
+      tax_id: invoiceData.tax_id.trim(),
+      contact_name: (invoiceData.contact_name ?? prev.contact_name ?? '').trim(),
+      phones: (invoiceData.phones || prev.phones).filter(Boolean).map(formatPhoneWithPrefix34),
+      emails: (invoiceData.emails || prev.emails).filter(Boolean),
+      main_address: invoiceData.main_address.trim(),
+      postal_code: (invoiceData.postal_code ?? prev.postal_code ?? '').trim(),
+      city: (invoiceData.city ?? prev.city ?? '').trim(),
+      province: (invoiceData.province ?? prev.province ?? '').trim(),
+      notes: (invoiceData.notes ?? prev.notes ?? '').trim(),
+      updated_at: new Date().toISOString(),
+    };
+    this.state.customers[idx] = updated;
+    this.recordAudit(actor, 'maestros', 'customer', updated.id, 'ACTUALIZAR_DATOS_FACTURACION_CLIENTE', {
+      before: prev,
+      after: updated,
+    });
+    this.persist();
+    return { ...updated };
+  }
+
   public saveCustomer(
     data: Omit<Customer, 'id' | 'created_at' | 'updated_at'> & { id?: string }
   ): Customer {
