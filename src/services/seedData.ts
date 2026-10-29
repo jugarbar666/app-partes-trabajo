@@ -1091,21 +1091,57 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
 }
 
 /**
- * Estado limpio sin registros para arranque de nueva empresa en producción o pruebas reales.
+ * Estado limpio sin registros para arranque de empresa en producción o demo oficial.
  * Deja todas las bases de datos vacías (clientes, proveedores, artículos, partes, revisiones, compras, fichajes, etc.)
- * conservando únicamente la cuenta inicial de Administración para poder iniciar sesión y gestionar el alta de datos.
+ * y da de alta exclusivamente los 4 usuarios oficiales de Fontanería Roma con sus DNIs, roles y contraseñas.
  */
 export function createCleanDatabaseState(installationId = 'instalaciones-climalux-demo'): DatabaseState {
   const nowIso = new Date().toISOString();
 
   const profiles: UserProfile[] = [
     {
+      id: 'usr-jc-admin',
+      full_name: 'Juan Carlos',
+      dni: '12345678X',
+      email: 'jugarbar@gmail.com',
+      phone: '+34 600 000 001',
+      role: 'admin',
+      is_active: true,
+      column_preferences: {},
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
+    {
       id: 'usr-admin-1',
       full_name: 'Antonio Roma',
-      dni: '12345678A',
+      dni: '05687529C',
       email: 'anromago@hotmail.com',
-      phone: '+34 600 111 222',
+      phone: '+34 600 000 002',
       role: 'admin',
+      is_active: true,
+      column_preferences: {},
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
+    {
+      id: 'usr-raul-oper',
+      full_name: 'Raúl García',
+      dni: '05971502N',
+      email: 'raul@fontaneriaroma.es',
+      phone: '+34 600 000 003',
+      role: 'operario',
+      is_active: true,
+      column_preferences: {},
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
+    {
+      id: 'usr-marcos-oper',
+      full_name: 'Marcos Roma',
+      dni: '05727599R',
+      email: 'marcos@fontaneriaroma.es',
+      phone: '+34 600 000 004',
+      role: 'operario',
       is_active: true,
       column_preferences: {},
       created_at: nowIso,
@@ -1118,14 +1154,15 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
     company_settings: {
       id: 1,
       company_name: 'Fontanería Roma',
+      logo_url: 'https://zujpqhtmizflqydjruzs.supabase.co/storage/v1/object/public/company-assets/423a1a0d-31cc-40c6-a320-8b628e302bc8/12d9a8eb-8525-4107-811e-644c81756be9',
       tax_id: 'B28991100',
-      contact_phone: '+34 910 001 122',
-      contact_email: 'administracion@climalux-demo.es',
+      contact_phone: '+34 926 000 000',
+      contact_email: 'anromago@hotmail.com',
       address: 'Calle Mayor 1',
-      postal_code: '28001',
-      city: 'Madrid',
-      province: 'Madrid',
-      notification_email: 'avisos@climalux-demo.es',
+      postal_code: '13001',
+      city: 'Ciudad Real',
+      province: 'Ciudad Real',
+      notification_email: 'anromago@hotmail.com',
       work_order_prefix: 'PT',
       work_order_next_seq: 1,
       timezone: 'Europe/Madrid',
@@ -1139,10 +1176,19 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
     },
     profiles,
     passwords: {
-      'anromago@hotmail.com': 'anromago',
-      'jugarbar@gmail.com': 'Admin1234!',
-      'jcgbarrajon@gmail.com': 'Oper1234!',
-      'admin@climalux-demo.es': 'Admin1234!',
+      'jugarbar@gmail.com': 'anromago678*',
+      'anromago@hotmail.com': 'anromago678*',
+      'raul@fontaneriaroma.es': 'anromago678*',
+      'marcos@fontaneriaroma.es': 'anromago678*',
+      '12345678x': 'anromago678*',
+      '05687529c': 'anromago678*',
+      '05971502n': 'anromago678*',
+      '05727599r': 'anromago678*',
+      'juan carlos': 'anromago678*',
+      'antonio roma': 'anromago678*',
+      'raúl garcía': 'anromago678*',
+      'raul garcia': 'anromago678*',
+      'marcos roma': 'anromago678*',
     },
     invitations: [],
     customers: [],
@@ -1158,18 +1204,7 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
     work_files: [],
     work_signatures: [],
     work_order_events: [],
-    review_types: [
-      {
-        id: 'rt-1',
-        name: 'Mantenimiento Preventivo Fontanería y Redes de Agua',
-        suggested_price_cents: 12000,
-        periodicity_unit: 'months',
-        periodicity_value: 12,
-        is_active: true,
-        created_at: nowIso,
-        updated_at: nowIso,
-      },
-    ],
+    review_types: [],
     installation_reviews: [],
     review_occurrences: [],
     notification_outbox: [],

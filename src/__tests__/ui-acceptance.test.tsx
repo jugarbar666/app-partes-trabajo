@@ -314,24 +314,24 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
 
   it('Al indicar un cliente en el alta de parte, se autocompletan la dirección, municipio y contacto', () => {
     defaultBackend.loadCiudadRealDemoDataset();
-    const meson = defaultBackend.getCustomers().find((c) => c.name.includes('Mesón Octavio'))!;
-    expect(meson).toBeDefined();
+    const gesyre = defaultBackend.getCustomers().find((c) => c.name.toUpperCase().includes('GESYRE'))!;
+    expect(gesyre).toBeDefined();
 
     const html = renderToString(
       <UIConfirmationProvider>
         <WorkOrderCreateModal
           backend={defaultBackend}
-          preselectedCustomerId={meson.id}
+          preselectedCustomerId={gesyre.id}
           onClose={() => {}}
           onCreated={() => {}}
         />
       </UIConfirmationProvider>
     );
 
-    // Debe autocompletar la dirección del restaurante y su municipio
-    expect(html).toContain('Calle Severo Ochoa 6');
-    expect(html).toContain('Ciudad Real');
-    expect(html).toContain('José Antonio García (Gerente)');
+    // Debe autocompletar la dirección del cliente y su municipio
+    expect(html).toContain('CL SAUCES N.º 2');
+    expect(html).toContain('CIUDAD REAL');
+    expect(html).toContain('GESYRE MANCHA S.L.');
   });
 
   it('A los partes se pueden asignar tanto operarios como administradores activos', () => {
@@ -446,6 +446,51 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
     expect(htmlBackupsUpdated).toContain('Acciones');
     expect(htmlBackupsUpdated).toContain('Descargar');
     expect(htmlBackupsUpdated).toContain('Restaurar');
+  });
+
+  it('Cerrar sesión y volver a iniciar sesión no provoca error de orden de hooks de React (Error #300 / #310)', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(<App />);
+      });
+
+      // Encontrar el botón "Cerrar sesión" y pulsarlo
+      const buttons = Array.from(container.querySelectorAll('button'));
+      const logoutBtn = buttons.find((b) => b.textContent?.includes('Cerrar sesión'));
+      expect(logoutBtn).toBeDefined();
+
+      await act(async () => {
+        logoutBtn!.click();
+      });
+
+      // Debe mostrarse la pantalla de inicio de sesión sin lanzar React Error #300
+      expect(container.textContent).toContain('Iniciar Sesión');
+      expect(container.textContent).not.toContain('Se ha producido un error inesperado');
+
+      // Volver a iniciar sesión pulsando el formulario de login
+      const loginForm = container.querySelector('form');
+      expect(loginForm).not.toBeNull();
+
+      await act(async () => {
+        loginForm!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+
+      expect(container.textContent).toContain('Cerrar sesión');
+      expect(container.textContent).not.toContain('Se ha producido un error inesperado');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
   });
 });
 

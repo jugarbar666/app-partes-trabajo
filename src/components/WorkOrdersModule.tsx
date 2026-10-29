@@ -882,16 +882,11 @@ export const WorkOrderDetailView: React.FC<{
   onRefresh?: () => void;
   onOpenAuditForWorkOrder?: (woId: string) => void;
 }> = ({ backend, workOrderId, onBack, onRefresh, onOpenAuditForWorkOrder }) => {
-  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } =
-    useUIConfirmation();
   const [tick, setTick] = useState(0);
   const refreshLocal = () => {
     setTick((t) => t + 1);
     onRefresh?.();
   };
-
-  const currentUser = backend.getCurrentUser();
-  const isAdmin = currentUser.role === 'admin';
 
   let wo: ReturnType<typeof backend.getWorkOrderById> | null = null;
   let accessError: string | null = null;
@@ -900,11 +895,6 @@ export const WorkOrderDetailView: React.FC<{
   } catch (err: any) {
     accessError = err?.message || 'Acceso denegado';
   }
-
-  const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
-  const companySettings = useMemo(() => backend.getCompanySettings(), [backend, tick]);
-  const getUserName = (id: string | null) =>
-    cleanOperatorName(profiles.find((p) => p.id === id)?.full_name) || (id ? 'Operario borrado' : '—');
 
   if (accessError || !wo) {
     return (
@@ -924,6 +914,39 @@ export const WorkOrderDetailView: React.FC<{
       </div>
     );
   }
+
+  return (
+    <WorkOrderDetailLoadedView
+      backend={backend}
+      wo={wo}
+      tick={tick}
+      refreshLocal={refreshLocal}
+      onBack={onBack}
+      onRefresh={onRefresh}
+      onOpenAuditForWorkOrder={onOpenAuditForWorkOrder}
+    />
+  );
+};
+
+const WorkOrderDetailLoadedView: React.FC<{
+  backend: InstallationBackendEngine;
+  wo: ReturnType<InstallationBackendEngine['getWorkOrderById']>;
+  tick: number;
+  refreshLocal: () => void;
+  onBack: () => void;
+  onRefresh?: () => void;
+  onOpenAuditForWorkOrder?: (woId: string) => void;
+}> = ({ backend, wo, tick, refreshLocal, onBack, onRefresh, onOpenAuditForWorkOrder }) => {
+  const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } =
+    useUIConfirmation();
+
+  const currentUser = backend.getCurrentUser();
+  const isAdmin = currentUser.role === 'admin';
+
+  const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
+  const companySettings = useMemo(() => backend.getCompanySettings(), [backend, tick]);
+  const getUserName = (id: string | null) =>
+    cleanOperatorName(profiles.find((p) => p.id === id)?.full_name) || (id ? 'Operario borrado' : '—');
 
   const assignments = backend.getWorkOrderAssignments(wo.id);
   const entries = backend.getWorkEntries(wo.id);

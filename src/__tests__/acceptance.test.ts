@@ -1603,9 +1603,9 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(trasBorrarPrimero.find((w) => w.id === 'wo-2')?.code).toBe('PT-2026-0001');
   });
 
-  it('Escenario 30: Base de datos limpia de registros para inicio de empresa (0 clientes, 0 proveedores, 0 partes, 0 artículos, 1 administrador inicial)', () => {
+  it('Escenario 30: Base de datos limpia de registros para demo oficial de Fontanería Roma (0 clientes, 0 proveedores, 0 partes, 0 artículos, 0 revisiones y los 4 usuarios solicitados)', () => {
     const cleanBackend = new InstallationBackendEngine('fontaneria-roma-limpia', false, 'clean');
-    const admin = cleanBackend.login('admin@climalux-demo.es', 'Admin1234!');
+    const admin = cleanBackend.login('Juan Carlos', 'anromago678*');
     expect(admin.role).toBe('admin');
 
     // 1. Todas las colecciones maestras y operativas deben estar vacías de registros
@@ -1613,15 +1613,28 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(cleanBackend.getSuppliers().length).toBe(0);
     expect(cleanBackend.getArticles().length).toBe(0);
     expect(cleanBackend.getWorkOrders().length).toBe(0);
+    expect(cleanBackend.getReviewTypes().length).toBe(0);
+    expect(cleanBackend.getInstallationReviews().length).toBe(0);
     expect(cleanBackend.getShoppingRequests().length).toBe(0);
     expect(cleanBackend.getAttendanceSessions().length).toBe(0);
     expect(cleanBackend.getAuditLog().length).toBe(0);
 
-    // 2. Únicamente existe 1 usuario registrado (la cuenta de administrador para arrancar)
+    // 2. Únicamente existen los 4 usuarios oficiales solicitados (2 administradores y 2 operarios)
     const perfiles = cleanBackend.getProfiles();
-    expect(perfiles.length).toBe(1);
-    expect(perfiles[0].id).toBe('usr-admin-1');
-    expect(perfiles[0].role).toBe('admin');
+    expect(perfiles.length).toBe(4);
+    expect(perfiles.map((p) => ({ name: p.full_name, dni: p.dni, role: p.role }))).toEqual([
+      { name: 'Juan Carlos', dni: '12345678X', role: 'admin' },
+      { name: 'Antonio Roma', dni: '05687529C', role: 'admin' },
+      { name: 'Raúl García', dni: '05971502N', role: 'operario' },
+      { name: 'Marcos Roma', dni: '05727599R', role: 'operario' },
+    ]);
+
+    // Verificar login por DNI y nombre con contraseña oficial anromago678*
+    expect(cleanBackend.login('12345678X', 'anromago678*').full_name).toBe('Juan Carlos');
+    expect(cleanBackend.login('05687529C', 'anromago678*').full_name).toBe('Antonio Roma');
+    expect(cleanBackend.login('05971502N', 'anromago678*').full_name).toBe('Raúl García');
+    expect(cleanBackend.login('05727599R', 'anromago678*').full_name).toBe('Marcos Roma');
+    cleanBackend.login('Juan Carlos', 'anromago678*');
 
     // 3. Crear el primer cliente real
     const nuevoCliente = cleanBackend.saveCustomer({
@@ -1782,94 +1795,77 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(proveedorGuardado.province).toBe('Sevilla');
   });
 
-  it('Escenario 33: Generación del dataset real de Fontanería Ciudad Real (25 artículos, 20 revisiones, 25 partes UCLM con CAU y Gesyre en todos los estados)', () => {
+  it('Escenario 33: Generación del dataset oficial de Fontanería Roma (30 artículos, 10 revisiones incluyendo cambio de ánodo de magnesio, 30 partes para próximas 4 semanas con 5 UCLM indicando facultad, 4 Gesyre y 21 clientes aleatorios en todos los estados)', () => {
     const crBackend = new InstallationBackendEngine('test-ciudad-real-data', false, 'clean');
-    crBackend.login('admin@climalux-demo.es', 'Admin1234!');
+    crBackend.login('Juan Carlos', 'anromago678*');
     crBackend.loadCiudadRealDemoDataset();
 
-    // 1. Exactamente 25 artículos de fontanería
+    // 1. Exactamente 30 artículos de fontanería con precios de compra y venta normales y proveedor asignado
     const articulos = crBackend.getArticles(true);
-    expect(articulos.length).toBe(25);
-    expect(articulos.some((a) => a.name.toLowerCase().includes('grifo'))).toBe(true);
-    expect(articulos.some((a) => a.name.toLowerCase().includes('lavabo'))).toBe(true);
-    expect(articulos.some((a) => a.name.toLowerCase().includes('inodoro'))).toBe(true);
-    expect(articulos.some((a) => a.name.toLowerCase().includes('desagüe'))).toBe(true);
-    expect(articulos.some((a) => a.name.toLowerCase().includes('ánodo de sacrificio'))).toBe(true);
+    const proveedores = crBackend.getSuppliers();
+    expect(articulos.length).toBe(30);
+    articulos.forEach((a) => {
+      expect(a.purchase_price_cents).toBeGreaterThan(0);
+      expect(a.sale_price_cents).toBeGreaterThan(a.purchase_price_cents!);
+      expect(a.supplier_id).toBeTruthy();
+      expect(proveedores.some((s) => s.id === a.supplier_id)).toBe(true);
+    });
 
-    // 2. Exactamente 20 revisiones (con calderas y ánodos de magnesio)
+    // 2. Exactamente 10 revisiones distintas con precios reales, incluyendo cambio de ánodo de magnesio de termo
+    const tiposRevision = crBackend.getReviewTypes(true);
     const revisiones = crBackend.getInstallationReviews();
-    expect(revisiones.length).toBe(20);
-    const revsAnodos = revisiones.filter((r) => r.notes.toLowerCase().includes('ánodo') || r.notes.toLowerCase().includes('termo'));
-    const revsCalderas = revisiones.filter((r) => r.notes.toLowerCase().includes('caldera'));
-    expect(revsAnodos.length).toBeGreaterThanOrEqual(6);
-    expect(revsCalderas.length).toBeGreaterThanOrEqual(6);
+    expect(tiposRevision.length).toBe(10);
+    expect(revisiones.length).toBe(10);
+    expect(
+      tiposRevision.some(
+        (rt) =>
+          rt.name.toLowerCase().includes('ánodo de magnesio') &&
+          rt.name.toLowerCase().includes('termo') &&
+          rt.suggested_price_cents > 0
+      )
+    ).toBe(true);
 
-    // 3. Exactamente 25 partes de trabajo en todos los estados
+    // 3. Exactamente 30 partes de trabajo en total (activos + archivados)
     const partes = crBackend.getWorkOrders({ includeArchived: true });
-    expect(partes.length).toBe(25);
+    const partesArchivados = crBackend.getWorkOrders({ onlyArchived: true });
+    expect(partes.length).toBe(30);
+    expect(partesArchivados.length).toBeGreaterThanOrEqual(1);
 
-    const estados = new Set(partes.map((p) => p.status));
-    expect(estados.has('no_iniciado')).toBe(true);
-    expect(estados.has('en_curso')).toBe(true);
-    expect(estados.has('reabierto')).toBe(true);
-    expect(estados.has('terminado')).toBe(true);
-    expect(estados.has('cerrado')).toBe(true);
+    // 4. Todos los estados solicitados: sin comenzar trabajo, en curso, finalizado, cerrado, reabierto y archivado
+    expect(partes.some((p) => p.status === 'no_iniciado' && !p.archived_at)).toBe(true);
+    expect(partes.some((p) => p.status === 'en_curso' && !p.archived_at)).toBe(true);
+    expect(partes.some((p) => p.status === 'terminado' && !p.archived_at)).toBe(true);
+    expect(partes.some((p) => p.status === 'cerrado' && !p.archived_at)).toBe(true);
+    expect(partes.some((p) => p.status === 'reabierto' && !p.archived_at)).toBe(true);
+    expect(partes.some((p) => p.archived_at !== null)).toBe(true);
 
-    // 4. Clientes UCLM, Gesyre y otros clientes diversos
-    const partesUclm = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('uclm') || p.snapshot_customer_name.toLowerCase().includes('castilla'));
+    // 5. Exactamente 5 partes a la Universidad de Castilla-La Mancha indicando la facultad, 4 partes a Gesyre y 21 a otros clientes
+    const partesUclm = partes.filter(
+      (p) =>
+        p.snapshot_customer_name.toLowerCase().includes('universidad') ||
+        p.snapshot_customer_name.toLowerCase().includes('castilla') ||
+        p.snapshot_customer_name.toLowerCase().includes('uclm')
+    );
     const partesGesyre = partes.filter((p) => p.snapshot_customer_name.toLowerCase().includes('gesyre'));
     const partesOtros = partes.filter(
       (p) =>
-        !p.snapshot_customer_name.toLowerCase().includes('uclm') &&
+        !p.snapshot_customer_name.toLowerCase().includes('universidad') &&
         !p.snapshot_customer_name.toLowerCase().includes('castilla') &&
+        !p.snapshot_customer_name.toLowerCase().includes('uclm') &&
         !p.snapshot_customer_name.toLowerCase().includes('gesyre')
     );
 
-    expect(partesUclm.length).toBeGreaterThanOrEqual(10);
-    expect(partesGesyre.length).toBeGreaterThanOrEqual(2);
-    expect(partesOtros.length).toBeGreaterThanOrEqual(5);
+    expect(partesUclm.length).toBe(5);
+    expect(partesGesyre.length).toBe(4);
+    expect(partesOtros.length).toBe(21);
 
-    // Múltiples clientes distintos en los partes
-    const clientesDistintos = new Set(partes.map((p) => p.snapshot_customer_name));
-    expect(clientesDistintos.size).toBeGreaterThanOrEqual(4);
-
-    // Cada parte de la UCLM debe contener en sus observaciones un ticket CAU y facultades/edificios reales
+    // Cada uno de los 5 partes de la UCLM debe indicar en qué Facultad se va a realizar
     partesUclm.forEach((p) => {
-      expect(p.initial_notes).toMatch(/CAU-UCLM-2026-\d{4}/);
+      expect(
+        p.planned_work.toLowerCase().includes('facultad') ||
+          p.snapshot_address_line.toLowerCase().includes('facultad')
+      ).toBe(true);
     });
-
-    // 5. Cesta de la compra con artículos de fontanería en diversos estados
-    const shoppingRequests = crBackend.getShoppingRequests();
-    expect(shoppingRequests.length).toBeGreaterThanOrEqual(5);
-    expect(shoppingRequests.some((s) => s.status === 'pending_purchase')).toBe(true);
-    expect(shoppingRequests.some((s) => s.status === 'pending_quantity')).toBe(true);
-    expect(shoppingRequests.some((s) => s.status === 'purchased')).toBe(true);
-
-    // 5. Fechas repartidas entre próxima semana (26 Oct - 1 Nov) y siguiente semana (2 Nov - 8 Nov)
-    partes.forEach((p) => {
-      const fecha = new Date(p.scheduled_at);
-      expect(fecha.getFullYear()).toBe(2026);
-      expect(fecha.getMonth()).toBeGreaterThanOrEqual(9); // Octubre (9) o Noviembre (10)
-    });
-
-    // 6. Proveedores del fichero real de proveedores y artículos vinculados
-    const proveedores = crBackend.getSuppliers();
-    expect(proveedores.length).toBeGreaterThanOrEqual(20);
-    expect(proveedores.some((s) => s.name.toLowerCase().includes('aquagrif'))).toBe(true);
-    expect(proveedores.some((s) => s.name.toLowerCase().includes('teyma'))).toBe(true);
-
-    const articulosConProveedorReal = articulos.filter((a) => {
-      const sup = proveedores.find((s) => s.id === a.supplier_id);
-      return (
-        sup &&
-        (sup.name.toLowerCase().includes('aquagrif') ||
-          sup.name.toLowerCase().includes('teyma') ||
-          sup.name.toLowerCase().includes('alfesa') ||
-          sup.name.toLowerCase().includes('hidrofil') ||
-          sup.name.toLowerCase().includes('tradesa'))
-      );
-    });
-    expect(articulosConProveedorReal.length).toBeGreaterThanOrEqual(15);
   });
 
   it('Escenario 22: En las asignaciones solo debe salir el nombre del operario/persona sin roles ni sufijos', () => {

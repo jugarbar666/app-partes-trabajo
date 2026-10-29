@@ -327,10 +327,9 @@ const MainApplicationContent: React.FC = () => {
       }
       const firstAdmin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
       if (firstAdmin) {
-        const pass = firstAdmin.email.toLowerCase() === 'anromago@hotmail.com' ? 'anromago' : 'Admin1234!';
-        return backend.login(firstAdmin.email, pass);
+        return backend.login(firstAdmin.email, 'anromago678*');
       }
-      return backend.login('anromago@hotmail.com', 'anromago');
+      return backend.login('Juan Carlos', 'anromago678*');
     } catch {
       return null;
     }
@@ -339,21 +338,13 @@ const MainApplicationContent: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState(() => {
     try {
       const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
-      return admin ? admin.email : 'anromago@hotmail.com';
+      return admin ? admin.full_name : 'Juan Carlos';
     } catch {
-      return 'anromago@hotmail.com';
+      return 'Juan Carlos';
     }
   });
   const [loginPass, setLoginPass] = useState(() => {
-    try {
-      const admin = backend.getProfiles().find((p) => p.role === 'admin' && p.is_active);
-      if (admin && admin.email.toLowerCase() === 'anromago@hotmail.com') {
-        return 'anromago';
-      }
-      return 'anromago';
-    } catch {
-      return 'anromago';
-    }
+    return 'anromago678*';
   });
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -442,6 +433,8 @@ const MainApplicationContent: React.FC = () => {
   const [masterInitialTab, setMasterInitialTab] = useState<
     'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'users'
   >('customers');
+  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
+  const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
 
@@ -554,10 +547,10 @@ const MainApplicationContent: React.FC = () => {
             >
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Correo electrónico *
+                  Usuario, DNI o Correo electrónico *
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
@@ -594,57 +587,47 @@ const MainApplicationContent: React.FC = () => {
               </div>
 
               <div className="pt-3 border-t border-slate-200 space-y-1.5 text-[11px] text-slate-600">
-                <div className="font-bold">Cuentas de demostración (Datos semilla ficticios):</div>
+                <div className="font-bold">Usuarios autorizados (Fontanería Roma):</div>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
-                      setLoginEmail('anromago@hotmail.com');
-                      setLoginPass('anromago');
+                      setLoginEmail('Juan Carlos');
+                      setLoginPass('anromago678*');
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
-                    Admin (Antonio Roma)
+                    Admin (Juan Carlos - 12345678X)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setLoginEmail('jugarbar@gmail.com');
-                      setLoginPass('Admin1234!');
+                      setLoginEmail('Antonio Roma');
+                      setLoginPass('anromago678*');
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
-                    Admin (Juan Carlos)
+                    Admin (Antonio Roma - 05687529C)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setLoginEmail('jcgbarrajon@gmail.com');
-                      setLoginPass('Oper1234!');
+                      setLoginEmail('Raúl García');
+                      setLoginPass('anromago678*');
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
-                    Operario (Juan Carlos Gómez)
+                    Operario (Raúl García - 05971502N)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setLoginEmail('carlos@climalux-demo.es');
-                      setLoginPass('Oper1234!');
+                      setLoginEmail('Marcos Roma');
+                      setLoginPass('anromago678*');
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
-                    Operario 1 (Carlos)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginEmail('lucia@climalux-demo.es');
-                      setLoginPass('Oper1234!');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
-                  >
-                    Operario 2 (Lucía)
+                    Operario (Marcos Roma - 05727599R)
                   </button>
                 </div>
               </div>
@@ -879,14 +862,11 @@ const MainApplicationContent: React.FC = () => {
   const isAdmin = loggedUser.role === 'admin';
   const tz = sanitizeTimezone(company.timezone);
 
-  const allProfiles = useMemo(() => backend.getProfiles(), [backend, tick]);
+  const allProfiles = backend.getProfiles();
   const getUserName = (id: string) => cleanOperatorName(allProfiles.find((p) => p.id === id)?.full_name) || (id ? 'Operario borrado' : '—');
-  const activeOperators = useMemo(
-    () => allProfiles.filter((p) => p.is_active),
-    [allProfiles]
-  );
+  const activeOperators = allProfiles.filter((p) => p.is_active);
 
-  const visibleWoColumns = useMemo(() => {
+  const visibleWoColumns = (() => {
     const prefs = loggedUser.column_preferences?.work_orders_list || DEFAULT_WO_COLUMNS;
     let cols = prefs.includes('scheduled_at') ? prefs : [...prefs, 'scheduled_at'];
     if (!cols.includes('planned_work')) {
@@ -898,7 +878,7 @@ const MainApplicationContent: React.FC = () => {
       }
     }
     return cols;
-  }, [loggedUser.column_preferences]);
+  })();
 
   const handleToggleWoColumn = (colKey: string) => {
     const next = visibleWoColumns.includes(colKey)
@@ -958,22 +938,20 @@ const MainApplicationContent: React.FC = () => {
   // Detección de aviso para revisiones con vencimiento en la ventana [7 días antes .. 1 día después]:
   // "cuando haya una revision a la que le queda una semana y durante esa semana hasta el dia seguiente que haya vencido y si no se ha realizado"
   // "Si se ha realizado desaparecera ese aviso"
-  const hasUpcomingOrDueReview = useMemo(() => {
-    return reviewOccurrences.some((occ) => {
-      if (occ.status === 'realizada' || occ.status === 'cancelada') {
-        return false;
-      }
-      if (!occ.due_date) return false;
-      const [dueY, dueM, dueD] = occ.due_date.split('-').map(Number);
-      const [todayY, todayM, todayD] = todayLocalDate.split('-').map(Number);
-      if (!dueY || !dueM || !dueD || !todayY || !todayM || !todayD) return false;
-      const dueTime = Date.UTC(dueY, dueM - 1, dueD);
-      const todayTime = Date.UTC(todayY, todayM - 1, todayD);
-      const diffDays = Math.round((dueTime - todayTime) / (1000 * 60 * 60 * 24));
-      // Ventana de aviso: diffDays entre -1 (día siguiente de vencer) y 7 (le queda 1 semana)
-      return diffDays >= -1 && diffDays <= 7;
-    });
-  }, [reviewOccurrences, todayLocalDate]);
+  const hasUpcomingOrDueReview = reviewOccurrences.some((occ) => {
+    if (occ.status === 'realizada' || occ.status === 'cancelada') {
+      return false;
+    }
+    if (!occ.due_date) return false;
+    const [dueY, dueM, dueD] = occ.due_date.split('-').map(Number);
+    const [todayY, todayM, todayD] = todayLocalDate.split('-').map(Number);
+    if (!dueY || !dueM || !dueD || !todayY || !todayM || !todayD) return false;
+    const dueTime = Date.UTC(dueY, dueM - 1, dueD);
+    const todayTime = Date.UTC(todayY, todayM - 1, todayD);
+    const diffDays = Math.round((dueTime - todayTime) / (1000 * 60 * 60 * 24));
+    // Ventana de aviso: diffDays entre -1 (día siguiente de vencer) y 7 (le queda 1 semana)
+    return diffDays >= -1 && diffDays <= 7;
+  });
 
   // Importes facturados/cobrados para resumen visual en tarjetas
   const totalFinishedCents = activeWorkOrders
@@ -1009,28 +987,22 @@ const MainApplicationContent: React.FC = () => {
   const agendaSortedWorkOrders = dashboardSortedWorkOrders;
 
   // Partes pendientes específicos para la vista móvil despejada del Administrador (Regla: igual al operario)
-  const pendingAdminWorkOrders = useMemo(
-    () => agendaSortedWorkOrders.filter((w) => w.status === 'no_iniciado' || w.status === 'en_curso' || w.status === 'reabierto'),
-    [agendaSortedWorkOrders]
+  const pendingAdminWorkOrders = agendaSortedWorkOrders.filter(
+    (w) => w.status === 'no_iniciado' || w.status === 'en_curso' || w.status === 'reabierto'
   );
-  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
-  const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   // Cálculos para el Planing Semanal de la Agenda Operativa (Lunes a Viernes, días laborables)
   // todayLocalDate definido arriba para cálculos de avisos y planning
-  const currentWeekDays = useMemo(() => getWeekDays(todayLocalDate, 0, tz, true), [todayLocalDate, tz]);
-  const nextWeekDays = useMemo(() => getWeekDays(todayLocalDate, 1, tz, true), [todayLocalDate, tz]);
-  const selectedWeekDays = useMemo(
-    () => getWeekDays(todayLocalDate, agendaWeekOffset, tz, true),
-    [todayLocalDate, agendaWeekOffset, tz]
-  );
+  const currentWeekDays = getWeekDays(todayLocalDate, 0, tz, true);
+  const nextWeekDays = getWeekDays(todayLocalDate, 1, tz, true);
+  const selectedWeekDays = getWeekDays(todayLocalDate, agendaWeekOffset, tz, true);
 
   const currentWeekRangeLabel = `${currentWeekDays[0].dayNumber} ${currentWeekDays[0].monthShort} – ${currentWeekDays[currentWeekDays.length - 1].dayNumber} ${currentWeekDays[currentWeekDays.length - 1].monthShort}`;
   const nextWeekRangeLabel = `${nextWeekDays[0].dayNumber} ${nextWeekDays[0].monthShort} – ${nextWeekDays[nextWeekDays.length - 1].dayNumber} ${nextWeekDays[nextWeekDays.length - 1].monthShort}`;
 
   // Agrupación de partes de trabajo por día civil en la semana seleccionada:
   // Los partes pendientes de realizar van arriba (hora ascendente) y los ya realizados pasan al final del día
-  const weekWorkOrdersByDay = useMemo(() => {
+  const weekWorkOrdersByDay = (() => {
     const map = new Map<string, typeof activeWorkOrders>();
     selectedWeekDays.forEach((d) => map.set(d.dateStr, []));
     for (const wo of activeWorkOrders) {
@@ -1051,10 +1023,10 @@ const MainApplicationContent: React.FC = () => {
       });
     });
     return map;
-  }, [selectedWeekDays, activeWorkOrders, tz]);
+  })();
 
   // Agrupación de revisiones por día civil en la semana seleccionada
-  const weekReviewsByDay = useMemo(() => {
+  const weekReviewsByDay = (() => {
     const map = new Map<string, typeof reviewOccurrences>();
     selectedWeekDays.forEach((d) => map.set(d.dateStr, []));
     for (const occ of reviewOccurrences) {
@@ -1064,16 +1036,16 @@ const MainApplicationContent: React.FC = () => {
       }
     }
     return map;
-  }, [selectedWeekDays, reviewOccurrences]);
+  })();
 
   // Totales de la semana seleccionada
-  const totalWeekWorkOrders = useMemo(() => {
+  const totalWeekWorkOrders = (() => {
     let count = 0;
     weekWorkOrdersByDay.forEach((list) => {
       count += list.length;
     });
     return count;
-  }, [weekWorkOrdersByDay]);
+  })();
 
   const handleQuickClockToggle = () => {
     try {

@@ -146,7 +146,7 @@
         try {
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && key.startsWith('agy_partes_installation')) {
+            if (key && key.startsWith('agy_partes_installation_v6_')) {
               const parsed = JSON.parse(localStorage.getItem(key));
               if (parsed && Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
                 const container = document.getElementById('users-container');
