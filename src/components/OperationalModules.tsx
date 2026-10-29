@@ -72,9 +72,9 @@ export const ReviewsAndNotificationsModule: React.FC<{
   // Alta y Modificación de revisión periódica
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
-  const [reviewCustomerId, setReviewCustomerId] = useState(customers[0]?.id || '');
+  const [reviewCustomerId, setReviewCustomerId] = useState('');
   const [reviewAddressId, setReviewAddressId] = useState('');
-  const [reviewTypeId, setReviewTypeId] = useState(reviewTypes[0]?.id || '');
+  const [reviewTypeId, setReviewTypeId] = useState('');
   const [reviewNextDate, setReviewNextDate] = useState('2026-11-30');
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewStatus, setReviewStatus] = useState<'pendiente' | 'programada' | 'realizada' | 'cancelada'>('pendiente');
@@ -609,7 +609,8 @@ export const ReviewsAndNotificationsModule: React.FC<{
                   const custAddrs = addresses.filter((a) => a.customer_id === cid);
                   setReviewAddressId(custAddrs[0]?.id || '');
                 }}
-                placeholder="Escribe para buscar cliente..."
+                placeholder="-- Cliente a seleccionar --"
+                emptyOptionLabel="-- Cliente a seleccionar --"
                 options={customers.map((c) => ({
                   value: c.id,
                   label: c.name,
@@ -624,7 +625,8 @@ export const ReviewsAndNotificationsModule: React.FC<{
               <SearchableSelect
                 value={reviewAddressId}
                 onChange={setReviewAddressId}
-                placeholder="Escribe para buscar instalación..."
+                placeholder="-- Instalación o domicilio a seleccionar --"
+                emptyOptionLabel="-- Instalación o domicilio a seleccionar --"
                 disabled={!reviewCustomerId || availableAddressesForReview.length === 0}
                 options={availableAddressesForReview.map((a) => ({
                   value: a.id,
@@ -638,7 +640,8 @@ export const ReviewsAndNotificationsModule: React.FC<{
               <SearchableSelect
                 value={reviewTypeId}
                 onChange={setReviewTypeId}
-                placeholder="Escribe para buscar tipo de revisión..."
+                placeholder="-- Tipo de revisión a seleccionar --"
+                emptyOptionLabel="-- Tipo de revisión a seleccionar --"
                 options={reviewTypes.map((rt) => ({
                   value: rt.id,
                   label: `${rt.name} (${rt.periodicity_value} ${rt.periodicity_unit} — ${formatCentsToEUR(rt.suggested_price_cents)})`,
@@ -840,7 +843,7 @@ export const ShoppingListModule: React.FC<{
   const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
   const requests = useMemo(() => backend.getShoppingRequests(), [backend, tick]);
 
-  const [selectedArticleId, setSelectedArticleId] = useState(articles[0]?.id || '');
+  const [selectedArticleId, setSelectedArticleId] = useState('');
   const [adminQty, setAdminQty] = useState('1');
   const [notes, setNotes] = useState('');
   const [editingQtyMap, setEditingQtyMap] = useState<Record<string, string>>({});
@@ -932,6 +935,10 @@ export const ShoppingListModule: React.FC<{
 
   const handleAddRequest = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedArticleId) {
+      notifyError('Debes seleccionar un artículo del catálogo.');
+      return;
+    }
     const art = articles.find((a) => a.id === selectedArticleId);
     if (!art) {
       notifyError('Selecciona un artículo existente del desplegable.');
@@ -994,7 +1001,7 @@ export const ShoppingListModule: React.FC<{
             <button
               type="button"
               data-testid="btn-open-add-shopping-modal"
-              onClick={() => setShowAddShoppingModal(true)}
+              onClick={() => { setSelectedArticleId(''); setAdminQty('1'); setNotes(''); setShowAddShoppingModal(true); }}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm"
             >
               <Plus className="w-4 h-4" /> Añadir Artículo a Lista de Compra
@@ -1042,6 +1049,7 @@ export const ShoppingListModule: React.FC<{
                   onChange={(e) => setNaUnit(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
                 >
+                  <option value="">-- Unidad a seleccionar --</option>
                   <option value="ud">Unidad (ud)</option>
                   <option value="m">Metros (m)</option>
                   <option value="kg">Kilogramos (kg)</option>
@@ -1163,7 +1171,8 @@ export const ShoppingListModule: React.FC<{
                   data-testid="select-shopping-article"
                   value={selectedArticleId}
                   onChange={setSelectedArticleId}
-                  placeholder="Escribe para buscar artículo del catálogo..."
+                  placeholder="-- Artículo a seleccionar --"
+                  emptyOptionLabel="-- Artículo a seleccionar --"
                   options={articles.map((a) => ({
                     value: a.id,
                     label: `${a.code} — ${a.name} (${a.unit})`,
@@ -1928,6 +1937,7 @@ export const AttendanceAndReportsModule: React.FC<{
                 onChange={(e) => setAdminUserId(e.target.value)}
                 className="w-full px-3 py-2 rounded border border-slate-300 bg-white"
               >
+                <option value="">-- Trabajador a seleccionar --</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name}

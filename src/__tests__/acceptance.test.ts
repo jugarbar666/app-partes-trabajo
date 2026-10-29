@@ -4,6 +4,7 @@ import {
   addCalendarMonthsClamped,
   calculateDuration,
   calculateReviewNoticeSchedule,
+  cleanOperatorName,
   formatDateES,
   formatDateTimeES,
   formatTimeES,
@@ -1869,5 +1870,54 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       );
     });
     expect(articulosConProveedorReal.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('Escenario 22: En las asignaciones solo debe salir el nombre del operario/persona sin roles ni sufijos', () => {
+    expect(cleanOperatorName('Juan Carlos (Administrador)')).toBe('Juan Carlos');
+    expect(cleanOperatorName('Juan (Operario)')).toBe('Juan');
+    expect(cleanOperatorName('Elena Martín (Administración)')).toBe('Elena Martín');
+    expect(cleanOperatorName('Carlos Gómez (Técnico Senior)')).toBe('Carlos Gómez');
+    expect(cleanOperatorName('Lucía Fernández (Técnica Instaladora)')).toBe('Lucía Fernández');
+    expect(cleanOperatorName('David Ruiz (Operario Tercer Equipo)')).toBe('David Ruiz');
+    expect(cleanOperatorName('Antonio Román')).toBe('Antonio Román');
+
+    // Verificar que los perfiles del backend no tienen sufijos en sus nombres
+    const profiles = backend.getProfiles();
+    profiles.forEach((p) => {
+      expect(p.full_name).not.toMatch(/\((?:Administrador|Operario|Admin|Técnico[^)]*)\)/i);
+    });
+
+    // Crear un parte y asignarlo tanto a admin como a operario activo
+    const jcAdmin = profiles.find((p) => p.email === 'jugarbar@gmail.com')!;
+    const jcOper = profiles.find((p) => p.email === 'jcgbarrajon@gmail.com')!;
+    expect(jcAdmin.is_active).toBe(true);
+    expect(jcOper.is_active).toBe(true);
+
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-demo-1',
+      customer_address_id: 'addr-demo-1',
+      snapshot_customer_name: 'Cliente Demo',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Contacto Demo',
+      snapshot_contact_phone: '+34600123456',
+      snapshot_contact_email: 'demo@ejemplo.es',
+      snapshot_address_line: 'Calle Mayor 1',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Revisión técnica asignada',
+      scheduled_at: '2026-10-25T09:00:00.000Z',
+      initial_notes: '',
+      operator_ids: [jcAdmin.id, jcOper.id],
+    });
+
+    const assignments = backend.getWorkOrderAssignments(wo.id);
+    const assignedNames = assignments.map((a) => {
+      const p = profiles.find((prof) => prof.id === a.operator_id);
+      return cleanOperatorName(p?.full_name);
+    });
+
+    expect(assignedNames).toContain('Juan Carlos');
+    expect(assignedNames.every((name) => !name.includes('(') && !name.includes(')'))).toBe(true);
   });
 });

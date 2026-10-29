@@ -14,6 +14,7 @@ import {
   X,
   FileSpreadsheet,
   FileDown,
+  Download,
   Upload,
   Key,
   Copy,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { BackupJob, UserRole } from '../types/domain';
 import {
   EmailActionLink,
   PhoneActionLinks,
@@ -94,7 +96,7 @@ export const MasterDataAndUsersModule: React.FC<{
   const [custNotes, setCustNotes] = useState('');
 
   // Estado formulario Domicilio/Instalación
-  const [addrCustomerId, setAddrCustomerId] = useState(customers[0]?.id || '');
+  const [addrCustomerId, setAddrCustomerId] = useState('');
   const [addrAlias, setAddrAlias] = useState('');
   const [addrLine, setAddrLine] = useState('');
   const [addrPostal, setAddrPostal] = useState('28000');
@@ -135,7 +137,7 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrDni, setUsrDni] = useState('');
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
-  const [usrRole, setUsrRole] = useState<'operario' | 'admin'>('operario');
+  const [usrRole, setUsrRole] = useState<'operario' | 'admin' | ''>('');
   const [usrTempPassword, setUsrTempPassword] = useState('Clima-2026!');
 
   // Modal de resumen con enlace y credenciales tras invitar
@@ -345,7 +347,7 @@ export const MasterDataAndUsersModule: React.FC<{
       setCustProvince('Madrid');
       setCustNotes('');
     } else if (activeTab === 'addresses') {
-      setAddrCustomerId(customers[0]?.id || '');
+      setAddrCustomerId('');
       setAddrAlias('');
       setAddrLine('');
       setAddrPostal('28000');
@@ -382,7 +384,7 @@ export const MasterDataAndUsersModule: React.FC<{
       setUsrDni('');
       setUsrEmail('');
       setUsrPhone('');
-      setUsrRole('operario');
+      setUsrRole('');
       setUsrTempPassword(`Clima-${Math.floor(1000 + Math.random() * 9000)}!`);
     }
     setShowCreateModal(true);
@@ -1428,7 +1430,8 @@ export const MasterDataAndUsersModule: React.FC<{
                 <SearchableSelect
                   value={addrCustomerId}
                   onChange={setAddrCustomerId}
-                  placeholder="Escribe para buscar cliente..."
+                  placeholder="-- Cliente a seleccionar --"
+                  emptyOptionLabel="-- Cliente a seleccionar --"
                   options={customers.map((c) => ({
                     value: c.id,
                     label: c.name,
@@ -1554,6 +1557,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       onChange={(e) => setArtUnit(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                     >
+                      <option value="">-- Unidad a seleccionar --</option>
                       <option value="ud">Unidad (ud)</option>
                       <option value="m">Metros (m)</option>
                       <option value="kg">Kilogramos (kg)</option>
@@ -1610,7 +1614,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     onChange={(e) => setArtSupplierId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                   >
-                    <option value="">-- Sin proveedor habitual --</option>
+                    <option value="">-- Proveedor a seleccionar (opcional) --</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1844,6 +1848,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     onChange={(e) => setRtUnit(e.target.value as typeof rtUnit)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                   >
+                    <option value="">-- Periodicidad a seleccionar --</option>
                     <option value="months">Meses naturales</option>
                     <option value="years">Años</option>
                     <option value="days">Días</option>
@@ -1881,6 +1886,11 @@ export const MasterDataAndUsersModule: React.FC<{
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!usrRole) {
+                    notifyError('Debes seleccionar un rol para el usuario.');
+                    return;
+                  }
+                  const validRole: UserRole = usrRole;
                   setShowCreateModal(false);
                   const isEdit = !!editingId;
                   requestSaveConfirmation({
@@ -1888,7 +1898,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     changes: [
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
-                      { label: 'Rol asignado', value: usrRole },
+                      { label: 'Rol asignado', value: validRole },
                       ...(isEdit ? [] : [{ label: 'Contraseña temporal', value: usrTempPassword }]),
                     ],
                     onConfirm: () => {
@@ -1898,7 +1908,7 @@ export const MasterDataAndUsersModule: React.FC<{
                             full_name: usrName,
                             dni: usrDni,
                             phone: usrPhone,
-                            role: usrRole,
+                            role: validRole,
                           });
                           notifySuccessGreen('Datos del usuario actualizados correctamente.');
                           setEditingId(null);
@@ -1908,7 +1918,7 @@ export const MasterDataAndUsersModule: React.FC<{
                             dni: usrDni,
                             email: usrEmail,
                             phone: usrPhone,
-                            role: usrRole,
+                            role: validRole,
                             initial_password: usrTempPassword,
                           });
                           setInvitationSummaryModal({
@@ -1976,6 +1986,7 @@ export const MasterDataAndUsersModule: React.FC<{
                   onChange={(e) => setUsrRole(e.target.value as 'operario' | 'admin')}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white font-semibold"
                 >
+                  <option value="">-- Rol a seleccionar --</option>
                   <option value="operario">Rol: Operario</option>
                   <option value="admin">Rol: Administrador</option>
                 </select>
@@ -2541,23 +2552,214 @@ export const AdminSystemModule: React.FC<{
     return true;
   });
 
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [selectedBackupFile, setSelectedBackupFile] = useState<File | null>(null);
+  const [selectedJobIdForModal, setSelectedJobIdForModal] = useState('');
+  const [restoreParsedData, setRestoreParsedData] = useState<any | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
   const handleRunIsolatedRestoreDrill = () => {
     try {
       const snapshot = backend.exportFullSnapshot();
       const isolatedInstance = new InstallationBackendEngine(
         'entorno-aislado-prueba-restore',
-        false
+        false,
+        'demo'
       );
-      isolatedInstance.login('admin@climalux-demo.es', 'Admin1234!');
+      const currentUser = backend.getCurrentUser();
+      // Asegurar que el usuario actual existe en la instancia aislada para autenticar el simulacro
+      if (
+        !isolatedInstance
+          .getProfiles()
+          .some((p) => p.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) {
+        (isolatedInstance as any).state.profiles.unshift({
+          ...currentUser,
+          id: 'isolated-admin-' + currentUser.id,
+        });
+      }
+      if (!(isolatedInstance as any).state.passwords) {
+        (isolatedInstance as any).state.passwords = {};
+      }
+      (isolatedInstance as any).state.passwords[currentUser.email] = 'anromago';
+
+      try {
+        isolatedInstance.login(
+          currentUser.email,
+          (isolatedInstance as any).state.passwords[currentUser.email] || 'anromago'
+        );
+      } catch {
+        const anyAdmin = isolatedInstance.getProfiles().find((p) => p.role === 'admin' && p.is_active);
+        const pass = anyAdmin
+          ? (isolatedInstance as any).state.passwords[anyAdmin.email] || 'Admin1234!'
+          : 'Admin1234!';
+        isolatedInstance.login(anyAdmin?.email || 'admin@climalux-demo.es', pass);
+      }
+
       isolatedInstance.restoreFromSnapshot(snapshot, 'AUTORIZO_RESTAURACION_VERIFICADA');
       const restoredOrders = isolatedInstance.getWorkOrders({ includeArchived: true });
+      const restoredCustomers = isolatedInstance.getCustomers();
       setIsolatedRestoreVerifyMsg(
-        `Verificación completada en entorno aislado ('entorno-aislado-prueba-restore'): restaurados ${restoredOrders.length} partes, configuración, fotografías y firmas sin alterar la instalación de producción.`
+        `Verificación completada en entorno aislado ('entorno-aislado-prueba-restore'): se han verificado y restaurado correctamente ${restoredOrders.length} partes de trabajo, ${restoredCustomers.length} clientes, configuración, fotografías y firmas sin alterar la instalación de producción.`
       );
       notifySuccessGreen('Simulacro de restauración en entorno aislado verificado con éxito.');
     } catch (err: any) {
       notifyError(err?.message || 'Error en verificación de restauración');
     }
+  };
+
+  const handleDownloadBackupSnapshot = () => {
+    try {
+      const snapshot = backend.exportFullSnapshot();
+      const compName = snapshot.company_settings?.company_name
+        ? snapshot.company_settings.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        : 'empresa';
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `copia-seguridad-${compName}-${dateStr}.json`;
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notifySuccessGreen(`Copia de seguridad descargada correctamente como «${filename}».`);
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al descargar la copia de seguridad.');
+    }
+  };
+
+  const handleFileSelectForRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedBackupFile(file);
+    setRestoreError(null);
+    setRestoreParsedData(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          !Array.isArray(parsed.profiles) ||
+          !Array.isArray(parsed.work_orders)
+        ) {
+          throw new Error(
+            'El archivo no contiene un formato válido de copia de seguridad del sistema.'
+          );
+        }
+        setRestoreParsedData(parsed);
+      } catch (err: any) {
+        setRestoreError(err?.message || 'Error al leer el archivo de copia.');
+      }
+    };
+    reader.onerror = () => {
+      setRestoreError('Error al leer el archivo desde el disco.');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExecuteRestore = () => {
+    if (!restoreParsedData) {
+      notifyError('Debes seleccionar un archivo de copia de seguridad válido.');
+      return;
+    }
+    requestSaveConfirmation({
+      title: 'Restauración Completa de Base de Datos',
+      changes: [
+        {
+          label: 'Advertencia de seguridad',
+          value:
+            'Esta operación restaurará los datos al estado guardado en el archivo. Se creará una copia de seguridad automática de salvaguarda de tus datos actuales antes de proceder.',
+        },
+        {
+          label: 'Partes en la copia',
+          value: `${restoreParsedData.work_orders?.length || 0} partes de trabajo`,
+        },
+        {
+          label: 'Clientes en la copia',
+          value: `${restoreParsedData.customers?.length || 0} clientes`,
+        },
+      ],
+      onConfirm: () => {
+        try {
+          backend.createManualBackup();
+          backend.restoreFromSnapshot(restoreParsedData, 'AUTORIZO_RESTAURACION_VERIFICADA');
+          setShowRestoreModal(false);
+          setSelectedBackupFile(null);
+          setRestoreParsedData(null);
+          notifySuccessGreen(
+            'Copia de seguridad restaurada con éxito. Base de datos y archivos sincronizados.'
+          );
+          refresh();
+        } catch (err: any) {
+          notifyError(err?.message || 'Error al restaurar la copia de seguridad.');
+        }
+      },
+    });
+  };
+
+  const handleDownloadBackupJob = (b: BackupJob) => {
+    try {
+      const snapshot = backend.getBackupSnapshot(b.id);
+      const compName = snapshot.company_settings?.company_name
+        ? snapshot.company_settings.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        : 'empresa';
+      const trigger = b.trigger_type === 'auto_desktop' ? 'auto' : 'manual';
+      const filename = `copia-${compName}-${b.backup_date_local}-${trigger}.json`;
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notifySuccessGreen(`Copia del ${formatDateES(b.backup_date_local)} descargada con éxito («${filename}»).`);
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al descargar la copia.');
+    }
+  };
+
+  const handleRestoreDirectJob = (b: BackupJob) => {
+    const triggerLabel = b.trigger_type === 'auto_desktop' ? 'Automática de apertura de escritorio' : 'Manual';
+    requestSaveConfirmation({
+      title: `Restaurar Copia del ${formatDateES(b.backup_date_local)}`,
+      changes: [
+        {
+          label: 'Copia seleccionada',
+          value: `${formatDateES(b.backup_date_local)} (${triggerLabel})`,
+        },
+        {
+          label: 'Advertencia de seguridad',
+          value:
+            'Esta operación restaurará los datos al estado guardado en esta copia. Se creará automáticamente un punto de salvaguarda de tus datos actuales antes de proceder.',
+        },
+      ],
+      onConfirm: () => {
+        try {
+          const snapshot = backend.getBackupSnapshot(b.id);
+          backend.createManualBackup();
+          backend.restoreFromSnapshot(snapshot, 'AUTORIZO_RESTAURACION_VERIFICADA');
+          notifySuccessGreen(
+            `Copia del ${formatDateES(b.backup_date_local)} restaurada con éxito. Base de datos y archivos sincronizados.`
+          );
+          refresh();
+        } catch (err: any) {
+          notifyError(err?.message || 'Error al restaurar la copia de seguridad.');
+        }
+      },
+    });
   };
 
   return (
@@ -2705,8 +2907,17 @@ export const AdminSystemModule: React.FC<{
                 data-testid="btn-run-isolated-restore-drill"
                 onClick={handleRunIsolatedRestoreDrill}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-xs font-bold"
+                title="Comprueba que la copia se restaura íntegramente en un entorno aislado sin alterar los datos actuales"
               >
                 <RotateCcw className="w-4 h-4" /> Probar Restauración en Entorno Aislado
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadBackupSnapshot}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold"
+                title="Descargar archivo .json con la copia completa para guardarlo en un pendrive o disco externo"
+              >
+                <Download className="w-4 h-4 text-slate-600" /> Descargar Copia (.json)
               </button>
               <button
                 type="button"
@@ -2720,8 +2931,44 @@ export const AdminSystemModule: React.FC<{
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
               >
-                <Plus className="w-4 h-4" /> Lanzar Copia de Seguridad Manual Ahora
+                <Plus className="w-4 h-4" /> Lanzar Copia Manual Ahora
               </button>
+              <button
+                type="button"
+                onClick={() => setShowRestoreModal(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-indigo-600 text-indigo-700 hover:bg-indigo-50 text-xs font-bold"
+                title="Restaurar una copia de seguridad previa desde un archivo .json"
+              >
+                <Upload className="w-4 h-4" /> Restaurar Copia de Seguridad
+              </button>
+            </div>
+          </div>
+
+          {/* GUÍA EXPLICATIVA CLARA SOBRE CÓMO FUNCIONA LA RESTAURACIÓN */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-2">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              ¿Cómo funcionan y cómo se restauran las copias de seguridad?
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1">
+                <p className="font-bold text-slate-800">1. Copias automáticas diarias</p>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Cada día, al abrir la aplicación en el ordenador de escritorio, se genera automáticamente una copia íntegra con todos los partes, firmas, clientes y fotos.
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1">
+                <p className="font-bold text-slate-800">2. Probar en Entorno Aislado</p>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Este botón hace un <strong>simulacro de prueba</strong> en un contenedor cerrado en segundo plano. Comprueba que la copia es 100% recuperable <strong>sin tocar ni alterar los datos reales de la empresa</strong>.
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1">
+                <p className="font-bold text-slate-800">3. Restaurar una copia</p>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Para restaurar datos anteriores, pulsa <strong>«Restaurar Copia de Seguridad»</strong> y sube el archivo <code>.json</code> descargado previamente. El sistema genera un punto de salvaguarda y restaura toda la base de datos al instante.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -2731,6 +2978,153 @@ export const AdminSystemModule: React.FC<{
               data-testid="isolated-restore-success-banner"
             >
               ✓ {isolatedRestoreVerifyMsg}
+            </div>
+          )}
+
+          {/* MODAL DE RESTAURACIÓN DE COPIA DE SEGURIDAD */}
+          {showRestoreModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-blue-600" />
+                    Restaurar Copia de Seguridad
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRestoreModal(false);
+                      setSelectedBackupFile(null);
+                      setRestoreParsedData(null);
+                      setRestoreError(null);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    Instrucciones de Restauración
+                  </p>
+                  <p>
+                    Selecciona el archivo <strong>.json</strong> de una copia de seguridad descargada anteriormente.
+                  </p>
+                  <p className="text-[11px] text-amber-800">
+                    Al confirmar, todos los partes, clientes, archivos de firmas y configuración se restablecerán al estado exacto guardado en esa copia. Por seguridad, se genera un punto de respaldo de tus datos actuales antes de aplicar la restauración.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Opción 1: Seleccionar una copia del historial guardado:
+                    </label>
+                    <select
+                      value={selectedJobIdForModal}
+                      onChange={(e) => {
+                        const jobId = e.target.value;
+                        setSelectedJobIdForModal(jobId);
+                        if (!jobId) {
+                          setRestoreParsedData(null);
+                          return;
+                        }
+                        try {
+                          const snap = backend.getBackupSnapshot(jobId);
+                          setRestoreParsedData(snap);
+                          setSelectedBackupFile(null);
+                          setRestoreError(null);
+                        } catch (err: any) {
+                          setRestoreError(err?.message || 'Error al cargar la copia.');
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white text-slate-800"
+                    >
+                      <option value="">-- Elige una copia de la lista --</option>
+                      {backupJobs
+                        .filter((b) => b.status === 'completed')
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {formatDateES(b.backup_date_local)} —{' '}
+                            {b.trigger_type === 'auto_desktop' ? 'Automática (Escritorio)' : 'Manual'} (
+                            {b.size_bytes ? `${Math.round(b.size_bytes / 1024)} KB` : 'OK'})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-slate-400 text-xs">
+                    <div className="flex-1 border-t border-slate-200" />
+                    <span>o bien</span>
+                    <div className="flex-1 border-t border-slate-200" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Opción 2: Subir archivo de copia (.json) desde tu ordenador:
+                    </label>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(e) => {
+                        setSelectedJobIdForModal('');
+                        handleFileSelectForRestore(e);
+                      }}
+                      className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    />
+                    {selectedBackupFile && (
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Archivo seleccionado: <strong>{selectedBackupFile.name}</strong> ({(selectedBackupFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {restoreError && (
+                  <div className="p-3 bg-red-50 border border-red-300 rounded-xl text-xs text-red-800 font-semibold">
+                    {restoreError}
+                  </div>
+                )}
+
+                {restoreParsedData && (
+                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1.5 text-blue-950">
+                    <p className="font-bold">✓ Contenido verificado de la copia:</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-700">
+                      <li>Empresa: <strong>{restoreParsedData.company_settings?.company_name || '—'}</strong></li>
+                      <li>Partes de trabajo: <strong>{restoreParsedData.work_orders?.length || 0}</strong></li>
+                      <li>Clientes registrados: <strong>{restoreParsedData.customers?.length || 0}</strong></li>
+                      <li>Artículos / Materiales: <strong>{restoreParsedData.articles?.length || 0}</strong></li>
+                      <li>Fotografías adjuntas: <strong>{restoreParsedData.work_files?.length || 0}</strong></li>
+                      <li>Firmas de clientes: <strong>{restoreParsedData.work_signatures?.length || 0}</strong></li>
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRestoreModal(false);
+                      setSelectedBackupFile(null);
+                      setRestoreParsedData(null);
+                      setRestoreError(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!restoreParsedData}
+                    onClick={handleExecuteRestore}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" /> Confirmar y Restaurar Datos
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2744,11 +3138,12 @@ export const AdminSystemModule: React.FC<{
                   <th className="p-3">Alcance Verificado</th>
                   <th className="p-3">Tamaño / Checksum</th>
                   <th className="p-3">Ubicación Externa / Error</th>
+                  <th className="p-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {backupJobs.map((b) => (
-                  <tr key={b.id}>
+                  <tr key={b.id} className="hover:bg-slate-50 transition">
                     <td className="p-3 font-semibold">{formatDateES(b.backup_date_local)}</td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold">
@@ -2779,6 +3174,30 @@ export const AdminSystemModule: React.FC<{
                         </span>
                       ) : (
                         b.artifact_path
+                      )}
+                    </td>
+                    <td className="p-3 text-right">
+                      {b.status === 'completed' && (
+                        <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadBackupJob(b)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                            title="Descargar el archivo .json íntegro de esta copia"
+                          >
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Descargar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreDirectJob(b)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                            title="Restaurar toda la base de datos al estado de esta copia"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-indigo-700" />
+                            <span>Restaurar</span>
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

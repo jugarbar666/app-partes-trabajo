@@ -54,6 +54,7 @@ import {
 import { AdminSystemModule, MasterDataAndUsersModule } from './components/AdminAndMasterModules';
 import { ImportExportModule } from './components/ImportExportModule';
 import {
+  cleanOperatorName,
   formatCentsToEUR,
   formatDateES,
   formatDateTimeES,
@@ -115,7 +116,9 @@ const WorkOrderMobileCard: React.FC<{
   getUserName: (id: string) => string;
   onOpenDetail: (id: string) => void;
   onReschedule: (wo: WorkOrder) => void;
-}> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule }) => {
+  onReassign?: (wo: WorkOrder) => void;
+  isAdmin?: boolean;
+}> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule, onReassign, isAdmin }) => {
   const woOps = assignments
     .filter((a) => a.work_order_id === wo.id)
     .map((a) => getUserName(a.operator_id));
@@ -166,18 +169,34 @@ const WorkOrderMobileCard: React.FC<{
               <span className="text-blue-200 font-semibold text-xs mx-1.5">a las</span>
               <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
             </div>
-            <button
-              type="button"
-              data-testid={`operator-card-reschedule-${wo.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onReschedule(wo);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
-              title="Reprogramar fecha y hora prevista"
-            >
-              Reprogramar
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid={`operator-card-reschedule-${wo.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReschedule(wo);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
+                title="Reprogramar fecha y hora prevista"
+              >
+                Reprogramar
+              </button>
+              {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
+                <button
+                  type="button"
+                  data-testid={`operator-card-reassign-${wo.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReassign(wo);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
+                  title="Reasignar operarios al parte (Solo Administrador)"
+                >
+                  Reasignar
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -235,8 +254,24 @@ const WorkOrderMobileCard: React.FC<{
           </div>
         )}
 
-        <div className="text-xs text-slate-600">
-          👷 <strong>Equipo asignado:</strong> {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
+        <div className="text-xs text-slate-600 flex items-center justify-between gap-2">
+          <div>
+            👷 <strong>Equipo asignado:</strong> {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
+          </div>
+          {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
+            <button
+              type="button"
+              data-testid={`mobile-card-reassign-btn-${wo.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReassign(wo);
+              }}
+              className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[11px] font-bold transition cursor-pointer shrink-0"
+              title="Reasignar operarios al parte"
+            >
+              Reasignar
+            </button>
+          )}
         </div>
       </div>
 
@@ -273,21 +308,20 @@ const MainApplicationContent: React.FC = () => {
               p.full_name.toLowerCase().includes(userParam.toLowerCase()) ||
               p.id === userParam
           );
-          if (match) {
-            const pass = match.role === 'admin' ? 'Admin1234!' : 'Oper1234!';
-            return backend.login(match.email, pass);
+          if (match && match.is_active) {
+            return backend.setSessionUser(match.id);
           }
         }
         if (roleParam === 'operario') {
           const firstOper = profiles.find((p) => p.role === 'operario' && p.is_active);
           if (firstOper) {
-            return backend.login(firstOper.email, 'Oper1234!');
+            return backend.setSessionUser(firstOper.id);
           }
         }
         if (roleParam === 'admin') {
           const firstAdmin = profiles.find((p) => p.role === 'admin' && p.is_active);
           if (firstAdmin) {
-            return backend.login(firstAdmin.email, 'Admin1234!');
+            return backend.setSessionUser(firstAdmin.id);
           }
         }
       }
@@ -386,12 +420,20 @@ const MainApplicationContent: React.FC = () => {
   const [rescheduleDatetimeInput, setRescheduleDatetimeInput] = useState('');
   const [rescheduleReasonInput, setRescheduleReasonInput] = useState('');
 
+  // Modal rápido de reasignación de operarios (Solo Administrador)
+  const [reassignWoModal, setReassignWoModal] = useState<{
+    open: boolean;
+    workOrderId: string;
+    code: string;
+    selectedOperatorIds: string[];
+  }>({ open: false, workOrderId: '', code: '', selectedOperatorIds: [] });
+
   // Planing semanal en Agenda Operativa (0 = semana actual, 1 = semana siguiente)
   const [agendaWeekOffset, setAgendaWeekOffset] = useState<number>(0);
 
   // Modal rápido de «Añadir a compra» siempre accesible
   const [quickShopModalOpen, setQuickShopModalOpen] = useState(false);
-  const [quickShopArticleId, setQuickShopArticleId] = useState('art-1');
+  const [quickShopArticleId, setQuickShopArticleId] = useState('');
 
   const [auditEntityFilter, setAuditEntityFilter] = useState('');
   const [adminInitialSection, setAdminInitialSection] = useState<'audit' | 'backups' | 'settings'>(
@@ -563,6 +605,26 @@ const MainApplicationContent: React.FC = () => {
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
                   >
                     Admin (Antonio Roma)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail('jugarbar@gmail.com');
+                      setLoginPass('Admin1234!');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
+                  >
+                    Admin (Juan Carlos)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail('jcgbarrajon@gmail.com');
+                      setLoginPass('Oper1234!');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold"
+                  >
+                    Operario (Juan Carlos Gómez)
                   </button>
                   <button
                     type="button"
@@ -818,7 +880,11 @@ const MainApplicationContent: React.FC = () => {
   const tz = sanitizeTimezone(company.timezone);
 
   const allProfiles = useMemo(() => backend.getProfiles(), [backend, tick]);
-  const getUserName = (id: string) => allProfiles.find((p) => p.id === id)?.full_name || (id ? 'Operario borrado' : '—');
+  const getUserName = (id: string) => cleanOperatorName(allProfiles.find((p) => p.id === id)?.full_name) || (id ? 'Operario borrado' : '—');
+  const activeOperators = useMemo(
+    () => allProfiles.filter((p) => p.is_active),
+    [allProfiles]
+  );
 
   const visibleWoColumns = useMemo(() => {
     const prefs = loggedUser.column_preferences?.work_orders_list || DEFAULT_WO_COLUMNS;
@@ -846,6 +912,18 @@ const MainApplicationContent: React.FC = () => {
   const activeWorkOrders = backend.getWorkOrders({ includeArchived: false });
   const archivedWorkOrders = isAdmin ? backend.getWorkOrders({ onlyArchived: true }) : [];
   const assignments = backend.getWorkOrderAssignments();
+
+  const handleOpenReassign = (targetWo: WorkOrder) => {
+    const currentAssigned = assignments
+      .filter((a) => a.work_order_id === targetWo.id && a.is_active)
+      .map((a) => a.operator_id);
+    setReassignWoModal({
+      open: true,
+      workOrderId: targetWo.id,
+      code: targetWo.code,
+      selectedOperatorIds: currentAssigned,
+    });
+  };
   const shoppingRequests = backend.getShoppingRequests();
   const pendingShoppingCount = shoppingRequests.filter(
     (s) => s.status === 'pending_quantity' || s.status === 'pending_purchase'
@@ -1288,6 +1366,21 @@ const MainApplicationContent: React.FC = () => {
                             </span>
                           </div>
 
+                          {isAdmin && wo.status !== 'cerrado' && wo.archived_at === null && (
+                            <button
+                              type="button"
+                              data-testid={`planning-reassign-btn-${wo.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenReassign(wo);
+                              }}
+                              className="w-full py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[10px] font-bold text-center transition cursor-pointer"
+                              title="Reasignar operarios al parte (Solo Administrador)"
+                            >
+                              Reasignar Operarios
+                            </button>
+                          )}
+
                           {/* Aviso de reapertura si fue devuelto por administración */}
                           {wo.reopen_reason && (
                             <div
@@ -1421,7 +1514,7 @@ const MainApplicationContent: React.FC = () => {
                 }}
                 className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b1120] border border-slate-700 text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
               >
-                {backend.getProfiles().map((p) => (
+                {backend.getProfiles().filter((p) => p.is_active).map((p) => (
                   <option key={p.id} value={p.email}>
                     {p.role === 'admin' ? '👤 ' : '🔧 '}
                     {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
@@ -1743,7 +1836,7 @@ const MainApplicationContent: React.FC = () => {
                     : 'bg-blue-50 border-blue-300 text-blue-800'
                 }`}
               >
-                {backend.getProfiles().map((p) => (
+                {backend.getProfiles().filter((p) => p.is_active).map((p) => (
                   <option key={p.id} value={p.email}>
                     {p.role === 'admin' ? '👤 ' : '👷 '}
                     {p.full_name} ({p.role === 'admin' ? 'Admin' : 'Operario'})
@@ -2036,6 +2129,8 @@ const MainApplicationContent: React.FC = () => {
                               tz={tz}
                               assignments={assignments}
                               getUserName={getUserName}
+                              isAdmin={isAdmin}
+                              onReassign={handleOpenReassign}
                               onOpenDetail={(id) => {
                                 setSelectedWorkOrderId(id);
                                 navigateTo('work_order_detail');
@@ -2325,24 +2420,40 @@ const MainApplicationContent: React.FC = () => {
                                       {formatTimeES(wo.scheduled_at, tz)} h
                                     </span>
                                     {wo.status !== 'cerrado' && wo.archived_at === null && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setRescheduleDatetimeInput(wo.scheduled_at.slice(0, 16));
-                                          setRescheduleReasonInput('');
-                                          setRescheduleWoModal({
-                                            open: true,
-                                            workOrderId: wo.id,
-                                            code: wo.code,
-                                            currentScheduledAt: wo.scheduled_at,
-                                          });
-                                        }}
-                                        className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-[11px] font-bold transition cursor-pointer"
-                                        title="Reprogramar fecha y hora prevista"
-                                      >
-                                        Reprogramar
-                                      </button>
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRescheduleDatetimeInput(wo.scheduled_at.slice(0, 16));
+                                            setRescheduleReasonInput('');
+                                            setRescheduleWoModal({
+                                              open: true,
+                                              workOrderId: wo.id,
+                                              code: wo.code,
+                                              currentScheduledAt: wo.scheduled_at,
+                                            });
+                                          }}
+                                          className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-[11px] font-bold transition cursor-pointer"
+                                          title="Reprogramar fecha y hora prevista"
+                                        >
+                                          Reprogramar
+                                        </button>
+                                        {isAdmin && (
+                                          <button
+                                            type="button"
+                                            data-testid={`dashboard-reassign-btn-${wo.id}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenReassign(wo);
+                                            }}
+                                            className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[11px] font-bold transition cursor-pointer"
+                                            title="Reasignar operarios al parte (Solo Administrador)"
+                                          >
+                                            Reasignar
+                                          </button>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                   {/* Aviso si el parte ha sido reabierto con motivo */}
@@ -2788,6 +2899,8 @@ const MainApplicationContent: React.FC = () => {
                           tz={tz}
                           assignments={assignments}
                           getUserName={getUserName}
+                          isAdmin={isAdmin}
+                          onReassign={handleOpenReassign}
                           onOpenDetail={(id) => {
                             setSelectedWorkOrderId(id);
                             navigateTo('work_order_detail');
@@ -3073,7 +3186,21 @@ const MainApplicationContent: React.FC = () => {
                                 />
                               </td>
                             )}
-                            <td className="p-3.5 text-right">
+                            <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
+                              {isAdmin && wo.status !== 'cerrado' && wo.archived_at === null && (
+                                <button
+                                  type="button"
+                                  data-testid={`table-reassign-btn-${wo.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReassign(wo);
+                                  }}
+                                  className="inline-flex items-center justify-center text-center whitespace-nowrap px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs cursor-pointer"
+                                  title="Reasignar operarios al parte (Solo Administrador)"
+                                >
+                                  Reasignar
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3191,7 +3318,7 @@ const MainApplicationContent: React.FC = () => {
           <button
             type="button"
             data-testid="btn-persistent-add-to-shopping"
-            onClick={() => setQuickShopModalOpen(true)}
+            onClick={() => { setQuickShopArticleId(''); setQuickShopModalOpen(true); }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
           >
             <ShoppingCart className="w-4 h-4" /> Añadir a compra
@@ -3245,6 +3372,7 @@ const MainApplicationContent: React.FC = () => {
                 onChange={(e) => setQuickShopArticleId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
               >
+                <option value="">-- Artículo a seleccionar --</option>
                 {articlesCatalog.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.code} — {a.name} ({a.unit})
@@ -3427,6 +3555,157 @@ const MainApplicationContent: React.FC = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal global de reasignación de operarios (Solo Administrador) */}
+      {reassignWoModal.open && (
+        <div
+          data-testid="modal-reassign-quick"
+          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Reasignar Operarios — {reassignWoModal.code}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setReassignWoModal({
+                    open: false,
+                    workOrderId: '',
+                    code: '',
+                    selectedOperatorIds: [],
+                  })
+                }
+                className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-600">
+              Selecciona uno o más operarios o administradores activos para asignarlos a este parte. Puedes asignar un solo técnico o un equipo mixto.
+            </p>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto p-1">
+              {activeOperators.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+                  No hay personal activo registrado en el sistema.
+                </div>
+              ) : (
+                activeOperators.map((op) => {
+                  const isChecked = reassignWoModal.selectedOperatorIds.includes(op.id);
+                  return (
+                    <label
+                      key={op.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer ${
+                        isChecked
+                          ? 'bg-blue-50/80 border-blue-400 text-blue-950 font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setReassignWoModal((prev) => ({
+                              ...prev,
+                              selectedOperatorIds: [...prev.selectedOperatorIds, op.id],
+                            }));
+                          } else {
+                            setReassignWoModal((prev) => ({
+                              ...prev,
+                              selectedOperatorIds: prev.selectedOperatorIds.filter(
+                                (id) => id !== op.id
+                              ),
+                            }));
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-semibold text-slate-800">{cleanOperatorName(op.full_name)}</span>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="text-[11px] text-slate-500">
+              Seleccionados: <strong>{reassignWoModal.selectedOperatorIds.length}</strong> persona(s)
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() =>
+                  setReassignWoModal({
+                    open: false,
+                    workOrderId: '',
+                    code: '',
+                    selectedOperatorIds: [],
+                  })
+                }
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-quick-reassign"
+                onClick={() => {
+                  if (reassignWoModal.selectedOperatorIds.length === 0) {
+                    notifyError('Debes seleccionar al menos un operario.');
+                    return;
+                  }
+                  const selectedNames = reassignWoModal.selectedOperatorIds
+                    .map((id) => getUserName(id))
+                    .join(', ');
+                  requestSaveConfirmation({
+                    title: `Reasignar Operarios — ${reassignWoModal.code}`,
+                    changes: [
+                      {
+                        label: 'Nuevos operarios asignados',
+                        value: selectedNames,
+                      },
+                    ],
+                    onConfirm: () => {
+                      try {
+                        backend.updateWorkOrderPlanningAndAssignments(
+                          reassignWoModal.workOrderId,
+                          {
+                            operator_ids: reassignWoModal.selectedOperatorIds,
+                          }
+                        );
+                        notifySuccessGreen(
+                          `Parte ${reassignWoModal.code} reasignado con éxito a: ${selectedNames}`
+                        );
+                        setReassignWoModal({
+                          open: false,
+                          workOrderId: '',
+                          code: '',
+                          selectedOperatorIds: [],
+                        });
+                        refresh();
+                      } catch (err: any) {
+                        notifyError(err?.message || 'Error al reasignar operarios.');
+                      }
+                    },
+                  });
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+              >
+                Guardar Asignación
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

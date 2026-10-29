@@ -45,38 +45,47 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
     passwords['admin@climalux-demo.es'] = 'Admin1234!';
   }
 
-  const existingOper1 = profiles.find((p) => p.email === 'carlos@climalux-demo.es');
-  if (!existingOper1) {
+  if (!profiles.some((p) => p.email === 'jugarbar@gmail.com')) {
     profiles.push({
-      id: 'usr-oper-1',
-      full_name: 'Carlos Gómez (Oficial 1ª Fontanero)',
-      dni: '23456789B',
-      email: 'carlos@climalux-demo.es',
-      phone: '+34 655 223 344',
+      id: 'usr-jc-admin',
+      full_name: 'Juan Carlos',
+      dni: '00000002A',
+      email: 'jugarbar@gmail.com',
+      phone: '+34 600 000 002',
+      role: 'admin',
+      is_active: true,
+      column_preferences: {},
+      created_at: '2026-01-01T09:00:00.000Z',
+      updated_at: '2026-01-01T09:00:00.000Z',
+    });
+    passwords['jugarbar@gmail.com'] = 'Admin1234!';
+  }
+
+  if (!profiles.some((p) => p.email === 'jcgbarrajon@gmail.com')) {
+    profiles.push({
+      id: 'usr-jc-oper',
+      full_name: 'Juan Carlos Gómez Barrajón',
+      dni: '05678901C',
+      email: 'jcgbarrajon@gmail.com',
+      phone: '+34 600 123 456',
       role: 'operario',
       is_active: true,
       column_preferences: {},
-      created_at: '2026-01-15T08:00:00.000Z',
-      updated_at: '2026-01-15T08:00:00.000Z',
+      created_at: '2026-01-01T09:00:00.000Z',
+      updated_at: '2026-01-01T09:00:00.000Z',
     });
-    passwords['carlos@climalux-demo.es'] = 'Oper1234!';
+    passwords['jcgbarrajon@gmail.com'] = 'Oper1234!';
+  }
+
+  // Respetar estrictamente las bajas: Carlos y Lucía dados de baja permanecen inactivos (is_active: false)
+  const existingOper1 = profiles.find((p) => p.email === 'carlos@climalux-demo.es');
+  if (existingOper1) {
+    existingOper1.is_active = false;
   }
 
   const existingOper2 = profiles.find((p) => p.email === 'lucia@climalux-demo.es');
-  if (!existingOper2) {
-    profiles.push({
-      id: 'usr-oper-2',
-      full_name: 'Lucía Fernández (Técnica Instaladora)',
-      dni: '34567890C',
-      email: 'lucia@climalux-demo.es',
-      phone: '+34 655 445 566',
-      role: 'operario',
-      is_active: true,
-      column_preferences: {},
-      created_at: '2026-01-15T08:00:00.000Z',
-      updated_at: '2026-01-15T08:00:00.000Z',
-    });
-    passwords['lucia@climalux-demo.es'] = 'Oper1234!';
+  if (existingOper2) {
+    existingOper2.is_active = false;
   }
 
   // 2. CLIENTES: UCLM, GESYRE Y CLIENTES EXISTENTES
@@ -953,6 +962,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
   const operators = profiles.filter((p) => p.role === 'operario');
   const oper1Id = operators[0]?.id || profiles[0].id;
   const oper2Id = operators[1]?.id || profiles[0].id;
+  const oper3Id = operators[2]?.id || operators[0]?.id || profiles[0].id;
 
   // 6.5 SOLICITUDES DE LA CESTA DE LA COMPRA (STOCK Y PEDIDOS URGENTES)
   const shopping_requests: ShoppingRequest[] = [
@@ -1169,7 +1179,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       notes: 'Pieza de recambio original solicitada al distribuidor para ensamblar ajuste a presión.',
       cau: 'CAU-UCLM-2026-8494',
       buildingName: 'Facultad de Ciencias y Tecnologías Químicas — Laboratorio de Química Orgánica',
-      operatorIds: [oper1Id],
+      operatorIds: [oper1Id, oper3Id],
     },
     // 5. UCLM Paraninfo - Cerrado - Martes 27 Oct 12:00
     {
@@ -1182,7 +1192,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       notes: 'Facturado conforme a pliego de mantenimiento preventivo UCLM. Recibo de conformidad firmado.',
       cau: 'CAU-UCLM-2026-8495',
       buildingName: 'Paraninfo Luis Arroyo — Vestíbulo Principal, Aseos Públicos',
-      operatorIds: [oper1Id, oper2Id],
+      operatorIds: [oper1Id, oper2Id, oper3Id],
       totalAmountCents: 32000,
       closedAt: '2026-10-27T14:30:00.000Z',
     },
@@ -1210,7 +1220,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
       notes: 'Material en almacén de Fontanería Roma preparado para desplazamiento.',
       cau: 'CAU-UCLM-2026-8497',
       buildingName: 'Biblioteca General del Campus — Planta Baja, Aseo Accesible',
-      operatorIds: [oper1Id],
+      operatorIds: [oper3Id],
     },
     // 8. UCLM Servicios Generales - Terminado - Jueves 29 Oct 09:15
     {

@@ -164,7 +164,6 @@ export const SignaturePadCanvas: React.FC<{
         {!hasStroke && (
           <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 select-none px-4 text-center">
             <span className="text-sm font-semibold text-slate-500">✍️ Firme aquí dentro con el dedo</span>
-            <span className="text-xs text-slate-400 mt-1">El espacio es amplio para firmar cómodamente</span>
             <div className="w-3/4 border-b border-dashed border-slate-300 mt-6" />
           </div>
         )}

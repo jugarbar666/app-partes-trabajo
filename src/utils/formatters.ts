@@ -883,3 +883,16 @@ export function getWeekDays(
   }
   return days;
 }
+
+/**
+ * Limpia el nombre de un operario o administrador eliminando sufijos de rol entre paréntesis
+ * (ej. "Juan Carlos (Administrador)" -> "Juan Carlos", "Juan (Operario)" -> "Juan").
+ * Para que en las asignaciones solo aparezca estrictamente el nombre del operario.
+ */
+export function cleanOperatorName(rawName?: string | null): string {
+  if (!rawName) return '';
+  return rawName
+    .replace(/\s*\((?:Administrador[^)]*|Administración[^)]*|Operari[oa][^)]*|Admin[^)]*|Técnic[oa][^)]*)\)/gi, '')
+    .trim();
+}
+

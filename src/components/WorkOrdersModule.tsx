@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar,
   UserPlus,
+  UserCheck,
   Plus,
   Camera,
   FileText,
@@ -36,6 +37,7 @@ import {
 import { SignaturePadCanvas } from './SignaturePadCanvas';
 import {
   calculateDuration,
+  cleanOperatorName,
   formatCentsToEUR,
   formatDateES,
   formatDateTimeES,
@@ -114,12 +116,15 @@ export const WorkOrderCreateModal: React.FC<{
     return [...clientAddrs, ...otherAddrs];
   }, [allAddresses, selectedCustomerId]);
 
-  const [selectedAddressId, setSelectedAddressId] = useState<string>(
-    preselectedAddressId || ''
-  );
-
   const initialCustomer = preselectedCustomerId ? customers.find((c) => c.id === preselectedCustomerId) : undefined;
-  const initialAddr = preselectedAddressId ? addresses.find((a) => a.id === preselectedAddressId) : undefined;
+  const initialClientAddrs = preselectedCustomerId ? allAddresses.filter((a) => a.customer_id === preselectedCustomerId) : [];
+  const initialAddr = preselectedAddressId
+    ? allAddresses.find((a) => a.id === preselectedAddressId)
+    : initialClientAddrs[0];
+
+  const [selectedAddressId, setSelectedAddressId] = useState<string>(
+    initialAddr?.id || preselectedAddressId || ''
+  );
 
   const [contactName, setContactName] = useState(
     initialAddr?.contact_name || initialCustomer?.contact_name || initialCustomer?.name || ''
@@ -131,11 +136,17 @@ export const WorkOrderCreateModal: React.FC<{
     initialAddr?.contact_email || initialCustomer?.emails[0] || ''
   );
   const [addressLine, setAddressLine] = useState(
-    initialAddr?.address_line || (preselectedCustomerId ? initialCustomer?.main_address || '' : '')
+    initialAddr?.address_line || initialCustomer?.main_address || ''
   );
-  const [postalCode, setPostalCode] = useState(initialAddr?.postal_code || (preselectedCustomerId ? '28000' : ''));
-  const [city, setCity] = useState(initialAddr?.city || (preselectedCustomerId ? 'Madrid' : ''));
-  const [province, setProvince] = useState(initialAddr?.province || (preselectedCustomerId ? 'Madrid' : ''));
+  const [postalCode, setPostalCode] = useState(
+    initialAddr?.postal_code || initialCustomer?.postal_code || ''
+  );
+  const [city, setCity] = useState(
+    initialAddr?.city || initialCustomer?.city || ''
+  );
+  const [province, setProvince] = useState(
+    initialAddr?.province || initialCustomer?.province || ''
+  );
 
   const [plannedWork, setPlannedWork] = useState(preselectedPlannedWork || '');
   const [scheduledAt, setScheduledAt] = useState(
@@ -149,12 +160,10 @@ export const WorkOrderCreateModal: React.FC<{
   );
 
   const operators = useMemo(
-    () => backend.getProfiles().filter((p) => p.role === 'operario' && p.is_active),
+    () => backend.getProfiles().filter((p) => p.is_active),
     [backend]
   );
-  const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>(
-    operators[0] ? [operators[0].id] : []
-  );
+  const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
 
   const [showInlineCustomerModal, setShowInlineCustomerModal] = useState(false);
   const [newCustomerCode, setNewCustomerCode] = useState('');
@@ -171,9 +180,9 @@ export const WorkOrderCreateModal: React.FC<{
 
   const handleSelectCustomer = (custId: string) => {
     setSelectedCustomerId(custId);
-    setSelectedAddressId('');
     setAddressSearch('');
     if (!custId) {
+      setSelectedAddressId('');
       setContactName('');
       setContactPhone('');
       setContactEmail('');
@@ -185,23 +194,49 @@ export const WorkOrderCreateModal: React.FC<{
     }
     const cust = customers.find((c) => c.id === custId);
     if (cust) {
-      setContactName(cust.contact_name || cust.name || '');
-      setContactPhone(cust.phones[0] || '');
-      setContactEmail(cust.emails[0] || '');
-      setAddressLine('');
-      setPostalCode('');
-      setCity('');
-      setProvince('');
+      const clientAddrs = allAddresses.filter((a) => a.customer_id === custId);
+      const defaultAddr = clientAddrs[0];
+
+      if (defaultAddr) {
+        setSelectedAddressId(defaultAddr.id);
+        setAddressLine(defaultAddr.address_line || cust.main_address || '');
+        setPostalCode(defaultAddr.postal_code || cust.postal_code || '');
+        setCity(defaultAddr.city || cust.city || '');
+        setProvince(defaultAddr.province || cust.province || '');
+        setContactName(defaultAddr.contact_name || cust.contact_name || cust.name || '');
+        setContactPhone(defaultAddr.contact_phone || cust.phones[0] || '');
+        setContactEmail(defaultAddr.contact_email || cust.emails[0] || '');
+      } else {
+        setSelectedAddressId('');
+        setAddressLine(cust.main_address || '');
+        setPostalCode(cust.postal_code || '');
+        setCity(cust.city || '');
+        setProvince(cust.province || '');
+        setContactName(cust.contact_name || cust.name || '');
+        setContactPhone(cust.phones[0] || '');
+        setContactEmail(cust.emails[0] || '');
+      }
     }
   };
 
   const handleSelectAddress = (addrId: string) => {
     setSelectedAddressId(addrId);
     if (!addrId) {
-      setAddressLine('');
-      setPostalCode('');
-      setCity('');
-      setProvince('');
+      const cust = customers.find((c) => c.id === selectedCustomerId);
+      if (cust) {
+        setAddressLine(cust.main_address || '');
+        setPostalCode(cust.postal_code || '');
+        setCity(cust.city || '');
+        setProvince(cust.province || '');
+        setContactName(cust.contact_name || cust.name || '');
+        setContactPhone(cust.phones[0] || '');
+        setContactEmail(cust.emails[0] || '');
+      } else {
+        setAddressLine('');
+        setPostalCode('');
+        setCity('');
+        setProvince('');
+      }
       return;
     }
     const addr = allAddresses.find((a) => a.id === addrId);
@@ -210,10 +245,10 @@ export const WorkOrderCreateModal: React.FC<{
         setSelectedCustomerId(addr.customer_id);
       }
       const cust = customers.find((c) => c.id === addr.customer_id);
-      setAddressLine(addr.address_line);
-      setPostalCode(addr.postal_code || '');
-      setCity(addr.city || '');
-      setProvince(addr.province || '');
+      setAddressLine(addr.address_line || cust?.main_address || '');
+      setPostalCode(addr.postal_code || cust?.postal_code || '');
+      setCity(addr.city || cust?.city || '');
+      setProvince(addr.province || cust?.province || '');
       if (addr.contact_name || cust?.contact_name || cust?.name) {
         setContactName(addr.contact_name || cust?.contact_name || cust?.name || '');
       }
@@ -430,7 +465,7 @@ export const WorkOrderCreateModal: React.FC<{
                   value={selectedCustomerId}
                   onChange={handleSelectCustomer}
                   emptyOptionLabel="-- Cliente a seleccionar --"
-                  placeholder="Escribe para buscar cliente..."
+                  placeholder="-- Cliente a seleccionar --"
                   options={customers.map((c) => ({
                     value: c.id,
                     label: c.name,
@@ -447,7 +482,7 @@ export const WorkOrderCreateModal: React.FC<{
                   value={selectedAddressId}
                   onChange={handleSelectAddress}
                   emptyOptionLabel="-- Dirección o calle a seleccionar --"
-                  placeholder="Escribe calle, dirección, municipio o cliente..."
+                  placeholder="-- Dirección o calle a seleccionar --"
                   disabled={addresses.length === 0}
                   options={addresses.map((a) => {
                     const cust = customers.find((c) => c.id === a.customer_id);
@@ -455,7 +490,7 @@ export const WorkOrderCreateModal: React.FC<{
                     const custPart = a.customer_id !== selectedCustomerId && cust ? ` — Cliente: ${cust.name}` : '';
                     return {
                       value: a.id,
-                      label: `${a.address_line}${cityPart}${custPart}`,
+                      label: `${a.alias ? `${a.alias} — ` : ''}${a.address_line}${cityPart}${custPart}`,
                     };
                   })}
                 />
@@ -529,13 +564,13 @@ export const WorkOrderCreateModal: React.FC<{
                 2. Trabajos a realizar *
               </label>
               <textarea
-                rows={2}
+                rows={4}
                 required
                 data-testid="input-wo-planned-work"
                 value={plannedWork}
                 onChange={(e) => setPlannedWork(e.target.value)}
                 placeholder="Describe la avería, instalación o revisión a realizar..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm min-h-[90px] resize-y"
               />
             </div>
             <div>
@@ -594,8 +629,8 @@ export const WorkOrderCreateModal: React.FC<{
                     key={op.id}
                     className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer font-medium ${
                       checked
-                        ? 'bg-blue-50 border-blue-500 text-blue-900'
-                        : 'bg-white border-slate-200 text-slate-700'
+                        ? 'bg-blue-50 border-blue-500 text-blue-900 font-bold'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <input
@@ -608,8 +643,11 @@ export const WorkOrderCreateModal: React.FC<{
                             : [...prev, op.id]
                         );
                       }}
+                      className="w-4 h-4 text-blue-600 rounded"
                     />
-                    <span>{op.full_name}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="truncate">{cleanOperatorName(op.full_name)}</span>
+                    </div>
                   </label>
                 );
               })}
@@ -841,7 +879,7 @@ export const WorkOrderDetailView: React.FC<{
   backend: InstallationBackendEngine;
   workOrderId: string;
   onBack: () => void;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onOpenAuditForWorkOrder?: (woId: string) => void;
 }> = ({ backend, workOrderId, onBack, onRefresh, onOpenAuditForWorkOrder }) => {
   const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } =
@@ -849,7 +887,7 @@ export const WorkOrderDetailView: React.FC<{
   const [tick, setTick] = useState(0);
   const refreshLocal = () => {
     setTick((t) => t + 1);
-    onRefresh();
+    onRefresh?.();
   };
 
   const currentUser = backend.getCurrentUser();
@@ -866,7 +904,7 @@ export const WorkOrderDetailView: React.FC<{
   const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
   const companySettings = useMemo(() => backend.getCompanySettings(), [backend, tick]);
   const getUserName = (id: string | null) =>
-    profiles.find((p) => p.id === id)?.full_name || (id ? 'Operario borrado' : '—');
+    cleanOperatorName(profiles.find((p) => p.id === id)?.full_name) || (id ? 'Operario borrado' : '—');
 
   if (accessError || !wo) {
     return (
@@ -923,7 +961,7 @@ export const WorkOrderDetailView: React.FC<{
   const [sessNotes, setSessNotes] = useState('');
 
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
-  const [selectedArticleId, setSelectedArticleId] = useState(articlesCatalog[0]?.id || '');
+  const [selectedArticleId, setSelectedArticleId] = useState('');
   const [matQty, setMatQty] = useState('1');
   const [matNotes, setMatNotes] = useState('');
 
@@ -943,6 +981,27 @@ export const WorkOrderDetailView: React.FC<{
     wo.scheduled_at ? wo.scheduled_at.slice(0, 16) : '2026-10-22T09:00'
   );
   const [rescheduleReason, setRescheduleReason] = useState('');
+
+  // Personal activo disponible para asignaciones (operarios y administradores)
+  const activeOperators = useMemo(
+    () => profiles.filter((p) => p.is_active),
+    [profiles]
+  );
+
+  // Modal Reasignar Operarios (Solo Admin)
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [selectedOpIdsForReassign, setSelectedOpIdsForReassign] = useState<string[]>(() =>
+    assignments.map((a) => a.operator_id)
+  );
+  const [editOperatorIds, setEditOperatorIds] = useState<string[]>(() =>
+    assignments.map((a) => a.operator_id)
+  );
+
+  useEffect(() => {
+    const currentIds = assignments.map((a) => a.operator_id);
+    setSelectedOpIdsForReassign(currentIds);
+    setEditOperatorIds(currentIds);
+  }, [assignments.map((a) => a.operator_id).join(',')]);
 
   // Modal Modificar Datos del Servicio, Dirección y Contacto (Solo Admin)
   const [showEditServiceDataModal, setShowEditServiceDataModal] = useState(false);
@@ -989,7 +1048,7 @@ export const WorkOrderDetailView: React.FC<{
   // Modal Reapertura con motivo (Solo Admin)
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
-  const [reopenTarget, setReopenTarget] = useState<'reabierto' | 'en_curso' | 'terminado'>('reabierto');
+  const [reopenTarget, setReopenTarget] = useState<'reabierto' | 'en_curso' | 'terminado' | ''>('');
 
   // Operario que cerró o finalizó el trabajo para asignárselo en reaperturas
   const closingOperatorName = useMemo(() => {
@@ -1104,6 +1163,10 @@ export const WorkOrderDetailView: React.FC<{
 
   const handleAddMaterial = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedArticleId) {
+      notifyError('Debes seleccionar un artículo del catálogo.');
+      return;
+    }
     const art = articlesCatalog.find((a) => a.id === selectedArticleId);
     const qty = parseFloat(matQty.replace(',', '.'));
     if (!art || Number.isNaN(qty) || qty <= 0) {
@@ -1340,12 +1403,27 @@ export const WorkOrderDetailView: React.FC<{
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-50 bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 w-fit">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-50 bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 w-fit flex-wrap">
             <Users className="w-4 h-4 text-blue-200 shrink-0" />
             <span className="font-bold text-white">Operarios asignados:</span>
             <span>
               {assignments.map((a) => getUserName(a.operator_id)).join(', ') || 'Sin asignar'}
             </span>
+            {isAdmin && isEditable && (
+              <button
+                type="button"
+                data-testid="btn-reassign-operators"
+                onClick={() => {
+                  setSelectedOpIdsForReassign(assignments.map((a) => a.operator_id));
+                  setShowReassignModal(true);
+                }}
+                className="ml-2 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1 transition shadow-xs cursor-pointer"
+                title="Reasignar operarios al parte (Solo Administrador)"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Reasignar</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1446,7 +1524,7 @@ export const WorkOrderDetailView: React.FC<{
             </button>
           )}
 
-          {isAdmin && (wo.status === 'cerrado' || wo.status === 'terminado' || wo.status === 'reabierto' || wo.archived_at !== null) && (
+          {isAdmin && wo.status !== 'reabierto' && (wo.status === 'cerrado' || wo.status === 'terminado' || wo.archived_at !== null) && (
             <button
               type="button"
               onClick={() => setShowReopenModal(true)}
@@ -1495,6 +1573,7 @@ export const WorkOrderDetailView: React.FC<{
                   setEditContactEmail(wo.snapshot_contact_email);
                   setEditPlannedWork(wo.planned_work);
                   setEditInitialNotes(wo.initial_notes || '');
+                  setEditOperatorIds(assignments.map((a) => a.operator_id));
                   setShowEditServiceDataModal(true);
                 }}
                 className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
@@ -1531,20 +1610,20 @@ export const WorkOrderDetailView: React.FC<{
               <EmailActionLink email={wo.snapshot_contact_email} />
             </div>
           </div>
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs space-y-1">
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs space-y-1 overflow-hidden min-w-0">
             <div className="pb-1.5 border-b border-slate-200/80">
               <span className="font-bold text-slate-700">Trabajos encargados / planificados:</span>
             </div>
-            <p className="text-slate-900 pt-1">{wo.planned_work}</p>
+            <p className="text-slate-900 pt-1 break-words [overflow-wrap:anywhere] whitespace-pre-wrap">{wo.planned_work}</p>
             {wo.initial_notes && (
-              <p className="text-slate-600">
+              <p className="text-slate-600 break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
                 <strong>Notas iniciales:</strong> {wo.initial_notes}
               </p>
             )}
             {wo.final_observations && (
               <div className="pt-2 mt-2 border-t border-slate-200">
                 <span className="font-bold text-blue-900">Observaciones de finalización:</span>
-                <p className="text-slate-800 pt-0.5 whitespace-pre-line">{wo.final_observations}</p>
+                <p className="text-slate-800 pt-0.5 whitespace-pre-line break-words [overflow-wrap:anywhere]">{wo.final_observations}</p>
               </div>
             )}
           </div>
@@ -1552,7 +1631,7 @@ export const WorkOrderDetailView: React.FC<{
 
         {/* Resumen económico y Bloque Administrativo Reservado (Solo para administradores) */}
         {isAdmin && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 overflow-hidden min-w-0">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h2 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
                 <Euro className="w-4 h-4 text-blue-600" />
@@ -1738,14 +1817,16 @@ export const WorkOrderDetailView: React.FC<{
                 <div
                   key={entry.id}
                   data-testid={`work-entry-item-${entry.id}`}
-                  className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start justify-between gap-3 overflow-hidden min-w-0"
                 >
-                  <div className="space-y-1 text-xs">
-                    <div className="font-semibold text-slate-900">{entry.description}</div>
+                  <div className="space-y-1 text-xs flex-1 min-w-0 break-words [overflow-wrap:anywhere]">
+                    <div className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere] whitespace-pre-wrap">{entry.description}</div>
                     {entry.observations && (
-                      <div className="text-slate-600">Observaciones: {entry.observations}</div>
+                      <div className="text-slate-600 break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+                        <span className="font-semibold">Observaciones:</span> {entry.observations}
+                      </div>
                     )}
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-slate-500 break-words">
                       Autor: <strong>{getUserName(entry.created_by)}</strong> ·{' '}
                       {formatDateTimeES(entry.created_at)}
                     </div>
@@ -1823,6 +1904,7 @@ export const WorkOrderDetailView: React.FC<{
             <button
               type="button"
               onClick={() => {
+                setSelectedArticleId('');
                 setMatQty('1');
                 setMatNotes('');
                 setShowAddMaterialModal(true);
@@ -2071,7 +2153,7 @@ export const WorkOrderDetailView: React.FC<{
         >
           <form
             onSubmit={handleAddEntry}
-            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-2xl w-full h-full sm:h-[88vh] sm:max-h-[820px] overflow-hidden flex flex-col justify-between"
           >
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -2086,32 +2168,31 @@ export const WorkOrderDetailView: React.FC<{
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-4 text-xs flex-1">
-              <div>
-                <label className="block font-bold text-slate-700 text-sm mb-1.5">
+            <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 gap-3">
+              <div className="flex-1 flex flex-col min-h-0">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5 shrink-0">
                   Descripción del trabajo realizado *
                 </label>
                 <textarea
-                  rows={5}
                   required
                   autoFocus
                   data-testid="input-new-entry-desc"
                   value={newEntryDesc}
                   onChange={(e) => setNewEntryDesc(e.target.value)}
                   placeholder="Describe detalladamente la intervención realizada..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full flex-1 min-h-[180px] p-3 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none resize-none leading-relaxed overflow-y-auto"
                 />
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 text-sm mb-1.5">
+              <div className="shrink-0">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5 shrink-0">
                   Observaciones adicionales (opcional)
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={newEntryObs}
                   onChange={(e) => setNewEntryObs(e.target.value)}
                   placeholder="Parámetros medidos, recomendaciones, estado de la instalación..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full h-18 sm:h-20 p-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none resize-none overflow-y-auto"
                 />
               </div>
             </div>
@@ -2119,7 +2200,7 @@ export const WorkOrderDetailView: React.FC<{
               <button
                 type="button"
                 onClick={() => setShowAddEntryModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-xs font-semibold text-slate-700"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-xs font-semibold text-slate-700 cursor-pointer"
               >
                 Cancelar
               </button>
@@ -2139,7 +2220,7 @@ export const WorkOrderDetailView: React.FC<{
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveEditEntry}
-            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between"
+            className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-2xl w-full h-full sm:h-[88vh] sm:max-h-[820px] overflow-hidden flex flex-col justify-between"
           >
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-base">Modificar Trabajo Realizado</h3>
@@ -2151,27 +2232,26 @@ export const WorkOrderDetailView: React.FC<{
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-4 text-xs flex-1">
-              <div>
-                <label className="block font-bold text-slate-700 text-sm mb-1.5">
+            <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 gap-3">
+              <div className="flex-1 flex flex-col min-h-0">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5 shrink-0">
                   Descripción del trabajo *
                 </label>
                 <textarea
-                  rows={5}
                   required
                   autoFocus
                   value={editEntryDesc}
                   onChange={(e) => setEditEntryDesc(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full flex-1 min-h-[180px] p-3 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none resize-none leading-relaxed overflow-y-auto"
                 />
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 text-sm mb-1.5">Observaciones</label>
+              <div className="shrink-0">
+                <label className="block font-bold text-slate-700 text-sm mb-1.5 shrink-0">Observaciones</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={editEntryObs}
                   onChange={(e) => setEditEntryObs(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full h-18 sm:h-20 p-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none resize-none overflow-y-auto"
                 />
               </div>
             </div>
@@ -2179,7 +2259,7 @@ export const WorkOrderDetailView: React.FC<{
               <button
                 type="button"
                 onClick={() => setEditingEntryId(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold cursor-pointer"
               >
                 Cancelar
               </button>
@@ -2219,7 +2299,9 @@ export const WorkOrderDetailView: React.FC<{
                 <SearchableSelect
                   value={selectedArticleId}
                   onChange={setSelectedArticleId}
-                  placeholder="Escribe para buscar artículo..."
+                  placeholder="-- Artículo a seleccionar --"
+                  emptyOptionLabel="-- Artículo a seleccionar --"
+                  required
                   options={articlesCatalog.map((a) => ({
                     value: a.id,
                     label: `${a.code} — ${a.name} (${a.unit} · ${formatCentsToEUR(a.sale_price_cents)})`,
@@ -2390,6 +2472,7 @@ export const WorkOrderDetailView: React.FC<{
                   onChange={(e) => setReopenTarget(e.target.value as 'reabierto' | 'en_curso' | 'terminado')}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                 >
+                  <option value="">-- Estado de destino a seleccionar --</option>
                   <option value="reabierto">Reabierto (marrón en negrita - devolver a operarios)</option>
                   <option value="en_curso">Reabrir a En Curso</option>
                   <option value="terminado">Reabrir a Terminado (solo revisión admin)</option>
@@ -2409,7 +2492,7 @@ export const WorkOrderDetailView: React.FC<{
                 onClick={() => {
                   try {
                     const assignedName = closingOperatorName;
-                    backend.reopenWorkOrder(wo.id, reopenReason, reopenTarget);
+                    backend.reopenWorkOrder(wo.id, reopenReason, reopenTarget || 'reabierto');
                     setReopenReason('');
                     setShowReopenModal(false);
                     notifySuccessGreen(`Parte reabierto y asignado a ${assignedName}.`);
@@ -2548,7 +2631,7 @@ export const WorkOrderDetailView: React.FC<{
                     setDeleteConfirmStep(null);
                     onRefresh?.();
                     notifySuccessGreen(
-                      `Parte ${deletedCode} eliminado definitivamente y partes restantes renumerados de forma continua sin dejar rastro.`
+                      `Parte ${deletedCode} ha sido borrado.`
                     );
                     onBack();
                   } catch (err: any) {
@@ -2578,6 +2661,10 @@ export const WorkOrderDetailView: React.FC<{
                 notifyError('La dirección y la población son campos obligatorios.');
                 return;
               }
+              if (editOperatorIds.length === 0) {
+                notifyError('Debes seleccionar al menos un operario asignado.');
+                return;
+              }
               setShowEditServiceDataModal(false);
               requestSaveConfirmation({
                 title: `Modificar Datos del Parte — ${wo.code}`,
@@ -2589,6 +2676,10 @@ export const WorkOrderDetailView: React.FC<{
                   { label: 'Persona de contacto', value: editContactName || '—' },
                   { label: 'Teléfono', value: editContactPhone || '—' },
                   { label: 'Trabajo encargado', value: editPlannedWork },
+                  {
+                    label: 'Operarios asignados',
+                    value: editOperatorIds.map((id) => getUserName(id)).join(', '),
+                  },
                 ],
                 onConfirm: () => {
                   backend.updateWorkOrderPlanningAndAssignments(wo.id, {
@@ -2601,8 +2692,9 @@ export const WorkOrderDetailView: React.FC<{
                     snapshot_contact_email: editContactEmail.trim(),
                     planned_work: editPlannedWork.trim() || wo.planned_work,
                     initial_notes: editInitialNotes.trim(),
+                    operator_ids: editOperatorIds,
                   });
-                  notifySuccessGreen('Datos del servicio y población actualizados correctamente.');
+                  notifySuccessGreen('Datos del servicio y operarios actualizados correctamente.');
                   refreshLocal();
                 },
               });
@@ -2737,21 +2829,53 @@ export const WorkOrderDetailView: React.FC<{
                   Trabajo Encargado / Planificado:
                 </label>
                 <textarea
-                  rows={2}
+                  rows={4}
                   value={editPlannedWork}
                   onChange={(e) => setEditPlannedWork(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 min-h-[90px] resize-y"
                 />
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Notas Iniciales:</label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={editInitialNotes}
                   onChange={(e) => setEditInitialNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 min-h-[75px] resize-y"
                 />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Personal Asignado *:
+                </label>
+                <div className="space-y-1.5 p-3 rounded-xl border border-slate-200 bg-slate-50 max-h-48 overflow-y-auto">
+                  {activeOperators.length === 0 ? (
+                    <p className="text-slate-500 italic">No hay personal activo disponible.</p>
+                  ) : (
+                    activeOperators.map((op) => (
+                      <label
+                        key={op.id}
+                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editOperatorIds.includes(op.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditOperatorIds([...editOperatorIds, op.id]);
+                            } else {
+                              setEditOperatorIds(editOperatorIds.filter((id) => id !== op.id));
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="font-semibold text-slate-800">{cleanOperatorName(op.full_name)}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2771,6 +2895,130 @@ export const WorkOrderDetailView: React.FC<{
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* VENTANA EMERGENTE ESPECÍFICA: REASIGNAR OPERARIOS (SOLO ADMIN) */}
+      {showReassignModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          data-testid="modal-reassign-operators"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Reasignar Operarios — {wo.code}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReassignModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-600">
+              Selecciona uno o más técnicos (operarios o administradores) para asignarlos a este parte. Puedes asignar un solo técnico o un equipo mixto.
+            </p>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto p-1">
+              {activeOperators.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+                  No hay personal activo en el sistema.
+                </div>
+              ) : (
+                activeOperators.map((op) => {
+                  const isChecked = selectedOpIdsForReassign.includes(op.id);
+                  return (
+                    <label
+                      key={op.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer ${
+                        isChecked
+                          ? 'bg-blue-50/80 border-blue-400 text-blue-950 font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedOpIdsForReassign([...selectedOpIdsForReassign, op.id]);
+                          } else {
+                            setSelectedOpIdsForReassign(
+                              selectedOpIdsForReassign.filter((id) => id !== op.id)
+                            );
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-semibold text-slate-800">{cleanOperatorName(op.full_name)}</span>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="text-[11px] text-slate-500">
+              Seleccionados: <strong>{selectedOpIdsForReassign.length}</strong> operario(s)
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReassignModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-save-reassign-operators"
+                onClick={() => {
+                  if (selectedOpIdsForReassign.length === 0) {
+                    notifyError('Debes seleccionar al menos un operario.');
+                    return;
+                  }
+                  setShowReassignModal(false);
+                  const selectedNames = selectedOpIdsForReassign
+                    .map((id) => getUserName(id))
+                    .join(', ');
+                  requestSaveConfirmation({
+                    title: `Reasignar Operarios — ${wo.code}`,
+                    changes: [
+                      {
+                        label: 'Nuevos operarios asignados',
+                        value: selectedNames,
+                      },
+                    ],
+                    onConfirm: () => {
+                      try {
+                        backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+                          operator_ids: selectedOpIdsForReassign,
+                        });
+                        notifySuccessGreen(
+                          `Parte ${wo.code} reasignado con éxito a: ${selectedNames}`
+                        );
+                        refreshLocal();
+                        onRefresh?.();
+                      } catch (err: any) {
+                        notifyError(err?.message || 'Error al reasignar operarios.');
+                      }
+                    },
+                  });
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+              >
+                Guardar Asignación
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3004,11 +3252,11 @@ export const WorkOrderDetailView: React.FC<{
                 </label>
                 <textarea
                   data-testid="textarea-finalize-observations"
-                  rows={3}
+                  rows={4}
                   value={finalizeObservations}
                   onChange={(e) => setFinalizeObservations(e.target.value)}
                   placeholder="Escribe aquí observaciones sobre el trabajo realizado, modificaciones de precio, cobro o incidencias..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 min-h-[90px] resize-y"
                 />
               </div>
 

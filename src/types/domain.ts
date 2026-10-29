@@ -407,6 +407,7 @@ export interface BackupJob {
   triggered_by: string;
   started_at: string;
   completed_at: string | null;
+  snapshot_payload?: any;
 }
 
 export interface AuditLogEntry {

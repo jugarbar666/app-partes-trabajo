@@ -6,7 +6,8 @@ import { WorkOrderStatusBadge, UIConfirmationProvider } from '../components/Comm
 import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from '../config/branchConfig';
 import { defaultBackend } from '../services/backendEngine';
 import { getWeekDays, getLocalDateString } from '../utils/formatters';
-import { MasterDataAndUsersModule } from '../components/AdminAndMasterModules';
+import { MasterDataAndUsersModule, AdminSystemModule } from '../components/AdminAndMasterModules';
+import { WorkOrderCreateModal, WorkOrderDetailView } from '../components/WorkOrdersModule';
 
 describe('Verificación de Pantallas, Colores Obligatorios y Controles Persistentes (Escenarios 18, 19 y 20)', () => {
   beforeEach(() => {
@@ -287,6 +288,164 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
 
     const htmlCompleted = renderToString(<App />);
     expect(htmlCompleted).not.toContain('Revisión próxima a realizar');
+  });
+
+  it('Reasignación de operarios: Administrador dispone del botón Reasignar en escritorio, móvil y detalle de parte', () => {
+    // 1. En el render del dashboard administrativo, el botón "Reasignar" debe estar presente
+    const html = renderToString(<App />);
+    expect(html).toContain('Reasignar');
+    expect(html).toContain('dashboard-reassign-btn-wo-1');
+
+    // 2. Comprobar que backend permite reasignar operarios correctamente
+    const wo = defaultBackend.getWorkOrders().find((w) => w.code === 'PT-2026-0001')!;
+    const activeOps = defaultBackend.getProfiles().filter((p) => p.role === 'operario' && p.is_active);
+    expect(activeOps.length).toBeGreaterThan(0);
+
+    const targetOpId = activeOps[0].id;
+    defaultBackend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [targetOpId],
+    });
+
+    const updatedAssignments = defaultBackend.getWorkOrderAssignments(wo.id);
+    expect(updatedAssignments).toHaveLength(1);
+    expect(updatedAssignments[0].operator_id).toBe(targetOpId);
+    expect(updatedAssignments[0].is_active).toBe(true);
+  });
+
+  it('Al indicar un cliente en el alta de parte, se autocompletan la dirección, municipio y contacto', () => {
+    defaultBackend.loadCiudadRealDemoDataset();
+    const meson = defaultBackend.getCustomers().find((c) => c.name.includes('Mesón Octavio'))!;
+    expect(meson).toBeDefined();
+
+    const html = renderToString(
+      <UIConfirmationProvider>
+        <WorkOrderCreateModal
+          backend={defaultBackend}
+          preselectedCustomerId={meson.id}
+          onClose={() => {}}
+          onCreated={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+
+    // Debe autocompletar la dirección del restaurante y su municipio
+    expect(html).toContain('Calle Severo Ochoa 6');
+    expect(html).toContain('Ciudad Real');
+    expect(html).toContain('José Antonio García (Gerente)');
+  });
+
+  it('A los partes se pueden asignar tanto operarios como administradores activos', () => {
+    const adminUser = defaultBackend.getProfiles().find((p) => p.role === 'admin' && p.is_active)!;
+    const operUser = defaultBackend.getProfiles().find((p) => p.role === 'operario' && p.is_active)!;
+    expect(adminUser).toBeDefined();
+    expect(operUser).toBeDefined();
+
+    // 1. En WorkOrderCreateModal deben aparecer tanto administradores como operarios como asignables
+    const htmlModal = renderToString(
+      <UIConfirmationProvider>
+        <WorkOrderCreateModal
+          backend={defaultBackend}
+          onClose={() => {}}
+          onCreated={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+    expect(htmlModal).toContain(adminUser.full_name);
+    expect(htmlModal).toContain(operUser.full_name);
+
+    // 2. Se puede crear o actualizar un parte asignando conjuntamente al administrador y al operario
+    const wo = defaultBackend.getWorkOrders().find((w) => w.code === 'PT-2026-0001')!;
+    defaultBackend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [adminUser.id, operUser.id],
+    });
+
+    const asgs = defaultBackend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(2);
+    expect(asgs.some((a) => a.operator_id === adminUser.id)).toBe(true);
+    expect(asgs.some((a) => a.operator_id === operUser.id)).toBe(true);
+  });
+
+  it('Si el parte ya ha sido reabierto, no debe aparecer el botón de reabrir con motivo', () => {
+    let wo = defaultBackend.getWorkOrders().find((w) => w.status === 'cerrado');
+    if (!wo) {
+      wo = defaultBackend.getWorkOrders()[0];
+      defaultBackend.finalizeWorkOrder({
+        work_order_id: wo.id,
+        total_amount_cents: 5000,
+        customer_requests_invoice: false,
+        customer_has_paid: false,
+      });
+      defaultBackend.closeWorkOrder(wo.id);
+    }
+    defaultBackend.reopenWorkOrder(wo.id, 'Falta revisar la presión', 'reabierto');
+
+    const htmlDetail = renderToString(
+      <UIConfirmationProvider>
+        <WorkOrderDetailView
+          workOrderId={wo.id}
+          backend={defaultBackend}
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+
+    // Debe mostrar la cabecera / aviso de parte reabierto
+    expect(htmlDetail).toContain('Parte Reabierto por Administración');
+    // Pero NO debe mostrar el botón para reabrir con motivo
+    expect(htmlDetail).not.toContain('Reabrir con motivo');
+  });
+
+  it('La sección de copias de seguridad incluye botones de descarga, restauración, guía explicativa y simulacro aislado funcional', () => {
+    // 1. Iniciar sesión como Antonio Roma (anromago@hotmail.com)
+    defaultBackend.login('anromago@hotmail.com', 'anromago');
+
+    const htmlBackups = renderToString(
+      <UIConfirmationProvider>
+        <AdminSystemModule
+          backend={defaultBackend}
+          initialSection="backups"
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+
+    // Debe mostrar las nuevas herramientas y la guía
+    expect(htmlBackups).toContain('Probar Restauración en Entorno Aislado');
+    expect(htmlBackups).toContain('Descargar Copia (.json)');
+    expect(htmlBackups).toContain('Restaurar Copia de Seguridad');
+    expect(htmlBackups).toContain('¿Cómo funcionan y cómo se restauran las copias de seguridad?');
+
+    // 2. Verificar que la restauración en entorno aislado con Antonio Roma funciona sin error
+    const snapshot = defaultBackend.exportFullSnapshot();
+    const isolated = new (defaultBackend.constructor as any)('entorno-aislado-test-ui', false, 'demo');
+    isolated.login('anromago@hotmail.com', 'anromago');
+    expect(() => isolated.restoreFromSnapshot(snapshot, 'AUTORIZO_RESTAURACION_VERIFICADA')).not.toThrow();
+    expect(isolated.getWorkOrders({ includeArchived: true }).length).toBe(
+      defaultBackend.getWorkOrders({ includeArchived: true }).length
+    );
+
+    // 3. Crear una copia manual y comprobar que se puede obtener su snapshot individual por id
+    const job = defaultBackend.createManualBackup();
+    const jobSnapshot = defaultBackend.getBackupSnapshot(job.id);
+    expect(jobSnapshot.work_orders.length).toBeGreaterThan(0);
+    expect(jobSnapshot.company_settings.company_name).toBeDefined();
+
+    // 4. La tabla de copias incluye botones de acción individuales para cada copia
+    const htmlBackupsUpdated = renderToString(
+      <UIConfirmationProvider>
+        <AdminSystemModule
+          backend={defaultBackend}
+          initialSection="backups"
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+    expect(htmlBackupsUpdated).toContain('Acciones');
+    expect(htmlBackupsUpdated).toContain('Descargar');
+    expect(htmlBackupsUpdated).toContain('Restaurar');
   });
 });
 
