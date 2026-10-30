@@ -1,5 +1,5 @@
 {
-  "version": "1.9.0",
-  "releasedAt": "2026-10-29T20:20:00.000Z",
-  "notes": "Recuperación segura por token de correo, aviso de solapamiento de horarios al crear o reasignar partes, restricción de fechas pasadas, control de jornada continua y partida en fichajes, búsqueda por operario y soporte PWA"
+  "version": "1.9.1",
+  "releasedAt": "2026-10-30T11:25:00.000Z",
+  "notes": "Nombre oficial Gestión Partes de Trabajo, iconos con logotipo corporativo de Fontanería Roma, instalación nativa en 1 clic para Android y Apple, configuración de correo SMTP/POP3/IMAP corporativo y recuperación de contraseña desde el email de contacto general"
 }

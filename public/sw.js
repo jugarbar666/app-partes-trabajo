@@ -7,11 +7,14 @@
  *   para no provocar recargas inesperadas ni pérdidas de formularios en edición.
  */
 
-const CACHE_NAME = 'partes-trabajo-static-v2';
+const CACHE_NAME = 'partes-trabajo-static-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
+  '/manifest.json',
+  '/favicon.ico',
+  '/apple-touch-icon.png',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-192.svg',

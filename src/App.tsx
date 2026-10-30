@@ -442,7 +442,11 @@ const MainApplicationContent: React.FC = () => {
   const [woFilterOperatorId, setWoFilterOperatorId] = useState<string>('all');
 
   // PWA: Captura del evento de instalacin y deteccin de modo app
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(
+    typeof window !== 'undefined'
+      ? ((window as any).deferredInstallPrompt || (window.top as any)?.deferredInstallPrompt || null)
+      : null
+  );
   const [showInstallHelpModal, setShowInstallHelpModal] = useState(false);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
 
@@ -488,9 +492,13 @@ const MainApplicationContent: React.FC = () => {
   useEffect(() => {
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
+      (window as any).deferredInstallPrompt = e;
       setDeferredPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    if (typeof window !== 'undefined' && (window as any).deferredInstallPrompt) {
+      setDeferredPrompt((window as any).deferredInstallPrompt);
+    }
 
     const isStandalone =
       (typeof window.matchMedia === 'function' &&
@@ -517,24 +525,70 @@ const MainApplicationContent: React.FC = () => {
   }, []);
 
   const handleInstallApp = async () => {
-    if (deferredPrompt) {
+    // 1. Obtener el evento nativo de instalación diferida (Android / Google Chrome / Edge)
+    let promptEvent = deferredPrompt || (typeof window !== 'undefined' ? (window as any).deferredInstallPrompt : null);
+    if (!promptEvent && typeof window !== 'undefined' && window.top) {
       try {
-        deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
+        promptEvent = (window.top as any).deferredInstallPrompt;
+      } catch {}
+    }
+
+    // 2. En Android / Google Chrome / Edge: lanzar DIRECTAMENTE el diálogo nativo del sistema
+    if (promptEvent && typeof promptEvent.prompt === 'function') {
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
         if (choice?.outcome === 'accepted') {
           setIsAppInstalled(true);
           try {
             window.localStorage?.setItem('pwa_installed_device', 'true');
           } catch {}
-          notifySuccessGreen('¡Aplicación instalada con éxito!');
+          notifySuccessGreen('¡Aplicación instalada con éxito en tu dispositivo!');
         }
-      } catch {
-        setShowInstallHelpModal(true);
+      } catch (err) {
+        console.warn('Error al lanzar diálogo nativo de instalación:', err);
       }
       setDeferredPrompt(null);
-    } else {
-      setShowInstallHelpModal(true);
+      if (typeof window !== 'undefined') {
+        (window as any).deferredInstallPrompt = null;
+        if (window.top) {
+          try { (window.top as any).deferredInstallPrompt = null; } catch {}
+        }
+      }
+      setShowInstallHelpModal(false);
+      return;
     }
+
+    // 3. En Apple / iOS (iPhone, iPad, Safari): lanzar directamente el menú nativo Compartir para añadir a inicio
+    const isIos =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    if (isIos && typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function') {
+      try {
+        await (navigator as any).share({
+          title: 'Gestión Partes de Trabajo',
+          text: 'Instalar aplicación de gestión de partes de trabajo en la pantalla de inicio',
+          url: window.location.origin || window.location.href,
+        });
+        setShowInstallHelpModal(false);
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
+
+    // 4. Si se está en simulador iframe o el navegador requiere abrir ventana principal
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      try {
+        if (window.top) window.top.location.href = window.location.origin;
+        return;
+      } catch {}
+    }
+
+    // 5. En caso de que el navegador no haya emitido el prompt automáticamente todavía, abrir guía con botón directo
+    setShowInstallHelpModal(true);
   };
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryResult, setRecoveryResult] = useState<{
@@ -544,6 +598,9 @@ const MainApplicationContent: React.FC = () => {
     mailtoUrl?: string;
     email?: string;
     full_name?: string;
+    senderEmail?: string;
+    senderName?: string;
+    smtpHost?: string;
     temporaryPassword?: string;
     message: string;
   } | null>(null);
@@ -553,25 +610,47 @@ const MainApplicationContent: React.FC = () => {
   const [forcedConfirmPass, setForcedConfirmPass] = useState('');
   const [forcedPassError, setForcedPassError] = useState('');
 
+  const mainContainerRef = useRef<HTMLElement>(null);
+
+  const scrollToTopAllApp = () => {
+    if (mainContainerRef.current) {
+      mainContainerRef.current.scrollTop = 0;
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
+
   const [routeStack, setRouteStack] = useState<ActiveRoute[]>(['dashboard']);
   const currentRoute = routeStack[routeStack.length - 1] || 'dashboard';
 
   const navigateTo = (next: ActiveRoute) => {
     setRouteStack((prev) => [...prev, next]);
     setMobileMenuOpen(false);
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    }
+    scrollToTopAllApp();
   };
 
   const navigateBack = () => {
     setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    }
+    scrollToTopAllApp();
   };
 
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
+
+  // Asegurar que al abrir cualquier parte de trabajo en móvil o escritorio siempre inicie en la cabecera superior
+  useEffect(() => {
+    if (currentRoute === 'work_order_detail' || selectedWorkOrderId) {
+      scrollToTopAllApp();
+      const raf = requestAnimationFrame(scrollToTopAllApp);
+      const timer = setTimeout(scrollToTopAllApp, 50);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+      };
+    }
+  }, [currentRoute, selectedWorkOrderId]);
   const [woListFilterStatus, setWoListFilterStatus] = useState<
     'all' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado'
   >('all');
@@ -702,10 +781,10 @@ const MainApplicationContent: React.FC = () => {
 
   const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
 
-  // Actualizar favicon, título y manifest dinámico con el logotipo de la empresa para instalación en móvil
+  // Actualizar favicon, título de la aplicación para instalación y navegación
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      document.title = 'Gestión de partes';
+      document.title = 'Gestión Partes de Trabajo';
       const logo = company.logo_url;
       if (logo) {
         let iconLink = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -723,36 +802,6 @@ const MainApplicationContent: React.FC = () => {
           document.head.appendChild(appleIcon);
         }
         appleIcon.href = logo;
-
-        try {
-          const dynamicManifest = {
-            name: 'Gestión de partes',
-            short_name: 'Gestión de partes',
-            description: 'Gestión de partes de trabajo, revisiones periódicas, lista de compra y fichaje horario',
-            start_url: '/',
-            display: 'standalone',
-            background_color: '#0f172a',
-            theme_color: '#0f172a',
-            orientation: 'any',
-            lang: 'es-ES',
-            icons: [
-              {
-                src: logo,
-                sizes: '192x192 512x512',
-                type: 'image/png',
-                purpose: 'any maskable',
-              },
-            ],
-          };
-          const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
-          const manifestUrl = URL.createObjectURL(blob);
-          let manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
-          if (manifestLink) {
-            manifestLink.href = manifestUrl;
-          }
-        } catch {
-          // ignore blob creation error
-        }
       }
     }
   }, [company.logo_url]);
@@ -914,7 +963,8 @@ const MainApplicationContent: React.FC = () => {
                       placeholder="Repite tu nueva contraseña"
                       value={resetConfirmPass}
                       onChange={(e) => setResetConfirmPass(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                      disabled={!!recoveryResult}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </div>
 
@@ -977,7 +1027,8 @@ const MainApplicationContent: React.FC = () => {
                   placeholder="Ej. Juan Carlos o jugarbar@gmail.com"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  disabled={!!recoveryResult}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
               <div>
@@ -988,7 +1039,8 @@ const MainApplicationContent: React.FC = () => {
                   placeholder="Introduce tu contraseña"
                   value={loginPass}
                   onChange={(e) => setLoginPass(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  disabled={!!recoveryResult}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
               <button
@@ -1013,16 +1065,36 @@ const MainApplicationContent: React.FC = () => {
           ) : (
             /* Vista 3: Solicitar Enlace Seguro de Recuperación por Correo */
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 try {
                   const res = backend.requestPasswordRecovery(recoveryEmail);
                   setRecoveryResult(res);
-                  if (res.mailtoUrl && typeof window !== 'undefined') {
-                    try {
-                      window.open(res.mailtoUrl, '_blank');
-                    } catch {}
-                  }
+
+                  // Intentar envío real a través de la función de servidor Netlify/SMTP
+                  try {
+                    const comp = backend.getCompanySettings();
+                    fetch('/.netlify/functions/send-email', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        to: res.email,
+                        from: res.senderEmail || comp.contact_email,
+                        fromName: res.senderName || comp.company_name,
+                        subject: `Restablecer contraseña — ${comp.company_name}`,
+                        recoveryLink: res.recoveryLink,
+                        smtp: {
+                          host: comp.smtp_host,
+                          port: comp.smtp_port,
+                          encryption: comp.smtp_encryption,
+                          user: comp.smtp_user,
+                          password: comp.smtp_password,
+                        },
+                      }),
+                    }).catch(() => {});
+                  } catch {}
+
+                  // El enlace viaja en el correo electrónico enviado al usuario
                 } catch (err: any) {
                   notifyError(err?.message || 'Error al solicitar recuperación de contraseña.');
                 }
@@ -1033,7 +1105,7 @@ const MainApplicationContent: React.FC = () => {
                 Recuperar Contraseña
               </h2>
               <p className="text-slate-600 leading-relaxed">
-                Introduce el correo electrónico que está en tu ficha. El sistema te enviará un correo con un enlace para que puedas cambiar tu contraseña y entrar en la aplicación:
+                Introduce el correo electrónico que está en tu ficha. El sistema comprobará que esté dado de alta y te enviará un correo con el enlace seguro desde el correo general de la empresa:
               </p>
               <input
                 type="email"
@@ -1044,51 +1116,76 @@ const MainApplicationContent: React.FC = () => {
                   setRecoveryResult(null);
                 }}
                 placeholder="tu-correo@empresa.es"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                disabled={!!recoveryResult}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
               />
 
               {recoveryResult && (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-2.5 leading-relaxed">
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-3 leading-relaxed">
                   <div className="font-bold flex items-center gap-2 text-emerald-900 text-sm">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>Correo de recuperación enviado</span>
+                    <span>Correo de recuperación enviado con éxito</span>
                   </div>
-                  <p className="text-xs text-emerald-800 leading-relaxed">
-                    Hemos enviado un correo a la dirección de tu ficha (<strong>{recoveryEmail}</strong>) con un enlace para que puedas cambiar tu contraseña y entrar en la aplicación.
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    Revisa tu bandeja de entrada y pulsa en el enlace recibido para definir tu nueva contraseña.
-                  </p>
-                  {recoveryResult.recoveryLink && (
-                    <div className="pt-2 border-t border-emerald-200">
-                      <a
-                        href={recoveryResult.recoveryLink}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition"
-                      >
-                        <span>🔗 Abrir enlace recibido para cambiar contraseña</span>
-                      </a>
+
+                  {/* Resumen de envío desde el email general de la empresa */}
+                  <div className="p-2.5 rounded-lg bg-white border border-emerald-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Remitente oficial empresa:</span>
+                      <strong className="text-blue-700 font-mono text-[11px]">{recoveryResult.senderEmail}</strong>
                     </div>
-                  )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Destinatario (tu ficha):</span>
+                      <strong className="text-slate-800 font-mono text-[11px]">{recoveryResult.email}</strong>
+                    </div>
+                    {recoveryResult.smtpHost && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">Servidor saliente:</span>
+                        <span className="text-slate-600 font-mono">{recoveryResult.smtpHost}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-emerald-900 leading-relaxed">
+                    Hemos enviado el correo electrónico con el enlace seguro a <strong>{recoveryResult.email}</strong> desde el email oficial de la empresa (<strong>{recoveryResult.senderEmail}</strong>).
+                  </p>
+                  <div className="p-3 rounded-lg bg-white/90 border border-emerald-200 text-xs text-slate-700 leading-relaxed">
+                    📬 <strong>Revisa tu correo:</strong> Abre tu bandeja de entrada (o carpeta de spam/correo no deseado) y pulsa en el botón o enlace que has recibido en el mensaje para cambiar tu contraseña.
+                  </div>
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecoveryMode(false);
-                    setRecoveryResult(null);
-                  }}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 cursor-pointer text-xs"
-                >
-                  Volver al inicio de sesión
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer text-xs shadow-xs"
-                >
-                  Enviar Correo
-                </button>
+              <div className="pt-2">
+                {recoveryResult ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryMode(false);
+                      setRecoveryResult(null);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer text-xs shadow-xs text-center transition"
+                  >
+                    Volver al inicio de sesión
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoveryMode(false);
+                        setRecoveryResult(null);
+                      }}
+                      className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 cursor-pointer text-xs"
+                    >
+                      Volver al inicio de sesión
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer text-xs shadow-xs"
+                    >
+                      Enviar Correo
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           )}
@@ -1838,22 +1935,9 @@ const MainApplicationContent: React.FC = () => {
           )}
         </div>
 
-        {/* Tarjeta de Sesión / Instalación Activa (igual al recuadro superior del sidebar de la captura) */}
+        {/* Tarjeta de Sesión / Usuario Identificado en Sidebar */}
         <div className="p-3.5">
-          <div className="rounded-xl bg-[#131c31] border border-slate-700/70 p-3 space-y-2.5">
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <span>SESIÓN E INSTALACIÓN</span>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setCreateWoModalProps({ open: true })}
-                  className="text-blue-400 hover:text-blue-300 font-bold"
-                >
-                  + Nuevo
-                </button>
-              )}
-            </div>
-
+          <div className="rounded-xl bg-[#131c31] border border-slate-700/70 p-3">
             {isDemoUserSwitchEnabled() ? (
               <select
                 aria-label="Cambiar sesión activa para verificar permisos"
@@ -1884,32 +1968,8 @@ const MainApplicationContent: React.FC = () => {
                     <div className="text-[10px] text-slate-400 truncate">{loggedUser.email}</div>
                   </div>
                 </div>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold shrink-0 uppercase tracking-wide border ${
-                    isAdmin
-                      ? 'bg-purple-950/80 text-purple-200 border-purple-800'
-                      : 'bg-blue-950/80 text-blue-200 border-blue-800'
-                  }`}
-                >
-                  {loggedUser.role}
-                </span>
               </div>
             )}
-
-            <div className="flex items-center justify-between pt-0.5">
-              <span className="text-[11px] text-slate-400 truncate max-w-[110px]">
-                {company.work_order_prefix} · {company.currency}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded border text-[10px] font-extrabold uppercase tracking-wide ${
-                  isAdmin
-                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-400'
-                    : 'bg-blue-500/15 border-blue-500/50 text-blue-400'
-                }`}
-              >
-                {isAdmin ? 'ADMINISTRADOR' : 'OPERARIO'}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2219,13 +2279,10 @@ const MainApplicationContent: React.FC = () => {
                     ? 'bg-amber-50 border-amber-300 text-amber-900'
                     : 'bg-blue-50 border-blue-300 text-blue-900'
                 }`}
-                title={`Sesión iniciada como ${loggedUser.full_name} (${loggedUser.email})`}
+                title={`Sesión iniciada como ${loggedUser.role === 'admin' ? 'Administrador' : 'Operario'}`}
               >
                 <span>{isAdmin ? '👤' : '👷'}</span>
-                <span className="truncate">{loggedUser.full_name.split(' ')[0]}</span>
-                <span className="hidden sm:inline text-[10px] font-extrabold uppercase opacity-80">
-                  ({isAdmin ? 'Admin' : 'Operario'})
-                </span>
+                <span className="truncate">{isAdmin ? 'Administrador' : 'Operario'}</span>
               </div>
             )}
 
@@ -2424,6 +2481,7 @@ const MainApplicationContent: React.FC = () => {
 
         {/* Contenedor central de vistas con desplazamiento vertical propio (o fijo en pantallas de listado para que las cabeceras jamás desaparezcan al llegar al final) */}
         <main
+          ref={mainContainerRef}
           className={`flex-1 min-h-0 w-full px-4 lg:px-6 xl:px-8 ${
             currentRoute === 'work_orders_list' ||
             currentRoute === 'archived_work_orders' ||
@@ -4002,27 +4060,76 @@ const MainApplicationContent: React.FC = () => {
             </p>
 
             <div className="space-y-3">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-950 space-y-2">
+                  <p className="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                    <span>📱</span>
+                    <span>Modo Simulador Móvil detectado</span>
+                  </p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Dentro de un simulador (iframe) los navegadores no permiten instalar apps directamente por seguridad. Para instalarla con 1 clic en este dispositivo:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.top) window.top.location.href = window.location.origin;
+                    }}
+                    className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs text-center"
+                  >
+                    🚀 Abrir pantalla completa para instalar
+                  </button>
+                </div>
+              )}
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-slate-800">
                   <span>🤖</span>
                   <span>En Android (Google Chrome):</span>
                 </div>
-                <ol className="list-decimal pl-5 space-y-1 text-slate-600">
-                  <li>Toca el menú de opciones (los <strong>3 puntos ⋮</strong> arriba a la derecha).</li>
-                  <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Añadir a pantalla de inicio"</strong>.</li>
-                  <li>Confirma pulsando en <strong>"Instalar"</strong>.</li>
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>📲 Lanzar instalación directa en Android</span>
+                </button>
+                <ol className="list-decimal pl-5 space-y-0.5 text-[11px] text-slate-500 pt-1">
+                  <li>O toca los <strong>3 puntos ⋮</strong> arriba a la derecha en Chrome.</li>
+                  <li>Selecciona <strong>"Instalar aplicación"</strong> y confirma.</li>
                 </ol>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-slate-800">
                   <span>🍎</span>
                   <span>En iPhone o iPad (Safari):</span>
                 </div>
-                <ol className="list-decimal pl-5 space-y-1 text-slate-600">
-                  <li>Toca el botón <strong>Compartir</strong> (el icono <strong>⎋</strong> con flecha hacia arriba).</li>
-                  <li>Baja en las opciones y selecciona <strong>"Añadir a la pantalla de inicio ⊞"</strong>.</li>
-                  <li>Pulsa en <strong>"Añadir"</strong> en la esquina superior derecha.</li>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function') {
+                      try {
+                        await (navigator as any).share({
+                          title: 'Gestión Partes de Trabajo',
+                          text: 'Instalar aplicación en pantalla de inicio',
+                          url: window.location.origin || window.location.href,
+                        });
+                        setShowInstallHelpModal(false);
+                      } catch (err: any) {
+                        if (err?.name === 'AbortError') return;
+                      }
+                    } else {
+                      alert('En Safari: Pulsa el botón Compartir y selecciona "Añadir a pantalla de inicio"');
+                    }
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+                >
+                  <span>📤 Abrir menú Compartir para Añadir a Inicio</span>
+                </button>
+                <ol className="list-decimal pl-5 space-y-0.5 text-[11px] text-slate-500 pt-1">
+                  <li>Toca el botón <strong>Compartir</strong> (icono con flecha arriba).</li>
+                  <li>Baja y pulsa <strong>"Añadir a la pantalla de inicio ⊞"</strong>.</li>
                 </ol>
               </div>
             </div>
@@ -4038,17 +4145,27 @@ const MainApplicationContent: React.FC = () => {
                   setShowInstallHelpModal(false);
                   notifySuccessGreen('¡Aplicación marcada como instalada!');
                 }}
-                className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer"
+                className="text-[11px] text-slate-500 hover:text-slate-800 font-semibold underline cursor-pointer"
               >
                 Ya la tengo instalada
               </button>
-              <button
-                type="button"
-                onClick={() => setShowInstallHelpModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
-              >
-                Cerrar
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInstallHelpModal(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer text-xs"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer text-xs shadow-xs flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Instalar ahora</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

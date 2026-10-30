@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Calendar,
   UserPlus,
@@ -1024,11 +1024,36 @@ const WorkOrderDetailLoadedView: React.FC<{
     wo.archived_at === null &&
     (isAdmin ? wo.status !== 'cerrado' : wo.status === 'no_iniciado' || wo.status === 'en_curso' || wo.status === 'reabierto');
 
-  // Asegurar que al entrar al parte siempre se posicione en la cabecera superior en dispositivos móviles
+  const topDetailRef = useRef<HTMLDivElement>(null);
+
+  // Asegurar que al entrar al parte siempre se posicione al principio (cabecera superior) en móvil y escritorio
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    }
+    const forceScrollToTop = () => {
+      if (topDetailRef.current) {
+        topDetailRef.current.scrollIntoView({ behavior: 'instant', block: 'start' });
+        let p = topDetailRef.current.parentElement;
+        while (p) {
+          if (p.scrollTop > 0) {
+            p.scrollTop = 0;
+          }
+          p = p.parentElement;
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+      }
+    };
+
+    forceScrollToTop();
+    const rafId = requestAnimationFrame(forceScrollToTop);
+    const timeoutId = setTimeout(forceScrollToTop, 50);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeoutId);
+    };
   }, [wo?.id]);
 
   // Ventanas emergentes (Modales) para añadir o editar elementos del parte
@@ -1546,7 +1571,7 @@ const WorkOrderDetailLoadedView: React.FC<{
   const validSignature = signatures.find((s) => s.is_valid) || null;
 
   return (
-    <div className="space-y-5">
+    <div ref={topDetailRef} className="space-y-5" data-testid="work-order-detail-top-container">
       {/* CABECERA PRINCIPAL DEL PARTE: NÚMERO DE PARTE, CLIENTE, VOLVER Y SITUACIÓN */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-2.5">
         {/* Primera línea: Número de parte */}

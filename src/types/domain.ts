@@ -47,6 +47,22 @@ export interface CompanySettings {
   default_work_afternoon_start_time?: string;
   default_work_afternoon_end_time?: string;
 
+  // Configuración de Servidor de Correo Saliente (SMTP)
+  smtp_host?: string;
+  smtp_port?: number | string;
+  smtp_encryption?: 'ssl_tls' | 'starttls' | 'none';
+  smtp_user?: string;
+  smtp_password?: string;
+  smtp_sender_name?: string;
+
+  // Configuración de Servidor de Correo Entrante (POP3 / IMAP)
+  incoming_mail_protocol?: 'pop3' | 'imap';
+  incoming_mail_host?: string;
+  incoming_mail_port?: number | string;
+  incoming_mail_encryption?: 'ssl_tls' | 'starttls' | 'none';
+  incoming_mail_user?: string;
+  incoming_mail_password?: string;
+
 
 
   locale: string;

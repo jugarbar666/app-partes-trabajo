@@ -585,6 +585,9 @@ export class InstallationBackendEngine {
     mailtoUrl?: string;
     email?: string;
     full_name?: string;
+    senderEmail?: string;
+    senderName?: string;
+    smtpHost?: string;
     temporaryPassword?: string;
     message: string;
   } {
@@ -592,10 +595,9 @@ export class InstallationBackendEngine {
     const cleanEmail = email.trim().toLowerCase();
     const target = this.state.profiles.find((p) => p.email.toLowerCase() === cleanEmail);
     if (!target || !target.is_active) {
-      return {
-        success: true,
-        message: 'Si el correo electrónico coincide con una cuenta activa en el sistema, hemos enviado un enlace seguro para restablecer tu contraseña.',
-      };
+      throw new ValidationError(
+        `El correo electrónico "${email}" no está dado de alta en la ficha de ningún usuario del sistema. Por favor, verifica la dirección introducida o ponte en contacto con la administración.`
+      );
     }
 
     if (!this.state.password_resets) {
@@ -619,9 +621,12 @@ export class InstallationBackendEngine {
         : 'https://gestionpartestrabajoroma.netlify.app';
     const recoveryLink = `${appOrigin}/?reset_token=${encodeURIComponent(token)}`;
 
-    const companyName = this.state.company_settings.company_name || 'Gestión de Partes de Trabajo';
+    const company = this.state.company_settings;
+    const companyName = company.company_name || 'Fontanería Roma';
+    const senderEmail = company.contact_email || 'anromago@hotmail.com';
+    const senderName = company.smtp_sender_name || company.company_name || 'Fontanería Roma';
     const emailSubject = `Restablecer contraseña — ${companyName}`;
-    const emailBody = `Hola ${target.full_name},\n\nHas solicitado restablecer tu contraseña en la aplicación de gestión de partes de trabajo de ${companyName}.\n\nPara definir tu nueva contraseña y entrar en la aplicación, pulsa en el siguiente enlace seguro:\n${recoveryLink}\n\nEste enlace es personal y caducará en 2 horas.\n\nSi no has solicitado este cambio, puedes ignorar este mensaje de forma segura.`;
+    const emailBody = `Hola ${target.full_name},\n\nHas solicitado restablecer tu contraseña en la aplicación de gestión de partes de trabajo de ${companyName}.\n\nPara definir tu nueva contraseña y entrar en la aplicación, pulsa en el siguiente enlace seguro:\n${recoveryLink}\n\nEste enlace es personal y caducará en 2 horas.\n\nRemitente oficial de la empresa: ${senderName} <${senderEmail}>\nSi no has solicitado este cambio, puedes ignorar este mensaje de forma segura.`;
 
     const mailtoUrl = `mailto:${encodeURIComponent(target.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
@@ -629,6 +634,9 @@ export class InstallationBackendEngine {
       email: target.email,
       token,
       expires_at: expiresAt,
+      sender_email: senderEmail,
+      sender_name: senderName,
+      smtp_host: company.smtp_host || 'default',
     });
     this.persist();
 
@@ -639,7 +647,10 @@ export class InstallationBackendEngine {
       mailtoUrl,
       email: target.email,
       full_name: target.full_name,
-      message: 'Hemos enviado un correo a la dirección de tu ficha con un enlace seguro para cambiar tu contraseña y entrar en la aplicación.',
+      senderEmail,
+      senderName,
+      smtpHost: company.smtp_host,
+      message: `Hemos enviado el enlace seguro para cambiar tu contraseña al correo de tu ficha desde el email oficial de la empresa (${senderEmail}).`,
     };
   }
 

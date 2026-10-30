@@ -1385,6 +1385,13 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(recoveryRes.success).toBe(true);
     expect(recoveryRes.token).toBeDefined();
     expect(recoveryRes.recoveryLink).toContain('reset_token=');
+    expect(recoveryRes.senderEmail).toBe(backend.getCompanySettings().contact_email);
+    expect(recoveryRes.senderName).toBeDefined();
+
+    // Comprobar que si el correo no está dado de alta en la ficha del usuario, se rechaza
+    expect(() => backend.requestPasswordRecovery('no-existe@empresa.es')).toThrow(
+      'no está dado de alta en la ficha'
+    );
 
     // Comprobar verificación de token
     const verification = backend.verifyPasswordResetToken(recoveryRes.token!);

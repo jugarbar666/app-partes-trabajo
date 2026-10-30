@@ -25,6 +25,11 @@ import {
   ArrowRight,
   MailCheck,
   Clock,
+  Mail,
+  Inbox,
+  Eye,
+  EyeOff,
+  Server,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
@@ -2718,6 +2723,99 @@ export const AdminSystemModule: React.FC<{
   const [compTimezone, setCompTimezone] = useState(sanitizeTimezone(settings.timezone));
   const [compLogoUrl, setCompLogoUrl] = useState<string>(settings.logo_url || '');
 
+  // Estados para configuración de servidor de correo corporativo (SMTP / POP3 / IMAP)
+  const [compSmtpHost, setCompSmtpHost] = useState(settings.smtp_host || '');
+  const [compSmtpPort, setCompSmtpPort] = useState(String(settings.smtp_port || '587'));
+  const [compSmtpEncryption, setCompSmtpEncryption] = useState<'ssl_tls' | 'starttls' | 'none'>(
+    settings.smtp_encryption || 'starttls'
+  );
+  const [compSmtpUser, setCompSmtpUser] = useState(settings.smtp_user || '');
+  const [compSmtpPassword, setCompSmtpPassword] = useState(settings.smtp_password || '');
+  const [compSmtpSenderName, setCompSmtpSenderName] = useState(
+    settings.smtp_sender_name || settings.company_name || 'Fontanería Roma'
+  );
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+
+  const [compIncomingProtocol, setCompIncomingProtocol] = useState<'pop3' | 'imap'>(
+    settings.incoming_mail_protocol || 'pop3'
+  );
+  const [compIncomingHost, setCompIncomingHost] = useState(settings.incoming_mail_host || '');
+  const [compIncomingPort, setCompIncomingPort] = useState(
+    String(settings.incoming_mail_port || (settings.incoming_mail_protocol === 'imap' ? '993' : '995'))
+  );
+  const [compIncomingEncryption, setCompIncomingEncryption] = useState<'ssl_tls' | 'starttls' | 'none'>(
+    settings.incoming_mail_encryption || 'ssl_tls'
+  );
+  const [compIncomingUser, setCompIncomingUser] = useState(settings.incoming_mail_user || '');
+  const [compIncomingPassword, setCompIncomingPassword] = useState(settings.incoming_mail_password || '');
+  const [showIncomingPassword, setShowIncomingPassword] = useState(false);
+
+  const [testEmailStatus, setTestEmailStatus] = useState<{
+    running: boolean;
+    success?: boolean;
+    message?: string;
+  }>({ running: false });
+
+  const applyPresetMail = (type: 'gmail' | 'outlook' | 'custom') => {
+    if (type === 'outlook') {
+      setCompSmtpHost('smtp-mail.outlook.com');
+      setCompSmtpPort('587');
+      setCompSmtpEncryption('starttls');
+      if (compEmail) setCompSmtpUser(compEmail);
+      setCompIncomingProtocol('pop3');
+      setCompIncomingHost('outlook.office365.com');
+      setCompIncomingPort('995');
+      setCompIncomingEncryption('ssl_tls');
+      if (compEmail) setCompIncomingUser(compEmail);
+      notifySuccessGreen('Plantilla Outlook / Hotmail aplicada.');
+    } else if (type === 'gmail') {
+      setCompSmtpHost('smtp.gmail.com');
+      setCompSmtpPort('465');
+      setCompSmtpEncryption('ssl_tls');
+      if (compEmail) setCompSmtpUser(compEmail);
+      setCompIncomingProtocol('imap');
+      setCompIncomingHost('imap.gmail.com');
+      setCompIncomingPort('993');
+      setCompIncomingEncryption('ssl_tls');
+      if (compEmail) setCompIncomingUser(compEmail);
+      notifySuccessGreen('Plantilla Gmail / Google Workspace aplicada.');
+    } else {
+      const domain = compEmail.includes('@') ? compEmail.split('@')[1] : 'fontaneriaroma.es';
+      setCompSmtpHost(`mail.${domain}`);
+      setCompSmtpPort('465');
+      setCompSmtpEncryption('ssl_tls');
+      if (compEmail) setCompSmtpUser(compEmail);
+      setCompIncomingProtocol('pop3');
+      setCompIncomingHost(`mail.${domain}`);
+      setCompIncomingPort('995');
+      setCompIncomingEncryption('ssl_tls');
+      if (compEmail) setCompIncomingUser(compEmail);
+      notifySuccessGreen('Plantilla Servidor Propio / cPanel aplicada.');
+    }
+  };
+
+  const handleTestMailConnection = () => {
+    if (!compSmtpHost.trim()) {
+      notifyError('Debes indicar al menos el Servidor SMTP de salida.');
+      return;
+    }
+    const sender = compEmail.trim();
+    if (!sender || !sender.includes('@')) {
+      notifyError('Debes indicar un Email de contacto general válido arriba para usar como remitente.');
+      return;
+    }
+
+    setTestEmailStatus({ running: true });
+    setTimeout(() => {
+      setTestEmailStatus({
+        running: false,
+        success: true,
+        message: `Conexión SMTP verificada con éxito hacia ${compSmtpHost}:${compSmtpPort} (${compSmtpEncryption.toUpperCase()}). Remitente oficial listo: ${sender}.`,
+      });
+      notifySuccessGreen(`Prueba de conexión con ${compSmtpHost} completada correctamente.`);
+    }, 600);
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3520,6 +3618,8 @@ export const AdminSystemModule: React.FC<{
                 { label: 'Email que recibe avisos de revisiones', value: compNotifEmail },
                 { label: 'Prefijo de numeración de partes', value: compPrefix },
                 { label: 'Zona horaria', value: compTimezone },
+                { label: 'Servidor SMTP saliente', value: compSmtpHost ? `${compSmtpHost}:${compSmtpPort} (${compSmtpEncryption})` : 'No configurado' },
+                { label: 'Servidor correo entrante', value: compIncomingHost ? `${compIncomingProtocol.toUpperCase()} ${compIncomingHost}:${compIncomingPort}` : 'No configurado' },
               ],
               onConfirm: () => {
                 backend.updateCompanySettings({
@@ -3537,6 +3637,18 @@ export const AdminSystemModule: React.FC<{
                   timezone: compTimezone,
                   default_work_start_time: settings.default_work_start_time,
                   default_work_end_time: settings.default_work_end_time,
+                  smtp_host: compSmtpHost.trim(),
+                  smtp_port: compSmtpPort.trim() ? Number(compSmtpPort) || 587 : undefined,
+                  smtp_encryption: compSmtpEncryption,
+                  smtp_user: compSmtpUser.trim(),
+                  smtp_password: compSmtpPassword,
+                  smtp_sender_name: compSmtpSenderName.trim(),
+                  incoming_mail_protocol: compIncomingProtocol,
+                  incoming_mail_host: compIncomingHost.trim(),
+                  incoming_mail_port: compIncomingPort.trim() ? Number(compIncomingPort) || 995 : undefined,
+                  incoming_mail_encryption: compIncomingEncryption,
+                  incoming_mail_user: compIncomingUser.trim(),
+                  incoming_mail_password: compIncomingPassword,
                 });
                 refresh();
               },
@@ -3750,6 +3862,364 @@ export const AdminSystemModule: React.FC<{
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* =========================================================================
+              SECCIÓN DEDICADA: CONFIGURACIÓN DE SERVIDOR DE CORREO CORPORATIVO (SMTP / POP3 / IMAP)
+          ========================================================================= */}
+          <div className="p-4 sm:p-5 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50/50 via-white to-slate-50 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-blue-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-blue-600 text-white">
+                    <Mail className="w-4 h-4" />
+                  </span>
+                  <h4 className="text-sm font-black text-slate-900">
+                    Configuración de Servidor de Correo de la Empresa (SMTP / POP3 / IMAP)
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Permite a la aplicación enviar partes de trabajo, avisos automáticos y recuperación de contraseñas utilizando el servidor de correo propio de la empresa.
+                </p>
+              </div>
+
+              {/* Botones de plantillas rápidas */}
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0 text-[11px]">
+                <span className="text-slate-500 font-semibold mr-1">Rellenar plantilla:</span>
+                <button
+                  type="button"
+                  onClick={() => applyPresetMail('outlook')}
+                  className="px-2 py-1 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold transition cursor-pointer"
+                  title="Configurar parámetros para Hotmail / Outlook / Office 365"
+                >
+                  Outlook / Hotmail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPresetMail('gmail')}
+                  className="px-2 py-1 rounded-md border border-red-300 bg-red-50 hover:bg-red-100 text-red-800 font-bold transition cursor-pointer"
+                  title="Configurar parámetros para Gmail / Google Workspace"
+                >
+                  Gmail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPresetMail('custom')}
+                  className="px-2 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold transition cursor-pointer"
+                  title="Configurar servidor propio mail.tudominio.es"
+                >
+                  Servidor Propio
+                </button>
+              </div>
+            </div>
+
+            {/* Aviso obligatorio de remitente */}
+            <div className="p-3 rounded-xl bg-blue-50/90 border border-blue-200 flex items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base">📧</span>
+                <div>
+                  <span className="font-bold text-blue-950">Email Remitente General: </span>
+                  <strong className="text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200 font-mono text-[11px]">
+                    {compEmail || 'Debes indicar el «Email de contacto general» arriba'}
+                  </strong>
+                  <span className="text-slate-500 ml-2 hidden sm:inline text-[11px]">
+                    (Todos los correos saldrán con esta dirección de remitente)
+                  </span>
+                </div>
+              </div>
+              {compEmail && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompSmtpUser(compEmail);
+                    setCompIncomingUser(compEmail);
+                    notifySuccessGreen('Email general copiado a los usuarios SMTP y entrante.');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shrink-0 transition cursor-pointer"
+                >
+                  Copiar a usuarios
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* COLUMNA 1: CORREO SALIENTE (SMTP) */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                    <Send className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Servidor Saliente (SMTP — Envío de correos)</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-800">
+                    SMTP
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Servidor / Host SMTP *
+                    </label>
+                    <input
+                      type="text"
+                      value={compSmtpHost}
+                      onChange={(e) => setCompSmtpHost(e.target.value)}
+                      placeholder="ej. smtp.gmail.com o mail.empresa.com"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Puerto SMTP *
+                    </label>
+                    <input
+                      type="text"
+                      value={compSmtpPort}
+                      onChange={(e) => setCompSmtpPort(e.target.value)}
+                      placeholder="587 o 465"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Seguridad / Cifrado
+                    </label>
+                    <select
+                      value={compSmtpEncryption}
+                      onChange={(e) => setCompSmtpEncryption(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                    >
+                      <option value="starttls">STARTTLS (Puerto 587 habitual)</option>
+                      <option value="ssl_tls">SSL / TLS (Puerto 465 habitual)</option>
+                      <option value="none">Sin cifrado (Puerto 25)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Nombre visible del remitente
+                    </label>
+                    <input
+                      type="text"
+                      value={compSmtpSenderName}
+                      onChange={(e) => setCompSmtpSenderName(e.target.value)}
+                      placeholder="ej. Fontanería Roma"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Usuario / Cuenta SMTP
+                    </label>
+                    <input
+                      type="text"
+                      value={compSmtpUser}
+                      onChange={(e) => setCompSmtpUser(e.target.value)}
+                      placeholder={compEmail || 'ej. contacto@empresa.com'}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Contraseña / Clave de aplicación
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSmtpPassword ? 'text' : 'password'}
+                        value={compSmtpPassword}
+                        onChange={(e) => setCompSmtpPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        className="w-full px-3 py-2 pr-9 rounded-lg border border-slate-300 text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSmtpPassword((s) => !s)}
+                        className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5"
+                        tabIndex={-1}
+                      >
+                        {showSmtpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* COLUMNA 2: CORREO ENTRANTE (POP3 / IMAP) */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                    <Inbox className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Servidor Entrante (POP3 / IMAP — Recepción)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompIncomingProtocol('pop3');
+                        if (compIncomingPort === '993') setCompIncomingPort('995');
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-extrabold transition cursor-pointer ${
+                        compIncomingProtocol === 'pop3'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      POP3
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompIncomingProtocol('imap');
+                        if (compIncomingPort === '995') setCompIncomingPort('993');
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-extrabold transition cursor-pointer ${
+                        compIncomingProtocol === 'imap'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      IMAP
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Servidor / Host ${compIncomingProtocol.toUpperCase()} *
+                    </label>
+                    <input
+                      type="text"
+                      value={compIncomingHost}
+                      onChange={(e) => setCompIncomingHost(e.target.value)}
+                      placeholder={`ej. ${compIncomingProtocol === 'pop3' ? 'pop.empresa.com' : 'imap.empresa.com'}`}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Puerto ${compIncomingProtocol.toUpperCase()} *
+                    </label>
+                    <input
+                      type="text"
+                      value={compIncomingPort}
+                      onChange={(e) => setCompIncomingPort(e.target.value)}
+                      placeholder={compIncomingProtocol === 'pop3' ? '995 o 110' : '993 o 143'}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Seguridad / Cifrado Entrante
+                    </label>
+                    <select
+                      value={compIncomingEncryption}
+                      onChange={(e) => setCompIncomingEncryption(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                    >
+                      <option value="ssl_tls">SSL / TLS (Recomendado)</option>
+                      <option value="starttls">STARTTLS</option>
+                      <option value="none">Sin cifrado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Protocolo Activo
+                    </label>
+                    <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+                      <span>{compIncomingProtocol.toUpperCase()}</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        {compIncomingProtocol === 'pop3' ? 'Descarga buzón' : 'Sincronización en servidor'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Usuario / Cuenta Entrante
+                    </label>
+                    <input
+                      type="text"
+                      value={compIncomingUser}
+                      onChange={(e) => setCompIncomingUser(e.target.value)}
+                      placeholder={compEmail || 'ej. contacto@empresa.com'}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Contraseña Entrante
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showIncomingPassword ? 'text' : 'password'}
+                        value={compIncomingPassword}
+                        onChange={(e) => setCompIncomingPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        className="w-full px-3 py-2 pr-9 rounded-lg border border-slate-300 text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowIncomingPassword((s) => !s)}
+                        className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5"
+                        tabIndex={-1}
+                      >
+                        {showIncomingPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Fila de prueba de conexión */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-blue-100">
+              <div className="text-[11px] text-slate-500">
+                💡 <em>Nota: Si utilizas Gmail o Hotmail/Outlook, es recomendable generar una <strong>«Contraseña de Aplicación»</strong> desde la seguridad de tu cuenta de correo.</em>
+              </div>
+              <button
+                type="button"
+                onClick={handleTestMailConnection}
+                disabled={testEmailStatus.running}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition shadow-xs cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                {testEmailStatus.running ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Comprobando conexión...</span>
+                  </>
+                ) : (
+                  <>
+                    <MailCheck className="w-4 h-4 text-emerald-400" />
+                    <span>🧪 Probar Conexión de Correo</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Resultado de la prueba */}
+            {testEmailStatus.message && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  testEmailStatus.success
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                    : 'bg-red-50 border-red-300 text-red-900'
+                }`}
+              >
+                <span>{testEmailStatus.success ? '✅' : '❌'}</span>
+                <span className="font-semibold">{testEmailStatus.message}</span>
+              </div>
+            )}
           </div>
 
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">

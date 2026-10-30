@@ -167,6 +167,19 @@
           console.warn('Error leyendo perfiles dinámicos:', e);
         }
       }
+      // Capturar y reenviar el evento de instalación nativa al iframe
+      window.deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredInstallPrompt = e;
+        try {
+          var iframe = document.getElementById('app-iframe');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.deferredInstallPrompt = e;
+          }
+        } catch(err){}
+      });
+
       initDynamicUsers();
     </script>
   </body>

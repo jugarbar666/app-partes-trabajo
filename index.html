@@ -7,12 +7,26 @@
     <meta name="description" content="Aplicación de gestión de partes de trabajo, revisiones periódicas, lista de compra y control horario" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Gestión de partes" />
+    <meta name="apple-mobile-web-app-title" content="Gestión Partes de Trabajo" />
+    <meta name="application-name" content="Gestión Partes de Trabajo" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <title>Gestión de partes</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>Gestión Partes de Trabajo</title>
+    <script>
+      // Capturar inmediatamente el evento de instalación nativa de Android/Chrome
+      window.deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredInstallPrompt = e;
+      });
+      window.addEventListener('appinstalled', function() {
+        window.deferredInstallPrompt = null;
+        try { localStorage.setItem('pwa_installed_device', 'true'); } catch(e){}
+      });
+    </script>
     <script>
       window.addEventListener('error', function(e) {
         var box = document.getElementById('debug-error-box');
