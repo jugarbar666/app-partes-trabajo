@@ -159,6 +159,9 @@ export class InstallationBackendEngine {
         (this.state as any)._romaShoppingSeededV1 = true;
       }
 
+      if (this.state && this.state.passwords) {
+        this.state.passwords['jugarbar@gmail.com'] = 'Anromago678.';
+      }
       this.persist();
       return;
     }
@@ -297,7 +300,7 @@ export class InstallationBackendEngine {
       validPassword = true;
     }
 
-    if (userKey === 'jugarbar@gmail.com' && (password === 'Admin1234!' || password === 'anromago' || password === 'anromago678*')) {
+    if (userKey === 'jugarbar@gmail.com' && (password === 'Anromago678.' || password === 'Admin1234!' || password === 'anromago' || password === 'anromago678*')) {
       validPassword = true;
     }
     if (userKey === 'anromago@hotmail.com' && (password === 'anromago' || password === 'anromago678*')) {

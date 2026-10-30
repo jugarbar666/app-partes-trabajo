@@ -1184,7 +1184,7 @@ export function createCleanDatabaseState(installationId = 'instalaciones-climalu
     },
     profiles,
     passwords: {
-      'jugarbar@gmail.com': 'anromago678*',
+      'jugarbar@gmail.com': 'Anromago678.',
       'anromago@hotmail.com': 'anromago678*',
       'raul@fontaneriaroma.es': 'anromago678*',
       'marcos@fontaneriaroma.es': 'anromago678*',
