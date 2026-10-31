@@ -148,7 +148,7 @@ export default async (req: Request) => {
     </tr>
   </table>
 </body>
-</html>`;
+</html>`);
 
     // Si hay servidor SMTP configurado (host y usuario):
     if (smtp && smtp.host && smtp.user) {
