@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { mergeDatabaseStates } from '../services/supabaseSyncEngine';
+import { BackupJob } from '../types/domain';
 import {
   addCalendarMonthsClamped,
   calculateDuration,
@@ -8,10 +10,14 @@ import {
   formatDateES,
   formatDateTimeES,
   formatTimeES,
+  formatWorkOrderScheduled,
+  compareWorkOrdersScheduledFirst,
   getReviewAlertInfo,
+  isWorkOrderUnscheduled,
   parseDateRobust,
   sanitizeSpreadsheetCell,
   sanitizeTimezone,
+  translateErrorMessageToSpanish,
 } from '../utils/formatters';
 import {
   executeValidatedImport,
@@ -708,11 +714,11 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       backend,
       entityType: 'customers',
       rawRows: [
-        { Codigo_Cliente: 'CLI-900', Nombre_Razon_Social: 'Cliente Nuevo Excel' },
-        { Codigo_Cliente: 'CLI-0001', Nombre_Razon_Social: 'Coincidente' },
-        { Codigo_Cliente: '', Nombre_Razon_Social: '' },
+        { Codigo_Cliente: 'CLI-900', Nombre_Razon_Social: 'Cliente Nuevo Excel', Telefono: '600112233' },
+        { Codigo_Cliente: 'CLI-0001', Nombre_Razon_Social: 'Coincidente', Telefono: '600112233' },
+        { Codigo_Cliente: '', Nombre_Razon_Social: '', Telefono: '' },
       ],
-      columnMapping: { code: 'Codigo_Cliente', name: 'Nombre_Razon_Social' },
+      columnMapping: { code: 'Codigo_Cliente', name: 'Nombre_Razon_Social', phone: 'Telefono' },
     });
 
     expect(preview.validNewCount).toBe(1);
@@ -1756,7 +1762,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
 
   it('Escenario 30: Base de datos limpia de registros para demo oficial de Fontanería Roma (0 clientes, 0 proveedores, 0 partes, 0 artículos, 0 revisiones y los 4 usuarios solicitados)', () => {
     const cleanBackend = new InstallationBackendEngine('fontaneria-roma-limpia', false, 'clean');
-    const admin = cleanBackend.login('Juan Carlos', 'anromago678*');
+    const admin = cleanBackend.login('12345678X', 'anromago678*');
     expect(admin.role).toBe('admin');
 
     // 1. Todas las colecciones maestras y operativas deben estar vacías de registros
@@ -1770,22 +1776,36 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(cleanBackend.getAttendanceSessions().length).toBe(0);
     expect(cleanBackend.getAuditLog().length).toBe(0);
 
-    // 2. Únicamente existen los 4 usuarios oficiales solicitados (2 administradores y 2 operarios)
+    // 2. Únicamente existen los 5 usuarios oficiales solicitados (2 administradores y 3 operarios)
     const perfiles = cleanBackend.getProfiles();
-    expect(perfiles.length).toBe(4);
+    expect(perfiles.length).toBe(5);
     expect(perfiles.map((p) => ({ name: p.full_name, dni: p.dni, role: p.role }))).toEqual([
       { name: 'Juan Carlos', dni: '12345678X', role: 'admin' },
       { name: 'Antonio Roma', dni: '05687529C', role: 'admin' },
       { name: 'Raúl García', dni: '05971502N', role: 'operario' },
       { name: 'Marcos Roma', dni: '05727599R', role: 'operario' },
+      { name: 'Juan (operario)', dni: '05658387L', role: 'operario' },
     ]);
 
-    // Verificar login por DNI y nombre con contraseña oficial anromago678*
+    // Verificar login exclusivamente por DNI (letra en mayúsculas) y correo electrónico
     expect(cleanBackend.login('12345678X', 'anromago678*').full_name).toBe('Juan Carlos');
     expect(cleanBackend.login('05687529C', 'anromago678*').full_name).toBe('Antonio Roma');
     expect(cleanBackend.login('05971502N', 'anromago678*').full_name).toBe('Raúl García');
     expect(cleanBackend.login('05727599R', 'anromago678*').full_name).toBe('Marcos Roma');
-    cleanBackend.login('Juan Carlos', 'anromago678*');
+    expect(cleanBackend.login('05658387L', 'anromago678*').full_name).toBe('Juan (operario)');
+    expect(cleanBackend.login('jugarbar@gmail.com', 'anromago678*').full_name).toBe('Juan Carlos');
+    expect(cleanBackend.login('anromago@hotmail.com', 'anromago678*').full_name).toBe('Antonio Roma');
+    expect(cleanBackend.login('nocorreo@nocorreo1.es', 'anromago678*').full_name).toBe('Raúl García');
+    expect(cleanBackend.login('nocorreo@nocorreo.es', 'anromago678*').full_name).toBe('Marcos Roma');
+    expect(cleanBackend.login('jcgbarrajon@gmail.com', 'anromago678*').full_name).toBe('Juan (operario)');
+
+    // Verificar que intentar iniciar sesión por nombre o con DNI en minúsculas es RECHAZADO estrictamente
+    expect(() => cleanBackend.login('Juan Carlos', 'anromago678*')).toThrow(/correo electrónico o DNI con la letra en mayúsculas/);
+    expect(() => cleanBackend.login('Antonio Roma', 'anromago678*')).toThrow(/correo electrónico o DNI con la letra en mayúsculas/);
+    expect(() => cleanBackend.login('Juan', 'anromago678*')).toThrow(/correo electrónico o DNI con la letra en mayúsculas/);
+    expect(() => cleanBackend.login('12345678x', 'anromago678*')).toThrow(/correo electrónico o DNI con la letra en mayúsculas/);
+    expect(() => cleanBackend.login('05687529c', 'anromago678*')).toThrow(/correo electrónico o DNI con la letra en mayúsculas/);
+    cleanBackend.login('12345678X', 'anromago678*');
 
     // 3. Crear el primer cliente real
     const nuevoCliente = cleanBackend.saveCustomer({
@@ -1946,9 +1966,74 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(proveedorGuardado.province).toBe('Sevilla');
   });
 
+  it('Escenario 34: La plantilla y el proceso de importación/exportación de artículos coinciden exactamente con los campos de la ficha (Código, Unidad, Nombre, Precio Compra, Precio Venta y Proveedor Habitual)', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. Dar de alta un proveedor previo para vincular
+    const prov = backend.saveSupplier({
+      name: 'A.SS.RIBERA DEL DUERO',
+      tax_id: 'B09887766',
+      contact_person: 'Comercial Ribera',
+      phone: '947500000',
+      email: 'pedidos@riberadelduero.es',
+      address: 'Polígono Allendeduero 4',
+      postal_code: '09400',
+      city: 'Aranda de Duero',
+      province: 'Burgos',
+      notes: '',
+      is_active: true,
+    });
+
+    // 2. Simular importación con fila coincidente con la ficha del artículo
+    const rawRow = {
+      Codigo_Articulo: 'MAT-9901',
+      Unidad_Medida: 'ud',
+      Nombre_Articulo: 'Válvula Termostática Caleffi 1/2 pulgada',
+      Precio_Compra: '14,25',
+      Precio_Venta: '28,50',
+      Proveedor_Habitual: 'A.SS.RIBERA DEL DUERO',
+    };
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows: [rawRow],
+      columnMapping: {
+        code: 'Codigo_Articulo',
+        unit: 'Unidad_Medida',
+        name: 'Nombre_Articulo',
+        purchase_price: 'Precio_Compra',
+        sale_price: 'Precio_Venta',
+        supplier: 'Proveedor_Habitual',
+      },
+    });
+
+    expect(preview.validNewCount).toBe(1);
+    expect(preview.errorCount).toBe(0);
+
+    const exec = executeValidatedImport({
+      backend,
+      entityType: 'articles',
+      fileName: 'Plantilla_Articulos.xlsx',
+      conflictPolicy: 'reject_duplicates',
+      preview,
+    });
+
+    expect(exec.inserted).toBe(1);
+
+    // 3. Comprobar que en la base de datos el artículo se ha creado con todos los datos de la ficha vinculados
+    const artGuardado = backend.getArticles(true).find((a) => a.code === 'MAT-9901')!;
+    expect(artGuardado).toBeDefined();
+    expect(artGuardado.name).toBe('Válvula Termostática Caleffi 1/2 pulgada');
+    expect(artGuardado.unit).toBe('ud');
+    expect(artGuardado.purchase_price_cents).toBe(1425);
+    expect(artGuardado.sale_price_cents).toBe(2850);
+    expect(artGuardado.supplier_id).toBe(prov.id);
+  });
+
   it('Escenario 33: Generación del dataset oficial de Fontanería Roma (30 artículos, 10 revisiones incluyendo cambio de ánodo de magnesio, 30 partes para próximas 4 semanas con 5 UCLM indicando facultad, 4 Gesyre y 21 clientes aleatorios en todos los estados)', () => {
     const crBackend = new InstallationBackendEngine('test-ciudad-real-data', false, 'clean');
-    crBackend.login('Juan Carlos', 'anromago678*');
+    crBackend.login('12345678X', 'anromago678*');
     crBackend.loadCiudadRealDemoDataset();
 
     // 1. Exactamente 30 artículos de fontanería con precios de compra y venta normales y proveedor asignado
@@ -2264,5 +2349,413 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
         enforceFutureDate: true,
       })
     ).toThrow(/No se puede reprogramar un parte con fecha u hora anterior a la actual/);
+  });
+  it('Escenario 22 (Supabase Realtime): Fusión no destructiva y sincronización en tiempo real entre múltiples dispositivos', () => {
+    const snapA = backend.exportFullSnapshot();
+    const snapB = JSON.parse(JSON.stringify(snapA));
+
+    // Dispositivo A crea un nuevo parte de trabajo
+    const newWo = {
+      id: 'wo-device-a-1',
+      code: 'PT-9999',
+      customer_id: 'cust-1',
+      customer_address_id: 'addr-1',
+      snapshot_customer_name: 'Cliente Remoto A',
+      snapshot_customer_tax_id: 'B11111111',
+      snapshot_contact_name: 'Contacto A',
+      snapshot_contact_phone: '+34600111222',
+      snapshot_contact_email: 'a@ejemplo.es',
+      snapshot_address_line: 'Calle Remota A',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Instalación urgente en directo',
+      scheduled_at: '2026-11-12T10:00:00.000Z',
+      status: 'no_iniciado',
+      created_at: '2026-10-30T10:00:00.000Z',
+      updated_at: '2026-10-30T10:00:00.000Z',
+    };
+    snapA.work_orders.push(newWo as any);
+
+    // Dispositivo B crea una solicitud en la cesta de la compra
+    const newShopping = {
+      id: 'shop-device-b-1',
+      article_id: snapB.articles[0]?.id || 'art-1',
+      quantity_requested: 5,
+      status: 'pending_purchase',
+      requested_by: 'usr-oper-1',
+      created_at: '2026-10-30T10:01:00.000Z',
+      updated_at: '2026-10-30T10:01:00.000Z',
+    };
+    snapB.shopping_requests.push(newShopping as any);
+
+    // Fusión no destructiva de ambos dispositivos
+    const merged = mergeDatabaseStates(snapA, snapB);
+
+    // Debe contener el parte creado por el dispositivo A y la compra del dispositivo B
+    expect(merged.work_orders.some((wo) => wo.id === 'wo-device-a-1')).toBe(true);
+    expect(merged.shopping_requests.some((sr) => sr.id === 'shop-device-b-1')).toBe(true);
+  });
+
+  it('Requerimiento 1: Control de fichaje configurable por usuario (Sí / No)', () => {
+    const b = new InstallationBackendEngine('test-can-clock', false, 'clean');
+    b.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // Crear un operario con can_clock: false
+    const userNoClock = b.inviteAndCreateUser({
+      full_name: 'Operario Sin Fichaje',
+      dni: '99999999Z',
+      email: 'sinfichaje@test.es',
+      phone: '600999888',
+      role: 'operario',
+      can_clock: false,
+    });
+    expect(userNoClock.can_clock).toBe(false);
+
+    // Intentar fichar entrada directamente con este usuario
+    b.login('sinfichaje@test.es', userNoClock.temporaryPassword);
+    expect(() => b.clockIn('Entrada intento')).toThrowError(
+      /El usuario tiene desactivado el control de fichaje/
+    );
+
+    // Intentar fichar salida
+    expect(() => b.clockOut('Salida intento')).toThrowError(
+      /El usuario tiene desactivado el control de fichaje/
+    );
+
+    // La regularización automática debe excluirlo por completo
+    b.login('admin@climalux-demo.es', 'Admin1234!');
+    const res = b.autoResolvePendingAttendance({
+      targetDateCivil: '2026-10-31',
+      completeMissingWorkers: true,
+    });
+    const sessions = b.getAttendanceSessions(true).filter((s) => s.user_id === userNoClock.id);
+    expect(sessions.length).toBe(0);
+
+    // Informe PDF de firmas excluye a los usuarios con can_clock: false
+    const pdfRes = generateAttendanceReportPDF({
+      company: b.getCompanySettings(),
+      periodLabel: 'Octubre 2026',
+      workers: [
+        { worker: userNoClock, sessions: [] },
+        { worker: b.getCurrentUser(), sessions: [] },
+      ],
+    }, false);
+    expect(pdfRes.textSummary).not.toBe('Sin trabajadores con control de fichaje');
+
+    // Modificar a can_clock: true y verificar que ahora sí puede fichar
+    b.updateUserProfile(userNoClock.id, { can_clock: true });
+    const updated = b.getProfiles().find((p) => p.id === userNoClock.id);
+    expect(updated?.can_clock).toBe(true);
+
+    b.login('sinfichaje@test.es', userNoClock.temporaryPassword);
+    const session = b.clockIn('Entrada habilitada');
+    expect(session.id).toBeDefined();
+    expect(session.clock_in_at).toBeDefined();
+
+    // Desactivar de nuevo no borra los fichajes históricos
+    b.login('admin@climalux-demo.es', 'Admin1234!');
+    b.updateUserProfile(userNoClock.id, { can_clock: false });
+    const historical = b.getAttendanceSessions(true).filter((s) => s.user_id === userNoClock.id);
+    expect(historical.length).toBe(1);
+  });
+
+  it('Requerimiento 5 y 6: Copias de seguridad exclusivas de escritorio e identificación con fecha, hora y segundos', () => {
+    const b = new InstallationBackendEngine('test-backup-desktop', false, 'clean');
+    b.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // 1. En entorno web (isInstalledDesktop = false), backend impide la creación de copias
+    (globalThis as any).__IS_INSTALLED_DESKTOP__ = false;
+    expect(() => b.createManualBackup()).toThrowError(
+      /La creación de copias de seguridad está reservada exclusivamente a la versión de escritorio/
+    );
+
+    // Tampoco dispara auto_desktop en modo web
+    const autoWeb = b.triggerDailyDesktopAutoBackupIfNeeded({ isDesktopContext: false });
+    expect(autoWeb.triggered).toBe(false);
+
+    // 2. En entorno escritorio PC (isInstalledDesktop = true), la creación se permite
+    (globalThis as any).__IS_INSTALLED_DESKTOP__ = true;
+    const backup1 = b.createManualBackup('2026-10-31');
+    expect(backup1.status).toBe('completed');
+    expect(backup1.filename).toMatch(/^copia_2026-10-31_\d{2}-\d{2}-\d{2}\.json$/);
+    expect(backup1.backup_time_local).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+
+    // Generar una segunda copia en el mismo segundo o día: no se sobrescribe
+    const backup2 = b.createManualBackup('2026-10-31');
+    expect(backup2.id).not.toBe(backup1.id);
+    expect(backup2.filename).not.toBe(backup1.filename);
+
+    // Verificar ordenación: la más reciente primero
+    const list = b.getBackupJobs();
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    expect(new Date(list[0].started_at).getTime()).toBeGreaterThanOrEqual(
+      new Date(list[1].started_at).getTime()
+    );
+
+    // Compatibilidad con copias históricas que solo tienen YYYY-MM-DD
+    const historicalCopy: BackupJob = {
+      id: 'bkp-old-legacy',
+      backup_date_local: '2026-09-01',
+      trigger_type: 'manual',
+      status: 'completed',
+      scope: { database: true, storage_files: true, auth_identities: true },
+      artifact_path: 's3://legacy.bundle.enc',
+      size_bytes: 1024,
+      checksum_sha256: 'sha256-legacy',
+      error_message: null,
+      triggered_by: 'usr-admin',
+      started_at: '',
+      completed_at: null,
+    };
+    (b as any).state.backup_jobs.push(historicalCopy);
+    const jobsWithLegacy = b.getBackupJobs();
+    expect(jobsWithLegacy.some((j) => j.id === 'bkp-old-legacy')).toBe(true);
+
+    // Limpiar flag de test
+    delete (globalThis as any).__IS_INSTALLED_DESKTOP__;
+  });
+
+  it('Requerimiento 1: Todos los mensajes y errores traducidos al español', () => {
+    expect(translateErrorMessageToSpanish('Failed to fetch')).toBe(
+      'Sin conexión con el servidor. Compruebe su conexión a internet.'
+    );
+    expect(translateErrorMessageToSpanish('Request timed out')).toBe(
+      'La operación ha superado el tiempo de espera. Inténtelo de nuevo.'
+    );
+    expect(translateErrorMessageToSpanish('JWT expired')).toBe(
+      'Sesión expirada o permisos insuficientes. Inicie sesión de nuevo.'
+    );
+    expect(translateErrorMessageToSpanish('row-level security policy')).toBe(
+      'No dispone de permisos para realizar esta acción.'
+    );
+  });
+
+  it('Requerimiento 2: Proteger los fichajes procesados en cierres anteriores y correcciones manuales', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const op = backend.getProfiles().find((p) => p.role === 'operario' && p.is_active)!;
+
+    // 1. Simular sesión que se cerrará automáticamente
+    const pastDate = '2026-10-15';
+    const s1 = backend.adminCreateOrCorrectAttendance({
+      user_id: op.id,
+      clock_in_at: `${pastDate}T08:00:00.000Z`,
+      clock_out_at: null,
+      reason: 'Fichaje de prueba abierto',
+    });
+
+    // Ejecutar primer cierre
+    const res1 = backend.autoResolvePendingAttendance({
+      targetDateCivil: pastDate,
+      referenceNowIso: `${pastDate}T20:00:00.000Z`,
+    });
+    expect(res1.closedSessionsCount).toBe(1);
+
+    const closedS1 = backend.getAttendanceSessions(false).find((s) => s.id === s1.id)!;
+    expect(closedS1.is_closed).toBe(true);
+    expect(closedS1.clock_out_at).not.toBeNull();
+    const firstExitTime = closedS1.clock_out_at;
+
+    // 2. Ejecutar un segundo cierre sobre la misma fecha: debe respetar el registro ya cerrado (0 modificaciones/duplicados)
+    const res2 = backend.autoResolvePendingAttendance({
+      targetDateCivil: pastDate,
+      referenceNowIso: `${pastDate}T21:00:00.000Z`,
+    });
+    expect(res2.closedSessionsCount).toBe(0);
+    const closedS1Again = backend.getAttendanceSessions(false).find((s) => s.id === s1.id)!;
+    expect(closedS1Again.clock_out_at).toBe(firstExitTime);
+
+    // 3. Corrección manual por parte del administrador
+    const corrected = backend.adminCreateOrCorrectAttendance({
+      session_id: s1.id,
+      user_id: op.id,
+      clock_in_at: `${pastDate}T08:00:00.000Z`,
+      clock_out_at: `${pastDate}T17:45:00.000Z`,
+      reason: 'Ajuste manual salida real autorizada',
+    });
+    expect(corrected.is_manually_corrected).toBe(true);
+    expect(corrected.clock_out_at).toBe(`${pastDate}T17:45:00.000Z`);
+
+    // 4. Ejecutar cierre de nuevo: la corrección manual debe ser intocable
+    backend.autoResolvePendingAttendance({
+      targetDateCivil: pastDate,
+      referenceNowIso: `${pastDate}T22:00:00.000Z`,
+    });
+    const s1AfterManual = backend.getAttendanceSessions(false).find((s) => s.id === s1.id)!;
+    expect(s1AfterManual.clock_out_at).toBe(`${pastDate}T17:45:00.000Z`);
+
+    // 5. Un operario no puede realizar correcciones administrativas día a día
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    expect(() => {
+      backend.adminCreateOrCorrectAttendance({
+        session_id: s1.id,
+        user_id: op.id,
+        clock_in_at: `${pastDate}T08:00:00.000Z`,
+        clock_out_at: `${pastDate}T19:00:00.000Z`,
+        reason: 'Intento de auto-corrección no autorizada',
+      });
+    }).toThrow();
+  });
+
+  it('Requerimiento 6: Teléfono obligatorio en la ficha de clientes', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // Intentar crear cliente sin teléfono debe fallar con mensaje exacto
+    expect(() => {
+      backend.saveCustomer({
+        name: 'Cliente Sin Teléfono',
+        phones: [],
+      } as any);
+    }).toThrow('El teléfono del cliente es obligatorio.');
+
+    expect(() => {
+      backend.saveCustomer({
+        name: 'Cliente Con Teléfono Vacío',
+        phones: ['   '],
+      } as any);
+    }).toThrow('El teléfono del cliente es obligatorio.');
+
+    // Con teléfono válido se guarda con éxito
+    const saved = backend.saveCustomer({
+      name: 'Cliente Con Teléfono Válido',
+      phones: ['+34 654 987 321'],
+    } as any);
+    expect(saved.id).toBeDefined();
+    expect(saved.phones[0]).toBe('+34 654987321');
+  });
+
+  it('Requerimiento 7 y 8: Partes pendientes de programar y reglas estrictas de programación', () => {
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const op = backend.getProfiles().find((p) => p.role === 'operario' && p.is_active)!;
+
+    const cust = backend.saveCustomer({
+      name: 'Cliente Test Programación',
+      phones: ['600123456'],
+    } as any);
+    const addr = backend.saveCustomerAddress({
+      customer_id: cust.id,
+      address_line: 'Calle Real 10',
+      city: 'Ciudad Real',
+      postal_code: '13001',
+    } as any);
+
+    // 1. Guardar parte sin fecha ni operario: queda pendiente de programar
+    const unscheduledWo = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Reparación de bajante sin cita confirmada',
+      is_unscheduled: true,
+      operator_ids: [],
+    } as any);
+
+    expect(unscheduledWo.status).toBe('no_iniciado');
+    expect(unscheduledWo.is_unscheduled).toBe(true);
+    expect(unscheduledWo.scheduled_at).toBe('');
+    expect(isWorkOrderUnscheduled(unscheduledWo)).toBe(true);
+    expect(formatWorkOrderScheduled(unscheduledWo)).toBe('Pendiente de programar');
+
+    // 2. Un operario no puede iniciar un parte pendiente de programar
+    backend.login('carlos@climalux-demo.es', 'Oper1234!');
+    expect(() => {
+      backend.startWorkOrder(unscheduledWo.id);
+    }).toThrow('El parte está pendiente de programar y no se puede iniciar.');
+
+    // 3. Reglas de programación: si se pone fecha/hora, es obligatorio asignar operario
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+    const futureDate = '2026-11-15T09:00:00.000Z';
+
+    expect(() => {
+      backend.createWorkOrder({
+        customer_id: cust.id,
+        customer_address_id: addr.id,
+        planned_work: 'Parte con fecha pero sin operario',
+        scheduled_at: futureDate,
+        operator_ids: [],
+      } as any);
+    }).toThrow('Seleccione un operario para programar el parte.');
+
+    // 4. Programar correctamente el parte con fecha, hora y operario
+    const scheduledWo = backend.updateWorkOrderPlanningAndAssignments(unscheduledWo.id, {
+      planned_work: 'Reparación de bajante programada',
+      scheduled_at: futureDate,
+      operator_ids: [op.id],
+    });
+
+    expect(scheduledWo.is_unscheduled).toBe(false);
+    expect(scheduledWo.scheduled_at).toBe(futureDate);
+    expect(isWorkOrderUnscheduled(scheduledWo)).toBe(false);
+    expect(formatWorkOrderScheduled(scheduledWo)).not.toBe('Pendiente de programar');
+  });
+
+  it('Escenario 50: Ordenación obligatoria de partes (programados primero, pendientes de programar al final del más antiguo al más reciente)', () => {
+    const cust = backend.getCustomers()[0];
+    const addr = backend.getCustomerAddresses(cust.id)[0];
+    const op = backend.getProfiles().find((p) => p.role === 'operario' && p.is_active)!;
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    // Creamos varios partes en distintos momentos:
+    // 1. Unscheduled antiguo (creado hace 3 días)
+    const unschedOld = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Pendiente antiguo',
+      is_unscheduled: true,
+      operator_ids: [],
+    } as any);
+    (unschedOld as any).created_at = '2026-10-10T10:00:00.000Z';
+
+    // 2. Unscheduled reciente (creado ayer)
+    const unschedNew = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Pendiente reciente',
+      is_unscheduled: true,
+      operator_ids: [],
+    } as any);
+    (unschedNew as any).created_at = '2026-10-25T10:00:00.000Z';
+
+    // 3. Scheduled para el 20 de noviembre
+    const schedLater = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Programado tarde',
+      scheduled_at: '2026-11-20T10:00:00.000Z',
+      operator_ids: [op.id],
+    } as any);
+
+    // 4. Scheduled para el 5 de noviembre
+    const schedEarlier = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Programado temprano',
+      scheduled_at: '2026-11-05T10:00:00.000Z',
+      operator_ids: [op.id],
+    } as any);
+
+    const list = [unschedNew, schedLater, unschedOld, schedEarlier];
+    const sorted = [...list].sort(compareWorkOrdersScheduledFirst);
+
+    // 1. Primero los programados, por fecha programada ascendente
+    expect(sorted[0].id).toBe(schedEarlier.id);
+    expect(sorted[1].id).toBe(schedLater.id);
+
+    // 2. Después al final, los pendientes de programar, por fecha de creación del más antiguo al más reciente
+    expect(sorted[2].id).toBe(unschedOld.id);
+    expect(sorted[3].id).toBe(unschedNew.id);
+
+    // 3. En lista exclusiva de pendientes de programar, conserva el orden cronológico antiguo -> reciente
+    const unscheduledOnly = [unschedNew, unschedOld].sort(compareWorkOrdersScheduledFirst);
+    expect(unscheduledOnly[0].id).toBe(unschedOld.id);
+    expect(unscheduledOnly[1].id).toBe(unschedNew.id);
+  });
+
+  it('Escenario 51: Purga total de catálogo demo de artículos y cesta al preparar producción', () => {
+    const prodBackend = new InstallationBackendEngine('test-roma-prod-clean', false, 'clean');
+    const adminUser = prodBackend.getProfiles().find((p) => p.role === 'admin')!;
+    prodBackend.login(adminUser.email, 'anromago678*');
+    expect(prodBackend.getArticles().length).toBe(0);
+    expect(prodBackend.getShoppingRequests().length).toBe(0);
+    expect(prodBackend.getInstallationReviews().length).toBe(0);
+    expect(prodBackend.getReviewOccurrences().length).toBe(0);
   });
 });

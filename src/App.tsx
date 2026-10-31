@@ -37,8 +37,10 @@ import {
   RotateCcw,
   Edit3,
   Download,
+  CalendarX,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
+import { supabaseSyncEngine, SyncEngineState } from './services/supabaseSyncEngine';
 import { UserProfile } from './types/domain';
 
 export const DEVICE_LOGGED_USER_ID_KEY = 'agy_roma_device_logged_user_id';
@@ -70,11 +72,14 @@ import {
   getLocalDateString,
   getReviewAlertInfo,
   getWeekDays,
+  isWorkOrderUnscheduled,
+  formatWorkOrderScheduled,
+  compareWorkOrdersScheduledFirst,
   parseDateRobust,
   sanitizeTimezone,
   WeekDayInfo,
 } from './utils/formatters';
-import { isMobilePreviewEnabled, isDemoUserSwitchEnabled } from './config/branchConfig';
+import { isMobilePreviewEnabled, isDemoUserSwitchEnabled, isInstalledDesktopApp, isMobileDeviceOrViewport } from './config/branchConfig';
 import {
   fetchRemoteLatestVersion,
   getInstalledDeviceVersion,
@@ -218,29 +223,67 @@ const WorkOrderMobileCard: React.FC<{
     >
       <div className="space-y-2.5">
         {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
-        <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white shadow-sm space-y-2.5">
+        <div
+          className={`p-3 sm:p-3.5 rounded-xl shadow-sm space-y-2.5 ${
+            isWorkOrderUnscheduled(wo)
+              ? 'bg-amber-100 border border-amber-300 text-slate-950'
+              : 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white'
+          }`}
+        >
           {/* Fila superior: etiqueta de fecha en dos líneas y código de parte */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-blue-100 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-                <Calendar className="w-3.5 h-3.5 text-white" />
+            <div
+              className={`flex items-center gap-2 min-w-0 ${
+                isWorkOrderUnscheduled(wo) ? 'text-amber-950 font-bold' : 'text-blue-100'
+              }`}
+            >
+              <div
+                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                  isWorkOrderUnscheduled(wo)
+                    ? 'bg-amber-200 border border-amber-400 text-amber-950'
+                    : 'bg-white/15 text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
               </div>
-              <div className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider leading-tight text-blue-100">
+              <div
+                className={`text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider leading-tight ${
+                  isWorkOrderUnscheduled(wo) ? 'text-amber-950' : 'text-blue-100'
+                }`}
+              >
                 <div>Fecha y Hora</div>
                 <div>Prevista</div>
               </div>
             </div>
-            <span className="font-mono font-extrabold text-xs px-3 py-1 rounded-md bg-white/15 border border-white/25 text-white shadow-2xs shrink-0 whitespace-nowrap tracking-wide">
+            <span
+              className={`font-mono font-extrabold text-xs px-3 py-1 rounded-md shadow-2xs shrink-0 whitespace-nowrap tracking-wide ${
+                isWorkOrderUnscheduled(wo)
+                  ? 'bg-amber-200 border border-amber-400 text-slate-950 font-black'
+                  : 'bg-white/15 border border-white/25 text-white'
+              }`}
+            >
               {wo.code}
             </span>
           </div>
 
           {/* Fila inferior: fecha y hora destacada y botón reprogramar */}
           <div className="flex items-center justify-between gap-2 pt-0.5">
-            <div className="text-sm sm:text-base font-black tracking-tight text-white">
-              <span>{formatDateES(wo.scheduled_at, tz)}</span>
-              <span className="text-blue-200 font-semibold text-xs mx-1.5">a las</span>
-              <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
+            <div
+              className={`text-sm sm:text-base font-black tracking-tight ${
+                isWorkOrderUnscheduled(wo) ? 'text-slate-950' : 'text-white'
+              }`}
+            >
+              {isWorkOrderUnscheduled(wo) ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-300 text-slate-950 font-black text-xs sm:text-sm border border-amber-400 shadow-2xs">
+                  Pendiente de programar
+                </span>
+              ) : (
+                <>
+                  <span>{formatDateES(wo.scheduled_at, tz)}</span>
+                  <span className="text-blue-200 font-semibold text-xs mx-1.5">a las</span>
+                  <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
@@ -250,10 +293,14 @@ const WorkOrderMobileCard: React.FC<{
                   e.stopPropagation();
                   onReschedule(wo);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
-                title="Reprogramar fecha y hora prevista"
+                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                  isWorkOrderUnscheduled(wo)
+                    ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
+                    : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
+                }`}
+                title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora prevista' : 'Reprogramar fecha y hora prevista'}
               >
-                Reprogramar
+                {isWorkOrderUnscheduled(wo) ? 'Programar' : 'Reprogramar'}
               </button>
               {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
                 <button
@@ -263,7 +310,11 @@ const WorkOrderMobileCard: React.FC<{
                     e.stopPropagation();
                     onReassign(wo);
                   }}
-                  className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] sm:text-xs font-bold border border-white/30 transition cursor-pointer shadow-xs shrink-0"
+                  className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                    isWorkOrderUnscheduled(wo)
+                      ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
+                      : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
+                  }`}
                   title="Reasignar operarios al parte (Solo Administrador)"
                 >
                   Reasignar
@@ -366,7 +417,27 @@ const MainApplicationContent: React.FC = () => {
     useUIConfirmation();
 
   const [tick, setTick] = useState(0);
-  const refresh = () => setTick((t) => t + 1);
+  const refresh = () => {
+    setTick((t) => t + 1);
+    supabaseSyncEngine.forceSync().catch(() => {});
+  };
+
+  const [syncState, setSyncState] = useState<SyncEngineState>(() => supabaseSyncEngine.getState());
+
+  useEffect(() => {
+    backend.purgeProductionSeedData();
+    const unsubBackend = backend.subscribe(() => {
+      setTick((t) => t + 1);
+    });
+    const unsubSync = supabaseSyncEngine.onStatusChange((s) => {
+      setSyncState(s);
+    });
+    supabaseSyncEngine.initialize(backend);
+    return () => {
+      unsubBackend();
+      unsubSync();
+    };
+  }, [backend]);
 
   const [loggedUser, setLoggedUser] = useState<UserProfile | null>(() => {
     try {
@@ -424,7 +495,7 @@ const MainApplicationContent: React.FC = () => {
         if (firstAdmin) {
           return backend.login(firstAdmin.email, 'anromago678*');
         }
-        return backend.login('Juan Carlos', 'anromago678*');
+        return backend.login('jugarbar@gmail.com', 'anromago678*');
       }
 
       // En un nuevo dispositivo real (PWA o navegador): solicitar identificación
@@ -627,6 +698,14 @@ const MainApplicationContent: React.FC = () => {
   const currentRoute = routeStack[routeStack.length - 1] || 'dashboard';
 
   const navigateTo = (next: ActiveRoute) => {
+    // Protección móvil: impedir abrir 'admin_system' con backups o audit en móvil
+    if (
+      next === 'admin_system' &&
+      isMobileDeviceOrViewport() &&
+      (adminInitialSection === 'backups' || adminInitialSection === 'audit')
+    ) {
+      return;
+    }
     setRouteStack((prev) => [...prev, next]);
     setMobileMenuOpen(false);
     scrollToTopAllApp();
@@ -652,7 +731,7 @@ const MainApplicationContent: React.FC = () => {
     }
   }, [currentRoute, selectedWorkOrderId]);
   const [woListFilterStatus, setWoListFilterStatus] = useState<
-    'all' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado'
+    'all' | 'pendiente_programar' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado'
   >('all');
   const [woSearch, setWoSearch] = useState('');
 
@@ -727,7 +806,7 @@ const MainApplicationContent: React.FC = () => {
   const [masterInitialTab, setMasterInitialTab] = useState<
     'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'users'
   >('customers');
-  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos'>('pendientes');
+  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos' | 'pendientes_programar'>('pendientes');
   const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   // Control de versión instalada en el dispositivo y aviso de nueva versión disponible
@@ -809,7 +888,7 @@ const MainApplicationContent: React.FC = () => {
   // Disparador automático de copia de seguridad en la primera apertura diaria de escritorio (Regla 15)
   useEffect(() => {
     if (!loggedUser) return;
-    const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 768 : true;
+    const isDesktop = isInstalledDesktopApp();
     try {
       backend.triggerDailyDesktopAutoBackupIfNeeded({ isDesktopContext: isDesktop });
       refresh();
@@ -1001,7 +1080,7 @@ const MainApplicationContent: React.FC = () => {
                 try {
                   const targetEmail =
                     loginEmail.trim() ||
-                    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'Juan Carlos' : '');
+                    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'jugarbar@gmail.com' : '');
                   const targetPass =
                     loginPass.trim() ||
                     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'anromago678*' : '');
@@ -1019,16 +1098,15 @@ const MainApplicationContent: React.FC = () => {
             >
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Usuario, DNI o Correo electrónico *
+                  Correo electrónico o DNI (con letra en mayúsculas) *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Juan Carlos o jugarbar@gmail.com"
+                  placeholder="Ej. jugarbar@gmail.com o 12345678X"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  disabled={!!recoveryResult}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
               <div>
@@ -1039,8 +1117,7 @@ const MainApplicationContent: React.FC = () => {
                   placeholder="Introduce tu contraseña"
                   value={loginPass}
                   onChange={(e) => setLoginPass(e.target.value)}
-                  disabled={!!recoveryResult}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
               <button
@@ -1357,8 +1434,9 @@ const MainApplicationContent: React.FC = () => {
   const openAttendance = backend.getOpenAttendanceSessionForCurrentUser();
   const articlesCatalog = backend.getArticles(false);
 
-  // Contadores de las 5 tarjetas obligatorias del Dashboard Administrativo (Regla 5):
-  const countNoIniciados = activeWorkOrders.filter((w) => w.status === 'no_iniciado').length;
+  // Contadores de las tarjetas obligatorias del Dashboard Administrativo:
+  const countPendientesProgramar = activeWorkOrders.filter((w) => isWorkOrderUnscheduled(w)).length;
+  const countNoIniciados = activeWorkOrders.filter((w) => w.status === 'no_iniciado' && !isWorkOrderUnscheduled(w)).length;
   const countEnCurso = activeWorkOrders.filter((w) => w.status === 'en_curso').length;
   const countPendientesCierre = activeWorkOrders.filter((w) => w.status === 'terminado').length;
   const reviewOccurrences = isAdmin ? backend.getReviewOccurrences() : [];
@@ -1411,30 +1489,16 @@ const MainApplicationContent: React.FC = () => {
     return status === 'terminado' || status === 'cerrado';
   };
 
-  // Ordenación de partes: fecha y hora prevista estrictamente ascendente (sin tener en cuenta el estado del parte)
-  const dashboardSortedWorkOrders = [...activeWorkOrders].sort((a, b) => {
-    const timeA = a.scheduled_at
-      ? parseDateRobust(a.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
-      : Number.MAX_SAFE_INTEGER;
-    const timeB = b.scheduled_at
-      ? parseDateRobust(b.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
-      : Number.MAX_SAFE_INTEGER;
-    if (timeA !== timeB) {
-      return timeA - timeB;
-    }
-    const createA = parseDateRobust(a.created_at)?.getTime() ?? 0;
-    const createB = parseDateRobust(b.created_at)?.getTime() ?? 0;
-    if (createA !== createB) {
-      return createA - createB;
-    }
-    return a.code.localeCompare(b.code);
-  });
+  // Ordenación de partes: partes programados primero y al final partes pendientes de programar del más antiguo al más reciente
+  const dashboardSortedWorkOrders = [...activeWorkOrders].sort(compareWorkOrdersScheduledFirst);
 
   const agendaSortedWorkOrders = dashboardSortedWorkOrders;
 
   // Partes pendientes específicos para la vista móvil despejada del Administrador (Regla: igual al operario)
   const pendingAdminWorkOrders = agendaSortedWorkOrders.filter(
-    (w) => w.status === 'no_iniciado' || w.status === 'en_curso' || w.status === 'reabierto'
+    (w) =>
+      (w.status === 'no_iniciado' || w.status === 'en_curso' || w.status === 'reabierto') &&
+      !isWorkOrderUnscheduled(w)
   );
 
   // Cálculos para el Planing Semanal de la Agenda Operativa (Lunes a Viernes, días laborables)
@@ -1452,6 +1516,7 @@ const MainApplicationContent: React.FC = () => {
     const map = new Map<string, typeof activeWorkOrders>();
     selectedWeekDays.forEach((d) => map.set(d.dateStr, []));
     for (const wo of activeWorkOrders) {
+      if (isWorkOrderUnscheduled(wo) || !wo.scheduled_at) continue;
       const dStr = getLocalDateString(wo.scheduled_at, tz);
       if (map.has(dStr)) {
         map.get(dStr)!.push(wo);
@@ -1894,7 +1959,7 @@ const MainApplicationContent: React.FC = () => {
       <aside
         data-testid="sidebar-navigation"
         className={`${
-          mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 flex' : 'hidden'
+          mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 flex max-h-screen overflow-y-auto overscroll-contain mobile-scroll-container' : 'hidden'
         } md:flex md:h-screen w-64 shrink-0 bg-[#0b1120] text-slate-300 flex-col border-r border-slate-800/80 select-none`}
       >
         {/* Cabecera de marca en Sidebar */}
@@ -2082,7 +2147,7 @@ const MainApplicationContent: React.FC = () => {
                 }`}
               >
                 <FileText className="w-4 h-4 shrink-0" />
-                <span>Catálogos y clientes</span>
+                <span>Catálogos y ficheros</span>
               </button>
 
               <button
@@ -2103,25 +2168,13 @@ const MainApplicationContent: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => navigateTo('import_export')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-                  currentRoute === 'import_export'
-                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                <span>Importación / Exportación</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
+                  if (isMobileDeviceOrViewport()) return;
                   setAuditEntityFilter('');
                   setAdminInitialSection('backups');
                   navigateTo('admin_system');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                className={`hidden md:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'admin_system' && adminInitialSection === 'backups'
                     ? 'bg-blue-600 text-white font-semibold shadow-sm'
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
@@ -2134,11 +2187,12 @@ const MainApplicationContent: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  if (isMobileDeviceOrViewport()) return;
                   setAuditEntityFilter('');
                   setAdminInitialSection('audit');
                   navigateTo('admin_system');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                className={`hidden md:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'admin_system' && adminInitialSection === 'audit'
                     ? 'bg-blue-600 text-white font-semibold shadow-sm'
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
@@ -2375,6 +2429,68 @@ const MainApplicationContent: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* Indicador de Sincronización en Tiempo Real con Supabase */}
+            <button
+              type="button"
+              onClick={() => {
+                supabaseSyncEngine.forceSync();
+                notifySuccessGreen('Comprobando y sincronizando datos con Supabase en tiempo real...');
+              }}
+              title={
+                syncState.status === 'connected'
+                  ? '🟢 Base de datos sincronizada en tiempo real con Supabase (Todos los dispositivos conectados)'
+                  : syncState.status === 'syncing'
+                  ? '🔄 Sincronizando con Supabase...'
+                  : syncState.status === 'offline'
+                  ? '🟡 Modo sin conexión (Los cambios se guardan localmente y se subirán al conectar)'
+                  : '⚠️ Estado de conexión Supabase. Pulsa para forzar sincronización'
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                syncState.status === 'connected'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  : syncState.status === 'syncing'
+                  ? 'bg-blue-50 border-blue-300 text-blue-800 animate-pulse'
+                  : syncState.status === 'offline'
+                  ? 'bg-amber-50 border-amber-300 text-amber-800'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {syncState.status === 'connected' && (
+                <>
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="hidden sm:inline">Supabase en directo</span>
+                  <span className="sm:hidden">En vivo</span>
+                </>
+              )}
+              {syncState.status === 'syncing' && (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
+                  <span>Sincronizando...</span>
+                </>
+              )}
+              {syncState.status === 'offline' && (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>Sin Red (Offline)</span>
+                </>
+              )}
+              {syncState.status === 'error' && (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>Reintentar Sync</span>
+                </>
+              )}
+              {syncState.status === 'disabled' && (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>Modo Local</span>
+                </>
+              )}
+            </button>
+
             {/* Botón Simulación Red Online/Offline */}
             <button
               type="button"
@@ -2491,8 +2607,8 @@ const MainApplicationContent: React.FC = () => {
             currentRoute === 'masters' ||
             currentRoute === 'admin_system' ||
             (currentRoute === 'dashboard' && !isAdmin)
-              ? 'flex flex-col overflow-hidden pb-16 pt-3'
-              : 'overflow-y-auto pb-24'
+              ? 'flex flex-col md:overflow-hidden pb-32 sm:pb-36 pt-3 overflow-y-auto overscroll-contain mobile-scroll-container'
+              : 'overflow-y-auto overscroll-contain mobile-scroll-container pb-32 sm:pb-36'
           }`}
         >
           {/* =================================================================
@@ -2551,87 +2667,44 @@ const MainApplicationContent: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setAdminMobileShowDashboard(!adminMobileShowDashboard)}
-                            className={`ml-auto px-2.5 py-1.5 rounded-lg font-semibold text-[11px] border cursor-pointer ${
-                              adminMobileShowDashboard
-                                ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                : 'bg-white border-slate-200 text-slate-600'
+                            data-testid="btn-mobile-filter-pendientes-programar"
+                            onClick={() => setAdminMobileFilter('pendientes_programar')}
+                            className={`ml-auto px-3 py-1.5 rounded-lg font-bold transition cursor-pointer border ${
+                              adminMobileFilter === 'pendientes_programar'
+                                ? 'bg-amber-400 font-black text-slate-950 border-amber-500 shadow-2xs'
+                                : 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
                             }`}
                           >
-                            {adminMobileShowDashboard ? 'Ver Partes' : '📊 Métricas'}
+                            Pendientes de programar ({countPendientesProgramar})
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    {adminMobileShowDashboard ? (
-                      /* Si el admin en móvil pulsa en Métricas, puede ver el resumen y los contadores en versión móvil */
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3" data-testid="admin-mobile-cards-grid">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setWoListFilterStatus('no_iniciado');
-                              navigateTo('work_orders_list');
-                            }}
-                            className="p-4 rounded-xl bg-blue-600 text-white text-left shadow-xs cursor-pointer"
-                          >
-                            <div className="text-[11px] font-bold uppercase opacity-85">1. No iniciados</div>
-                            <div className="text-2xl font-black mt-1">{countNoIniciados}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setWoListFilterStatus('en_curso');
-                              navigateTo('work_orders_list');
-                            }}
-                            className="p-4 rounded-xl bg-amber-500 text-slate-950 text-left shadow-xs cursor-pointer"
-                          >
-                            <div className="text-[11px] font-bold uppercase opacity-85">2. En curso</div>
-                            <div className="text-2xl font-black mt-1">{countEnCurso}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setWoListFilterStatus('terminado');
-                              navigateTo('work_orders_list');
-                            }}
-                            className="p-4 rounded-xl bg-emerald-600 text-white text-left shadow-xs cursor-pointer"
-                          >
-                            <div className="text-[11px] font-bold uppercase opacity-85">3. Pdtes. Cierre</div>
-                            <div className="text-2xl font-black mt-1">{countPendientesCierre}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => navigateTo('reviews')}
-                            className="p-4 rounded-xl bg-indigo-600 text-white text-left shadow-xs cursor-pointer"
-                          >
-                            <div className="text-[11px] font-bold uppercase opacity-85">4. Revisiones</div>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <span className="text-2xl font-black">{countRevisionesPendientes}</span>
-                              {hasUpcomingOrDueReview && (
-                                <span
-                                  className="animacion-parpadeo inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full select-none"
-                                  style={{ animation: 'parpadeo-aviso 1s infinite ease-in-out' }}
-                                >
-                                  <AlertTriangle className="w-3 h-3 shrink-0" />
-                                  <span>Revisión próxima a realizar</span>
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        </div>
-                        {renderWeeklyPlanningSection()}
-                      </div>
-                    ) : (
-                      /* VISTA PRINCIPAL POR DEFECTO EN MÓVIL: TARJETAS DE PARTES IGUAL QUE EN OPERARIO */
-                      (adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).length === 0 ? (
-                        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
-                          No hay partes de trabajo en este momento.
-                        </div>
-                      ) : (
+                    {/* VISTA PRINCIPAL POR DEFECTO EN MÓVIL: TARJETAS DE PARTES */}
+                    {(() => {
+                      const listToDisplay =
+                        adminMobileFilter === 'pendientes_programar'
+                          ? activeWorkOrders.filter(isWorkOrderUnscheduled).sort(compareWorkOrdersScheduledFirst)
+                          : adminMobileFilter === 'todos'
+                          ? agendaSortedWorkOrders
+                          : pendingAdminWorkOrders;
+
+                      if (listToDisplay.length === 0) {
+                        return (
+                          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+                            {adminMobileFilter === 'pendientes_programar'
+                              ? 'No hay partes pendientes de programar.'
+                              : adminMobileFilter === 'todos'
+                              ? 'No hay partes de trabajo registrados.'
+                              : 'No hay partes pendientes de realizar en este momento.'}
+                          </div>
+                        );
+                      }
+
+                      return (
                         <div className="space-y-3.5">
-                          {(adminMobileFilter === 'pendientes' ? pendingAdminWorkOrders : agendaSortedWorkOrders).map((wo, idx) => (
+                          {listToDisplay.map((wo, idx) => (
                             <WorkOrderMobileCard
                               key={wo.id}
                               wo={wo}
@@ -2646,7 +2719,7 @@ const MainApplicationContent: React.FC = () => {
                                 navigateTo('work_order_detail');
                               }}
                               onReschedule={(targetWo) => {
-                                setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
+                                setRescheduleDatetimeInput(targetWo.scheduled_at?.slice(0, 16) || '');
                                 setRescheduleReasonInput('');
                                 setRescheduleWoModal({
                                   open: true,
@@ -2658,8 +2731,8 @@ const MainApplicationContent: React.FC = () => {
                             />
                           ))}
                         </div>
-                      )
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* VISTA ESCRITORIO DE ADMINISTRADOR (hidden md:block): PANEL DE CONTROL COMPLETO */}
@@ -2703,12 +2776,36 @@ const MainApplicationContent: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* LAS 5 TARJETAS OBLIGATORIAS DEL ADMINISTRADOR CON EL DISEÑO DE LA CAPTURA */}
+                      {/* LAS TARJETAS OBLIGATORIAS DEL ADMINISTRADOR (INCLUYE PENDIENTES DE PROGRAMAR A LA IZQUIERDA DE NO INICIADOS) */}
                       <div
-                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5"
+                        className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5"
                         data-testid="admin-dashboard-five-cards"
                       >
-                        {/* Tarjeta 1: Destacada en azul marino intenso (como la 1ª tarjeta de la imagen) */}
+                        {/* Tarjeta 0: Inmediatamente a la izquierda de «Partes no iniciados» */}
+                        <button
+                          type="button"
+                          data-testid="card-pendientes-programar"
+                          onClick={() => {
+                            setWoListFilterStatus('pendiente_programar');
+                            navigateTo('work_orders_list');
+                          }}
+                          className="bg-gradient-to-br from-amber-200 via-amber-300 to-amber-400 text-slate-950 border border-amber-400 rounded-2xl p-4 text-left shadow-md hover:shadow-lg transition flex flex-col justify-between min-h-[104px] cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-bold text-slate-900">
+                              Partes pendientes de programar
+                            </span>
+                            <CalendarX className="w-4 h-4 text-slate-950" />
+                          </div>
+                          <div className="text-2xl lg:text-3xl font-black tracking-tight my-0.5 text-slate-950">
+                            {countPendientesProgramar}
+                          </div>
+                          <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                            <span>Sin fecha ni operario</span>
+                          </div>
+                        </button>
+
+                        {/* Tarjeta 1: Destacada en azul marino intenso */}
                         <button
                           type="button"
                           data-testid="card-no-iniciados"
@@ -2756,7 +2853,7 @@ const MainApplicationContent: React.FC = () => {
                           </div>
                         </button>
 
-                        {/* Tarjeta 3: Destacada en verde esmeralda intenso (como la tarjeta azul) */}
+                        {/* Tarjeta 3: Pendientes de cierre (sin dinero) */}
                         <button
                           type="button"
                           data-testid="card-pendientes-cierre"
@@ -2768,7 +2865,7 @@ const MainApplicationContent: React.FC = () => {
                         >
                           <div className="flex items-center justify-between w-full">
                             <span className="text-xs font-semibold text-emerald-100">
-                              3. Finalizados pdtes. cierre
+                              3. Pendientes de cierre
                             </span>
                             <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                           </div>
@@ -2776,7 +2873,7 @@ const MainApplicationContent: React.FC = () => {
                             {countPendientesCierre}
                           </div>
                           <div className="text-[11px] text-emerald-100/90 flex items-center gap-1">
-                            <span>Total: {formatCentsToEUR(totalFinishedCents)}</span>
+                            <span>Trabajos terminados</span>
                           </div>
                         </button>
 
@@ -3476,7 +3573,9 @@ const MainApplicationContent: React.FC = () => {
                     </div>
                   </div>
                   <div className="bg-white rounded-b-2xl border-x border-b border-slate-200 p-5 pt-2 divide-y divide-slate-100 text-xs flex-1 shadow-2xs">
-                    {agendaSortedWorkOrders.map((wo) => {
+                    {agendaSortedWorkOrders
+                      .filter((wo) => !isWorkOrderUnscheduled(wo) && Boolean(wo.scheduled_at))
+                      .map((wo) => {
                       const finished = isWoFinished(wo.status, wo.reopened_at, wo.closed_at);
                       return (
                         <div
@@ -3623,10 +3722,12 @@ const MainApplicationContent: React.FC = () => {
                 {currentRoute === 'work_orders_list' && (
                   <div className="flex flex-wrap items-center justify-between gap-2.5">
                     <div className="flex flex-wrap items-center gap-2">
-                    {(['all', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
+                    {(['all', 'pendiente_programar', 'no_iniciado', 'en_curso', 'reabierto', 'terminado', 'cerrado'] as const).map(
                       (st) => {
                         const activeColorClass =
-                          st === 'no_iniciado'
+                          st === 'pendiente_programar'
+                            ? 'bg-indigo-700 text-white border-indigo-700 shadow-xs'
+                            : st === 'no_iniciado'
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : st === 'en_curso'
                             ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs'
@@ -3650,6 +3751,8 @@ const MainApplicationContent: React.FC = () => {
                           >
                             {st === 'all'
                               ? 'Todos los estados activos'
+                              : st === 'pendiente_programar'
+                              ? 'PENDIENTE DE PROGRAMAR'
                               : st === 'reabierto'
                               ? 'REABIERTO'
                               : st.toUpperCase()}
@@ -3718,9 +3821,12 @@ const MainApplicationContent: React.FC = () => {
                   <tbody className="divide-y divide-slate-200">
                     {(currentRoute === 'archived_work_orders'
                       ? archivedWorkOrders
-                      : dashboardSortedWorkOrders.filter((w) =>
-                          woListFilterStatus === 'all' ? true : w.status === woListFilterStatus
-                        )
+                      : dashboardSortedWorkOrders.filter((w) => {
+                          if (woListFilterStatus === 'all') return true;
+                          if (woListFilterStatus === 'pendiente_programar') return isWorkOrderUnscheduled(w);
+                          if (woListFilterStatus === 'no_iniciado') return w.status === 'no_iniciado' && !isWorkOrderUnscheduled(w);
+                          return w.status === woListFilterStatus;
+                        })
                     )
                       .filter((w) => {
                         // 1. Filtro por operario asignado seleccionado en desplegable
@@ -3775,10 +3881,17 @@ const MainApplicationContent: React.FC = () => {
                             )}
                             {visibleWoColumns.includes('scheduled_at') && (
                               <td className="p-3.5">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-900 font-extrabold">
-                                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                                  {formatDateES(wo.scheduled_at, tz)} · {formatTimeES(wo.scheduled_at, tz)} h
-                                </span>
+                                {isWorkOrderUnscheduled(wo) ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-300 text-amber-900 font-extrabold text-[11px]">
+                                    <CalendarX className="w-3.5 h-3.5 text-amber-600" />
+                                    Pendiente de programar
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-900 font-extrabold">
+                                    <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                                    {formatDateES(wo.scheduled_at, tz)} · {formatTimeES(wo.scheduled_at, tz)} h
+                                  </span>
+                                )}
                               </td>
                             )}
                             {visibleWoColumns.includes('created_at') && (
@@ -3910,14 +4023,33 @@ const MainApplicationContent: React.FC = () => {
 
           {/* 10. AUDITORÍA, COPIAS Y CONFIGURACIÓN DE EMPRESA */}
           {currentRoute === 'admin_system' && (
-            <AdminSystemModule
-              key={`${adminInitialSection}-${auditEntityFilter}`}
-              backend={backend}
-              initialSection={adminInitialSection}
-              filterEntityId={auditEntityFilter}
-              onBack={navigateBack}
-              onRefresh={refresh}
-            />
+            isMobileDeviceOrViewport() && (adminInitialSection === 'backups' || adminInitialSection === 'audit') ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-lg mx-auto my-12 shadow-sm">
+                <ShieldCheck className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-slate-800 mb-1">Apartado no disponible en versión móvil</h3>
+                <p className="text-xs text-slate-500 mb-6">
+                  {adminInitialSection === 'backups'
+                    ? 'Las copias de seguridad solo se pueden gestionar y ejecutar desde la aplicación de escritorio instalada en un PC.'
+                    : 'La auditoría técnica solo está disponible en la versión de escritorio.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={navigateBack}
+                  className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition"
+                >
+                  Volver al inicio
+                </button>
+              </div>
+            ) : (
+              <AdminSystemModule
+                key={`${adminInitialSection}-${auditEntityFilter}`}
+                backend={backend}
+                initialSection={adminInitialSection}
+                filterEntityId={auditEntityFilter}
+                onBack={navigateBack}
+                onRefresh={refresh}
+              />
+            )
           )}
         </main>
       </div>
@@ -3938,37 +4070,39 @@ const MainApplicationContent: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex items-center gap-2.5" data-testid="persistent-attendance-control">
-          <span className="text-xs font-medium text-slate-600 hidden sm:inline">
-            Estado fichaje:{' '}
-            <strong className={openAttendance ? 'text-emerald-600' : 'text-amber-600'}>
-              {openAttendance
-                ? `En jornada (desde ${formatTimeES(openAttendance.clock_in_at, tz)})`
-                : 'Fuera de jornada'}
-            </strong>
-          </span>
-          <button
-            type="button"
-            data-testid="btn-persistent-clock-action"
-            onClick={handleQuickClockToggle}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs ${
-              openAttendance
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>{openAttendance ? 'Fichar Salida' : 'Fichar Entrada'}</span>
-          </button>
-        </div>
+        {loggedUser?.can_clock !== false && (
+          <div className="flex items-center gap-2.5" data-testid="persistent-attendance-control">
+            <span className="text-xs font-medium text-slate-600 hidden sm:inline">
+              Estado fichaje:{' '}
+              <strong className={openAttendance ? 'text-emerald-600' : 'text-amber-600'}>
+                {openAttendance
+                  ? `En jornada (desde ${formatTimeES(openAttendance.clock_in_at, tz)})`
+                  : 'Fuera de jornada'}
+              </strong>
+            </span>
+            <button
+              type="button"
+              data-testid="btn-persistent-clock-action"
+              onClick={handleQuickClockToggle}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs ${
+                openAttendance
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>{openAttendance ? 'Fichar Salida' : 'Fichar Entrada'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal rápido de «Añadir a compra» */}
       {quickShopModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container">
           <form
             onSubmit={handleQuickAddShopping}
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-4 text-xs"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-4 text-xs my-auto"
           >
             <h3 className="text-base font-bold text-slate-900">
               Añadir a Lista de Compra (Acceso rápido)
@@ -3985,7 +4119,7 @@ const MainApplicationContent: React.FC = () => {
                 onChange={(e) => setQuickShopArticleId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
               >
-                <option value="">-- Artículo a seleccionar --</option>
+                <option value="">Seleccione un artículo</option>
                 {articlesCatalog.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.code} — {a.name} ({a.unit})
@@ -4036,9 +4170,9 @@ const MainApplicationContent: React.FC = () => {
       {showInstallHelpModal && (
         <div
           data-testid="modal-install-app-help"
-          className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs overflow-y-auto overscroll-contain mobile-scroll-container"
         >
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs my-auto max-h-[92vh] flex flex-col overflow-y-auto overscroll-contain mobile-scroll-container">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Download className="w-5 h-5 text-emerald-600" />
@@ -4175,18 +4309,22 @@ const MainApplicationContent: React.FC = () => {
       {rescheduleWoModal.open && (
         <div
           data-testid="modal-reschedule-quick"
-          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
         >
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (!isAdmin) {
+                notifyError('Solo un administrador puede programar o modificar la programación de un parte.');
+                return;
+              }
               if (!rescheduleDatetimeInput) {
-                notifyError('Debes indicar una fecha y hora prevista válida.');
+                notifyError('Indique la fecha y la hora de ejecución.');
                 return;
               }
               const targetDate = new Date(rescheduleDatetimeInput);
               if (isNaN(targetDate.getTime())) {
-                notifyError('Debes indicar una fecha y hora prevista válida.');
+                notifyError('Indique la fecha y la hora de ejecución.');
                 return;
               }
               if (targetDate.getTime() < Date.now() - 60 * 1000) {
@@ -4197,12 +4335,18 @@ const MainApplicationContent: React.FC = () => {
                 ? rescheduleDatetimeInput
                 : new Date(rescheduleDatetimeInput).toISOString();
 
+              const activeOpIds = backend
+                .getWorkOrderAssignments(rescheduleWoModal.workOrderId)
+                .filter((a) => a.is_active)
+                .map((a) => a.operator_id);
+
+              if (activeOpIds.length === 0) {
+                notifyError('Seleccione un operario para programar el parte.');
+                return;
+              }
+
               let reschedWarnings: string[] = [];
               try {
-                const activeOpIds = backend
-                  .getWorkOrderAssignments(rescheduleWoModal.workOrderId)
-                  .filter((a) => a.is_active)
-                  .map((a) => a.operator_id);
                 backend.validateScheduledTimeWithinOperatorSchedules(rescheduleDatetimeInput, activeOpIds);
 
                 const conflicts = backend.findOperatorScheduleConflicts(
@@ -4220,13 +4364,15 @@ const MainApplicationContent: React.FC = () => {
               }
 
               requestSaveConfirmation({
-                title: 'Confirmar Reprogramación de Fecha y Hora Prevista',
+                title: 'Confirmar Programación de Fecha y Hora Prevista',
                 warnings: reschedWarnings.length > 0 ? reschedWarnings : undefined,
                 changes: [
                   { label: 'Parte de trabajo', value: rescheduleWoModal.code },
                   {
                     label: 'Fecha/hora anterior',
-                    value: `${formatDateES(rescheduleWoModal.currentScheduledAt, tz)} ${formatTimeES(rescheduleWoModal.currentScheduledAt, tz)} h`,
+                    value: rescheduleWoModal.currentScheduledAt
+                      ? `${formatDateES(rescheduleWoModal.currentScheduledAt, tz)} ${formatTimeES(rescheduleWoModal.currentScheduledAt, tz)} h`
+                      : 'Pendiente de programar',
                   },
                   {
                     label: 'Nueva fecha/hora prevista',

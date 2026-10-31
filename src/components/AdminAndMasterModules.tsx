@@ -24,15 +24,20 @@ import {
   AlertTriangle,
   ArrowRight,
   MailCheck,
+  CheckCircle2,
+  RefreshCw,
   Clock,
   Mail,
   Inbox,
   Eye,
   EyeOff,
   Server,
+  FileText,
+  ClipboardList,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { supabaseSyncEngine } from '../services/supabaseSyncEngine';
 import { BackupJob, UserRole } from '../types/domain';
 import {
   EmailActionLink,
@@ -46,6 +51,10 @@ import {
   formatCentsToEUR,
   formatDateES,
   formatDateTimeES,
+  formatDateTimeWithSecondsES,
+  formatTimeES,
+  formatTimeWithSecondsES,
+  getLocalDateString,
   parseEurosToCents,
   sanitizeTimezone,
 } from '../utils/formatters';
@@ -53,8 +62,11 @@ import {
   downloadImportTemplateExcel,
   executeValidatedImport,
   exportRowsToExcel,
+  exportRowsToPDF,
   validateAndPreviewImport,
 } from '../utils/exportImportUtils';
+import { isInstalledDesktopApp } from '../config/branchConfig';
+import { ImportExportModule } from './ImportExportModule';
 
 // =============================================================================
 // 1. MÓDULO DE DATOS MAESTROS Y USUARIOS (SECCIONES 3 Y 6)
@@ -64,12 +76,13 @@ import {
 // =============================================================================
 export const MasterDataAndUsersModule: React.FC<{
   backend: InstallationBackendEngine;
-  initialTab?: 'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'users';
+  initialTab?: 'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews' | 'import_export' | 'users';
   onBack: () => void;
   onRefresh: () => void;
 }> = ({ backend, initialTab = 'customers', onBack, onRefresh }) => {
   const { requestSaveConfirmation, requestDeleteConfirmation, notifySuccessGreen, notifyError } = useUIConfirmation();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const isUsersMode = initialTab === 'users';
+  const [activeTab, setActiveTab] = useState(isUsersMode ? 'users' : initialTab);
   const [search, setSearch] = useState('');
   const [tick, setTick] = useState(0);
   const refresh = () => {
@@ -82,12 +95,16 @@ export const MasterDataAndUsersModule: React.FC<{
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const currentUser = backend.getCurrentUser();
+  const company = backend.getCompanySettings();
+  const tz = company.timezone || 'Europe/Madrid';
   const customers = useMemo(() => backend.getCustomers(true), [backend, tick]);
   const addresses = useMemo(() => backend.getCustomerAddresses(undefined, true), [backend, tick]);
   const articles = useMemo(() => backend.getArticles(true), [backend, tick]);
   const suppliers = useMemo(() => backend.getSuppliers(true), [backend, tick]);
   const reviewTypes = useMemo(() => backend.getReviewTypes(true), [backend, tick]);
   const profiles = useMemo(() => backend.getProfiles(), [backend, tick]);
+  const workOrders = useMemo(() => backend.getWorkOrders({ includeArchived: true }), [backend, tick]);
+  const installationReviews = useMemo(() => backend.getInstallationReviews(), [backend, tick]);
 
   // Estado formulario Cliente
   const [custCode, setCustCode] = useState('');
@@ -145,6 +162,7 @@ export const MasterDataAndUsersModule: React.FC<{
   const [usrEmail, setUsrEmail] = useState('');
   const [usrPhone, setUsrPhone] = useState('');
   const [usrRole, setUsrRole] = useState<'operario' | 'admin' | ''>('');
+  const [usrCanClock, setUsrCanClock] = useState<boolean>(true);
   const [usrWorkShiftType, setUsrWorkShiftType] = useState<'continua' | 'partida'>('continua');
   const [usrWorkStartTime, setUsrWorkStartTime] = useState('08:00');
   const [usrWorkEndTime, setUsrWorkEndTime] = useState('18:00');
@@ -161,7 +179,87 @@ export const MasterDataAndUsersModule: React.FC<{
     email: string;
     tempPass: string;
     link: string;
+    emailStatus?: 'sending' | 'sent' | 'error';
+    emailMessage?: string;
   } | null>(null);
+
+  const sendInvitationEmail = async (fullName: string, email: string, tempPass: string, link: string) => {
+    const comp = backend.getCompanySettings();
+    const senderEmail = comp.contact_email || 'anromago@hotmail.com';
+    const senderName = comp.smtp_sender_name || comp.company_name || 'Fontanería Roma';
+
+    setInvitationSummaryModal((prev) =>
+      prev
+        ? {
+            ...prev,
+            emailStatus: 'sending',
+            emailMessage: 'Enviando correo al operario a través del servidor oficial...',
+          }
+        : null
+    );
+
+    try {
+      const response = await fetch('/.netlify/functions/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'invitation',
+          to: email,
+          from: senderEmail,
+          fromName: senderName,
+          fullName: fullName,
+          tempPassword: tempPass,
+          invitationLink: link,
+          smtp: {
+            host: comp.smtp_host,
+            port: comp.smtp_port,
+            encryption: comp.smtp_encryption,
+            user: comp.smtp_user,
+            password: comp.smtp_password,
+          },
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.success) {
+        setInvitationSummaryModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                emailStatus: 'sent',
+                emailMessage: `Correo de invitación enviado con éxito a ${email} desde ${senderEmail}.`,
+              }
+            : null
+        );
+        notifySuccessGreen(`Correo de invitación enviado con éxito a ${email}`);
+      } else {
+        const errorText =
+          data.error ||
+          'No se pudo conectar con el servidor SMTP. Configura el servidor en Datos de Empresa.';
+        setInvitationSummaryModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                emailStatus: 'error',
+                emailMessage: errorText,
+              }
+            : null
+        );
+        notifyError(errorText);
+      }
+    } catch {
+      setInvitationSummaryModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              emailStatus: 'error',
+              emailMessage:
+                'No se pudo conectar con el servicio de correo. Puedes copiar los datos abajo o pulsar Reintentar.',
+            }
+          : null
+      );
+    }
+  };
 
   // Modal de restablecimiento de contraseña por administrador
   const [adminResetPassModal, setAdminResetPassModal] = useState<{
@@ -188,6 +286,108 @@ export const MasterDataAndUsersModule: React.FC<{
     step: 1 | 2;
     user: (typeof profiles)[0];
   } | null>(null);
+
+  const handleArticleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const firstSheet = wb.SheetNames[0];
+      if (!firstSheet) {
+        notifyError('El archivo Excel no contiene ninguna hoja.');
+        return;
+      }
+      const ws = wb.Sheets[firstSheet];
+      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+      if (jsonRaw.length === 0) {
+        notifyError('La hoja Excel está vacía.');
+        return;
+      }
+      const json = jsonRaw.map((row) => {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+          clean[k] = typeof v === 'string' && /^[=@+-]/.test(v) ? `'${v}` : v;
+        }
+        return clean;
+      });
+      const headers = Object.keys(json[0]);
+      const mapping: Record<string, string> = {
+        code: headers.find((h) => /codigo|referencia|cod/i.test(h)) || '',
+        unit: headers.find((h) => /unidad|medida|ud/i.test(h)) || '',
+        name: headers.find((h) => /nombre|articulo|descrip/i.test(h)) || headers[0] || 'name',
+        purchase_price: headers.find((h) => /compra|coste/i.test(h)) || '',
+        sale_price: headers.find((h) => /venta|pvp/i.test(h)) || '',
+        supplier: headers.find((h) => /proveedor|distribuidor/i.test(h)) || '',
+      };
+
+      const preview = validateAndPreviewImport({
+        backend,
+        entityType: 'articles',
+        rawRows: json,
+        columnMapping: mapping,
+      });
+
+      requestSaveConfirmation({
+        title: `Importar Artículos desde Excel (${file.name})`,
+        changes: [
+          { label: 'Filas leídas en Excel', value: String(preview.totalRows) },
+          { label: 'Artículos válidos nuevos', value: String(preview.validNewCount) },
+          {
+            label: 'Artículos existentes coincidentes (se actualizarán)',
+            value: String(preview.duplicateCount),
+          },
+          { label: 'Filas con errores (se omitirán)', value: String(preview.errorCount) },
+        ],
+        onConfirm: () => {
+          const res = executeValidatedImport({
+            backend,
+            entityType: 'articles',
+            fileName: file.name,
+            conflictPolicy: 'update_existing',
+            preview,
+          });
+          notifySuccessGreen(
+            `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
+          );
+          refresh();
+        },
+      });
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al procesar el archivo Excel.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleExportArticles = () => {
+    exportRowsToExcel({
+      fileName: 'Exportacion_Articulos.xlsx',
+      sheetName: 'Articulos',
+      columns: [
+        { key: 'code', header: 'Código Artículo' },
+        { key: 'unit', header: 'Unidad de Medida' },
+        { key: 'name', header: 'Nombre del Artículo' },
+        { key: 'purchase_price', header: 'Precio de Compra (€)' },
+        { key: 'sale_price', header: 'Precio de Venta (€)' },
+        { key: 'supplier_name', header: 'Proveedor Habitual' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: articles.map((a) => {
+        const supp = suppliers.find((s) => s.id === a.supplier_id);
+        return {
+          code: a.code,
+          unit: a.unit || 'ud',
+          name: a.name,
+          purchase_price: ((a.purchase_price_cents || 0) / 100).toFixed(2).replace('.', ','),
+          sale_price: ((a.sale_price_cents || 0) / 100).toFixed(2).replace('.', ','),
+          supplier_name: supp ? supp.name : '',
+          active: a.is_active ? 'Activo' : 'Inactivo',
+        };
+      }),
+    });
+  };
 
   const handleSupplierFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -335,9 +535,389 @@ export const MasterDataAndUsersModule: React.FC<{
     });
   };
 
+  const nowStr = formatDateTimeES(new Date().toISOString(), tz);
+
+  const handleExportCustomersPDF = () => {
+    const filtered = customers.filter(
+      (c) =>
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.code.toLowerCase().includes(q) ||
+        (c.tax_id && c.tax_id.toLowerCase().includes(q))
+    );
+    exportRowsToPDF({
+      fileName: 'Exportacion_Clientes.pdf',
+      title: 'Listado Oficial de Clientes',
+      subtitle: `Catálogo de clientes registrados · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'code', header: 'Código' },
+        { key: 'name', header: 'Nombre / Razón Social' },
+        { key: 'tax_id', header: 'NIF / CIF' },
+        { key: 'contact_name', header: 'Contacto' },
+        { key: 'phone', header: 'Teléfono' },
+        { key: 'email', header: 'Email' },
+        { key: 'main_address', header: 'Domicilio' },
+        { key: 'city', header: 'Población' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: filtered.map((c) => ({
+        code: c.code,
+        name: c.name,
+        tax_id: c.tax_id || '—',
+        contact_name: c.contact_name || '—',
+        phone: c.phones[0] || '—',
+        email: c.emails[0] || '—',
+        main_address: c.main_address || '—',
+        city: [c.postal_code, c.city].filter(Boolean).join(' ') || '—',
+        active: c.is_active ? 'Activo' : 'Inactivo',
+      })),
+      orientation: 'landscape',
+    });
+  };
+
+  const handleExportAddressesExcel = () => {
+    exportRowsToExcel({
+      fileName: 'Exportacion_Domicilios.xlsx',
+      sheetName: 'Domicilios',
+      columns: [
+        { key: 'customer', header: 'Cliente' },
+        { key: 'alias', header: 'Alias / Nombre Domicilio' },
+        { key: 'address', header: 'Dirección' },
+        { key: 'postal_code', header: 'Código Postal' },
+        { key: 'city', header: 'Población' },
+        { key: 'province', header: 'Provincia' },
+        { key: 'contact', header: 'Contacto' },
+        { key: 'phone', header: 'Teléfono' },
+      ],
+      rows: addresses.map((a) => {
+        const cust = customers.find((c) => c.id === a.customer_id);
+        return {
+          customer: cust ? cust.name : a.customer_id,
+          alias: a.alias || '',
+          address: a.address_line,
+          postal_code: a.postal_code || '',
+          city: a.city,
+          province: a.province || '',
+          contact: a.contact_name || '',
+          phone: a.contact_phone || '',
+        };
+      }),
+    });
+  };
+
+  const handleExportAddressesPDF = () => {
+    const filtered = addresses.filter((a) => {
+      const cust = customers.find((c) => c.id === a.customer_id);
+      return (
+        !q ||
+        a.address_line.toLowerCase().includes(q) ||
+        (a.alias && a.alias.toLowerCase().includes(q)) ||
+        (cust && cust.name.toLowerCase().includes(q))
+      );
+    });
+    exportRowsToPDF({
+      fileName: 'Exportacion_Domicilios.pdf',
+      title: 'Listado Oficial de Domicilios e Instalaciones',
+      subtitle: `Direcciones de servicio vinculadas · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'customer', header: 'Cliente' },
+        { key: 'alias', header: 'Alias Domicilio' },
+        { key: 'address', header: 'Dirección' },
+        { key: 'city', header: 'Población / CP' },
+        { key: 'contact', header: 'Contacto / Teléfono' },
+      ],
+      rows: filtered.map((a) => {
+        const cust = customers.find((c) => c.id === a.customer_id);
+        return {
+          customer: cust ? cust.name : '—',
+          alias: a.alias || '—',
+          address: a.address_line,
+          city: [a.postal_code, a.city, a.province ? `(${a.province})` : ''].filter(Boolean).join(' '),
+          contact: [a.contact_name, a.contact_phone].filter(Boolean).join(' - ') || '—',
+        };
+      }),
+      orientation: 'landscape',
+    });
+  };
+
+  const handleExportArticlesPDF = () => {
+    const filtered = articles.filter(
+      (a) =>
+        !q ||
+        a.name.toLowerCase().includes(q) ||
+        a.code.toLowerCase().includes(q)
+    );
+    exportRowsToPDF({
+      fileName: 'Exportacion_Articulos.pdf',
+      title: 'Catálogo Oficial de Artículos y Tarifas',
+      subtitle: `Tarifas oficiales y existencias de materiales · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'code', header: 'Código' },
+        { key: 'unit', header: 'Unidad' },
+        { key: 'name', header: 'Nombre del Artículo' },
+        { key: 'purchase_price', header: 'Precio Compra' },
+        { key: 'sale_price', header: 'Precio Venta' },
+        { key: 'supplier', header: 'Proveedor Habitual' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: filtered.map((a) => {
+        const supp = suppliers.find((s) => s.id === a.supplier_id);
+        return {
+          code: a.code,
+          unit: a.unit || 'ud',
+          name: a.name,
+          purchase_price: formatCentsToEUR(a.purchase_price_cents),
+          sale_price: formatCentsToEUR(a.sale_price_cents),
+          supplier: supp ? supp.name : '—',
+          active: a.is_active ? 'Activo' : 'Inactivo',
+        };
+      }),
+      orientation: 'landscape',
+    });
+  };
+
+  const handleExportSuppliersPDF = () => {
+    const filtered = suppliers.filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.tax_id && s.tax_id.toLowerCase().includes(q))
+    );
+    exportRowsToPDF({
+      fileName: 'Exportacion_Proveedores.pdf',
+      title: 'Listado Oficial de Proveedores',
+      subtitle: `Catálogo de proveedores homologados · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'name', header: 'Nombre / Razón Social' },
+        { key: 'tax_id', header: 'NIF / CIF' },
+        { key: 'contact_person', header: 'Persona Contacto' },
+        { key: 'phone', header: 'Teléfono' },
+        { key: 'email', header: 'Email' },
+        { key: 'city', header: 'Población / CP' },
+        { key: 'active', header: 'Estado' },
+      ],
+      rows: filtered.map((s) => ({
+        name: s.name,
+        tax_id: s.tax_id || '—',
+        contact_person: s.contact_person || '—',
+        phone: s.phone || '—',
+        email: s.email || '—',
+        city: [s.postal_code, s.city].filter(Boolean).join(' ') || '—',
+        active: s.is_active ? 'Activo' : 'Inactivo',
+      })),
+      orientation: 'landscape',
+    });
+  };
+
+  const handleExportReviewTypesExcel = () => {
+    exportRowsToExcel({
+      fileName: 'Exportacion_Tipos_Revision.xlsx',
+      sheetName: 'TiposRevision',
+      columns: [
+        { key: 'name', header: 'Nombre Tipo Revisión' },
+        { key: 'periodicity', header: 'Periodicidad Oficial' },
+        { key: 'price', header: 'Precio Estimado (€)' },
+      ],
+      rows: reviewTypes.map((rt) => ({
+        name: rt.name,
+        periodicity:
+          rt.periodicity_unit === 'none'
+            ? 'Puntual'
+            : `Cada ${rt.periodicity_value} ${
+                rt.periodicity_unit === 'months'
+                  ? 'meses'
+                  : rt.periodicity_unit === 'years'
+                  ? 'años'
+                  : 'días'
+              }`,
+        price: formatCentsToEUR(rt.suggested_price_cents),
+      })),
+    });
+  };
+
+  const handleExportReviewTypesPDF = () => {
+    const filtered = reviewTypes.filter(
+      (rt) => !q || rt.name.toLowerCase().includes(q)
+    );
+    exportRowsToPDF({
+      fileName: 'Exportacion_Tipos_Revision.pdf',
+      title: 'Listado de Tipos de Revisión Homologados',
+      subtitle: `Catálogo de normativas y periodicidades oficiales · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'name', header: 'Nombre Tipo de Revisión' },
+        { key: 'periodicity', header: 'Periodicidad Oficial' },
+        { key: 'price', header: 'Tarifa Estimada' },
+      ],
+      rows: filtered.map((rt) => ({
+        name: rt.name,
+        periodicity:
+          rt.periodicity_unit === 'none'
+            ? 'Puntual / Sin periodicidad'
+            : `Cada ${rt.periodicity_value} ${
+                rt.periodicity_unit === 'months'
+                  ? 'meses'
+                  : rt.periodicity_unit === 'years'
+                  ? 'años'
+                  : 'días'
+              }`,
+        price: formatCentsToEUR(rt.suggested_price_cents),
+      })),
+      orientation: 'portrait',
+    });
+  };
+
+  const handleExportWorkOrdersExcel = () => {
+    const filtered = workOrders.filter(
+      (w) =>
+        !q ||
+        w.code.toLowerCase().includes(q) ||
+        w.snapshot_customer_name.toLowerCase().includes(q) ||
+        (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
+        (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
+    );
+    exportRowsToExcel({
+      fileName: 'Exportacion_Listado_Partes.xlsx',
+      sheetName: 'PartesTrabajo',
+      columns: [
+        { key: 'code', header: 'Nº Parte' },
+        { key: 'customer', header: 'Cliente' },
+        { key: 'planned_work', header: 'Trabajos a Realizar' },
+        { key: 'address', header: 'Dirección Servicio' },
+        { key: 'city', header: 'Población' },
+        { key: 'scheduled', header: 'Fecha Programada' },
+        { key: 'status', header: 'Estado' },
+        { key: 'amount', header: 'Importe Total (€)' },
+      ],
+      rows: filtered.map((w) => ({
+        code: w.code,
+        customer: w.snapshot_customer_name,
+        planned_work: w.planned_work || '',
+        address: w.snapshot_address_line,
+        city: w.snapshot_city,
+        scheduled: formatDateTimeES(w.scheduled_at, tz),
+        status: w.archived_at ? 'Archivado' : w.status.toUpperCase(),
+        amount: ((w.total_amount_cents || 0) / 100).toFixed(2).replace('.', ','),
+      })),
+    });
+  };
+
+  const handleExportWorkOrdersPDF = () => {
+    const filtered = workOrders.filter(
+      (w) =>
+        !q ||
+        w.code.toLowerCase().includes(q) ||
+        w.snapshot_customer_name.toLowerCase().includes(q) ||
+        (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
+        (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
+    );
+    exportRowsToPDF({
+      fileName: 'Exportacion_Listado_Partes.pdf',
+      title: 'Listado General de Partes de Trabajo',
+      subtitle: `Registro operativo e histórico de partes · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'code', header: 'Nº Parte' },
+        { key: 'customer', header: 'Cliente' },
+        { key: 'planned_work', header: 'Trabajo a Realizar' },
+        { key: 'address', header: 'Dirección Servicio' },
+        { key: 'scheduled', header: 'Fecha Programada' },
+        { key: 'status', header: 'Estado' },
+        { key: 'amount', header: 'Importe' },
+      ],
+      rows: filtered.map((w) => ({
+        code: w.code,
+        customer: w.snapshot_customer_name,
+        planned_work: w.planned_work || '—',
+        address: `${w.snapshot_address_line} (${w.snapshot_city})`,
+        scheduled: formatDateTimeES(w.scheduled_at, tz),
+        status: w.archived_at ? 'Archivado' : w.status.toUpperCase(),
+        amount: formatCentsToEUR(w.total_amount_cents),
+      })),
+      orientation: 'landscape',
+    });
+  };
+
+  const handleExportReviewsExcel = () => {
+    const filtered = installationReviews.filter((r) => {
+      const cust = customers.find((c) => c.id === r.customer_id);
+      const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+      return (
+        !q ||
+        (cust && cust.name.toLowerCase().includes(q)) ||
+        (rt && rt.name.toLowerCase().includes(q)) ||
+        r.status.toLowerCase().includes(q)
+      );
+    });
+    exportRowsToExcel({
+      fileName: 'Exportacion_Revisiones.xlsx',
+      sheetName: 'Revisiones',
+      columns: [
+        { key: 'customer', header: 'Cliente' },
+        { key: 'type', header: 'Tipo de Revisión' },
+        { key: 'last', header: 'Última Revisión' },
+        { key: 'next', header: 'Próxima Fecha' },
+        { key: 'status', header: 'Estado' },
+      ],
+      rows: filtered.map((r) => {
+        const cust = customers.find((c) => c.id === r.customer_id);
+        const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+        return {
+          customer: cust ? cust.name : r.customer_id,
+          type: rt ? rt.name : r.review_type_id,
+          last: r.last_review_date || '—',
+          next: r.next_review_date,
+          status: r.status,
+        };
+      }),
+    });
+  };
+
+  const handleExportReviewsPDF = () => {
+    const filtered = installationReviews.filter((r) => {
+      const cust = customers.find((c) => c.id === r.customer_id);
+      const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+      return (
+        !q ||
+        (cust && cust.name.toLowerCase().includes(q)) ||
+        (rt && rt.name.toLowerCase().includes(q)) ||
+        r.status.toLowerCase().includes(q)
+      );
+    });
+    exportRowsToPDF({
+      fileName: 'Exportacion_Revisiones.pdf',
+      title: 'Listado Oficial de Revisiones Periódicas',
+      subtitle: `Calendario de inspecciones de instalaciones · ${company.company_name} · Emisión: ${nowStr}${q ? ` · Filtro: "${search}"` : ''}`,
+      company,
+      columns: [
+        { key: 'customer', header: 'Cliente' },
+        { key: 'type', header: 'Tipo de Revisión' },
+        { key: 'last', header: 'Última Revisión' },
+        { key: 'next', header: 'Próxima Fecha' },
+        { key: 'status', header: 'Estado' },
+      ],
+      rows: filtered.map((r) => {
+        const cust = customers.find((c) => c.id === r.customer_id);
+        const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+        return {
+          customer: cust ? cust.name : '—',
+          type: rt ? rt.name : '—',
+          last: r.last_review_date || '—',
+          next: r.next_review_date || '—',
+          status: r.status,
+        };
+      }),
+      orientation: 'landscape',
+    });
+  };
+
   const q = search.trim().toLowerCase();
 
-  const createButtonLabel: Record<typeof activeTab, string> = {
+  const createButtonLabel: Partial<Record<typeof activeTab, string>> = {
     customers: '+ Nuevo Cliente',
     addresses: '+ Nuevo Domicilio / Instalación',
     articles: '+ Nuevo Artículo',
@@ -399,6 +979,7 @@ export const MasterDataAndUsersModule: React.FC<{
       setUsrEmail('');
       setUsrPhone('');
       setUsrRole('');
+      setUsrCanClock(true);
       setUsrWorkShiftType('continua');
       setUsrWorkStartTime('08:00');
       setUsrWorkEndTime('18:00');
@@ -414,9 +995,10 @@ export const MasterDataAndUsersModule: React.FC<{
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
       <div className="shrink-0 bg-[#f4f6fa] space-y-3">
+        {isUsersMode ? (
         <ScreenHeaderBar
-          title="Datos Maestros y Administración de Usuarios"
-          subtitle="Clientes, domicilios/instalaciones, artículos, proveedores, tipos de revisión y usuarios con ciclo activo/inactivo"
+          title="Usuarios y Permisos"
+          subtitle="Gestión de operarios y administradores, control de accesos, roles, jornadas y contraseñas"
           onBack={onBack}
           searchTerm={search}
           onSearchChange={setSearch}
@@ -426,52 +1008,89 @@ export const MasterDataAndUsersModule: React.FC<{
               onClick={handleOpenCreate}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
             >
-              <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
+              <Plus className="w-4 h-4" /> + Nuevo Usuario / Operario
             </button>
           }
         />
+      ) : (
+        <>
+          <ScreenHeaderBar
+            title="Catálogos y ficheros"
+            subtitle="Clientes, domicilios, artículos, proveedores, tipos de revisión, partes, revisiones e importación/exportación"
+            onBack={onBack}
+            searchTerm={activeTab !== 'import_export' ? search : undefined}
+            onSearchChange={activeTab !== 'import_export' ? setSearch : undefined}
+            actions={
+              createButtonLabel[activeTab] ? (
+                <button
+                  type="button"
+                  onClick={handleOpenCreate}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
+                </button>
+              ) : undefined
+            }
+          />
 
-        {/* Pestañas de maestros */}
-        <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-          {[
-            { key: 'customers', label: `Clientes (${customers.length})`, icon: Building2 },
-            {
-              key: 'addresses',
-              label: `Domicilios/Instalaciones (${addresses.length})`,
-              icon: Building2,
-            },
-            { key: 'articles', label: `Artículos (${articles.length})`, icon: Package },
-            { key: 'suppliers', label: `Proveedores (${suppliers.length})`, icon: Truck },
-            {
-              key: 'review_types',
-              label: `Tipos de Revisión (${reviewTypes.length})`,
-              icon: CalendarClock,
-            },
-            { key: 'users', label: `Usuarios y Roles (${profiles.length})`, icon: Users },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.key as typeof activeTab);
-                  setShowCreateModal(false);
-                  setEditingId(null);
-                }}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition ${
-                  active
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+          {/* Pestañas de catálogos y ficheros */}
+          <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs overflow-x-auto mobile-scroll-container">
+            {[
+              { key: 'customers', label: `Clientes (${customers.length})`, icon: Building2 },
+              {
+                key: 'addresses',
+                label: `Domicilios (${addresses.length})`,
+                icon: Building2,
+              },
+              { key: 'articles', label: `Artículos (${articles.length})`, icon: Package },
+              { key: 'suppliers', label: `Proveedores (${suppliers.length})`, icon: Truck },
+              {
+                key: 'review_types',
+                label: `Tipos Revisión (${reviewTypes.length})`,
+                icon: CalendarClock,
+              },
+              {
+                key: 'work_orders',
+                label: `Partes de Trabajo (${workOrders.length})`,
+                icon: ClipboardList,
+              },
+              {
+                key: 'reviews',
+                label: `Revisiones (${installationReviews.length})`,
+                icon: CalendarClock,
+              },
+              {
+                key: 'import_export',
+                label: 'Importar / Exportar Ficheros',
+                icon: FileSpreadsheet,
+              },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  data-testid={`tab-${tab.key}`}
+                  onClick={() => {
+                    setActiveTab(tab.key as typeof activeTab);
+                    setShowCreateModal(false);
+                    setEditingId(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 ${
+                    active
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
       </div>
 
       {/* 1. LISTADO DE CLIENTES */}
@@ -489,6 +1108,14 @@ export const MasterDataAndUsersModule: React.FC<{
                 title="Descargar archivo Excel con plantilla oficial de clientes (incluye código postal, población y provincia)"
               >
                 <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCustomersPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF oficial de clientes con filtros aplicados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
               </button>
               <button
                 type="button"
@@ -618,7 +1245,32 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 2. LISTADO DE DOMICILIOS / INSTALACIONES */}
       {activeTab === 'addresses' && (
-        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Domicilios:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportAddressesPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF oficial de domicilios e instalaciones con filtros aplicados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={handleExportAddressesExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                title="Exportar domicilios e instalaciones a Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Domicilios (Excel)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {addresses.map((a) => {
             const cust = customers.find((c) => c.id === a.customer_id);
             return (
@@ -690,13 +1342,88 @@ export const MasterDataAndUsersModule: React.FC<{
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
       {/* 3. LISTADO DE ARTÍCULOS */}
       {activeTab === 'articles' && (
-        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-          {articles
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Artículos:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => downloadImportTemplateExcel('articles')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
+                title="Descargar archivo Excel con plantilla oficial de artículos coincidente con la ficha (código, unidad, nombre, precio compra, precio venta y proveedor habitual)"
+              >
+                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+              </button>
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
+                <Upload className="w-3.5 h-3.5" /> Importar Artículos (Excel)
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                  data-testid="input-import-articles-excel"
+                  onChange={handleArticleFileImport}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleExportArticlesPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF oficial de artículos con tarifas y existencias"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={handleExportArticles}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
+              </button>
+              {currentUser.role === 'admin' && articles.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="btn-clear-articles-catalog"
+                  onClick={() => {
+                    requestDeleteConfirmation({
+                      recordName: `Catálogo de artículos (${articles.length} artículos)`,
+                      consequence:
+                        'Se vaciará completamente el catálogo actual de artículos para que puedas importar tus artículos reales limpios desde Excel sin mezclas ni duplicados.',
+                      requireReason: false,
+                      onConfirm: () => {
+                        backend.clearAllArticles();
+                        notifySuccessGreen('Catálogo de artículos vaciado correctamente.');
+                        refresh();
+                      },
+                    });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                  title="Vaciar todo el catálogo de artículos"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
+          {articles.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">No hay artículos en el catálogo</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Puedes dar de alta un artículo con «+ Nuevo Artículo» o pulsar en «Importar Artículos (Excel)» para cargar tu catálogo real.
+              </p>
+            </div>
+          ) : (
+            articles
             .filter(
               (a) => !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q)
             )
@@ -776,7 +1503,8 @@ export const MasterDataAndUsersModule: React.FC<{
                   )}
                 </div>
               </div>
-            ))}
+            )))}
+          </div>
         </div>
       )}
 
@@ -806,6 +1534,14 @@ export const MasterDataAndUsersModule: React.FC<{
                   onChange={handleSupplierFileImport}
                 />
               </label>
+              <button
+                type="button"
+                onClick={handleExportSuppliersPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF oficial de proveedores homologados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+              </button>
               <button
                 type="button"
                 onClick={handleExportSuppliers}
@@ -930,8 +1666,42 @@ export const MasterDataAndUsersModule: React.FC<{
 
       {/* 5. LISTADO DE TIPOS DE REVISIÓN */}
       {activeTab === 'review_types' && (
-        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-          {reviewTypes.map((rt) => (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Tipos de Revisión:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportReviewTypesPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF de tipos de revisión homologados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={handleExportReviewTypesExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                title="Exportar tipos de revisión a Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar a Excel
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
+          {reviewTypes.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              <CalendarClock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">No hay tipos de revisión registrados</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Pulsa en «+ Nuevo Tipo de Revisión» para registrar los tipos de revisión reales de Fontanería Roma.
+              </p>
+            </div>
+          ) : (
+            reviewTypes.map((rt) => (
             <div key={rt.id} className="p-4 flex items-center justify-between gap-3">
               <div>
                 <div className="font-bold text-slate-900">{rt.name}</div>
@@ -993,13 +1763,186 @@ export const MasterDataAndUsersModule: React.FC<{
                 )}
               </div>
             </div>
-          ))}
+          )))}
+          </div>
+        </div>
+      )}
+
+      {/* 7. LISTADO DE PARTES DE TRABAJO */}
+      {activeTab === 'work_orders' && (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Partes de Trabajo:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="btn-export-work-orders-pdf"
+                onClick={handleExportWorkOrdersPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF de partes de trabajo reflejando los filtros aplicados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Partes (PDF)
+              </button>
+              <button
+                type="button"
+                data-testid="btn-export-work-orders-excel"
+                onClick={handleExportWorkOrdersExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                title="Exportar partes de trabajo a archivo Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Partes (Excel)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
+            {workOrders
+              .filter(
+                (w) =>
+                  !q ||
+                  w.code.toLowerCase().includes(q) ||
+                  w.snapshot_customer_name.toLowerCase().includes(q) ||
+                  (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
+                  (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
+              )
+              .map((w) => (
+                <div key={w.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                      <span>{w.code} — {w.snapshot_customer_name}</span>
+                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        {w.archived_at ? 'Archivado' : w.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-slate-600">
+                      <strong>Trabajo:</strong> {w.planned_work || '—'}
+                    </div>
+                    <div className="text-slate-500 text-[11px]">
+                      Dirección: {w.snapshot_address_line} ({w.snapshot_city}) · Programado: {formatDateTimeES(w.scheduled_at, tz)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-slate-900">
+                      {formatCentsToEUR(w.total_amount_cents)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            {workOrders.filter(
+              (w) =>
+                !q ||
+                w.code.toLowerCase().includes(q) ||
+                w.snapshot_customer_name.toLowerCase().includes(q) ||
+                (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
+                (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
+            ).length === 0 && (
+              <div className="p-8 text-center text-slate-500">
+                <ClipboardList className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-sm text-slate-700">No hay partes de trabajo que coincidan con la búsqueda</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 8. LISTADO DE REVISIONES PERIÓDICAS */}
+      {activeTab === 'reviews' && (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Acciones con Revisiones:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="btn-export-reviews-pdf"
+                onClick={handleExportReviewsPDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                title="Generar y descargar listado PDF oficial de revisiones periódicas reflejando filtros aplicados"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Revisiones (PDF)
+              </button>
+              <button
+                type="button"
+                data-testid="btn-export-reviews-excel"
+                onClick={handleExportReviewsExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                title="Exportar revisiones periódicas a archivo Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Revisiones (Excel)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
+            {installationReviews
+              .filter((r) => {
+                const cust = customers.find((c) => c.id === r.customer_id);
+                const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+                return (
+                  !q ||
+                  (cust && cust.name.toLowerCase().includes(q)) ||
+                  (rt && rt.name.toLowerCase().includes(q)) ||
+                  r.status.toLowerCase().includes(q)
+                );
+              })
+              .map((r) => {
+                const cust = customers.find((c) => c.id === r.customer_id);
+                const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+                return (
+                  <div key={r.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                        <span>{cust?.name || r.customer_id}</span>
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          {r.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-slate-600">
+                        <strong>Tipo de Revisión:</strong> {rt?.name || r.review_type_id}
+                      </div>
+                      <div className="text-slate-500 text-[11px]">
+                        Última revisión: {r.last_review_date || '—'} · Próxima fecha: <strong>{r.next_review_date}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            {installationReviews.filter((r) => {
+              const cust = customers.find((c) => c.id === r.customer_id);
+              const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+              return (
+                !q ||
+                (cust && cust.name.toLowerCase().includes(q)) ||
+                (rt && rt.name.toLowerCase().includes(q)) ||
+                r.status.toLowerCase().includes(q)
+              );
+            }).length === 0 && (
+              <div className="p-8 text-center text-slate-500">
+                <CalendarClock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-sm text-slate-700">No hay revisiones registradas que coincidan con la búsqueda</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 9. IMPORTACIÓN Y EXPORTACIÓN INTEGRAL DE FICHEROS */}
+      {activeTab === 'import_export' && (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <ImportExportModule
+            backend={backend}
+            onBack={() => setActiveTab('customers')}
+            onRefresh={refresh}
+          />
         </div>
       )}
 
       {/* 6. LISTADO DE USUARIOS Y ROLES */}
       {activeTab === 'users' && (
-        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
+        <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
           {profiles.map((u) => {
             const isSelf = u.id === currentUser.id;
             return (
@@ -1036,6 +1979,18 @@ export const MasterDataAndUsersModule: React.FC<{
                     <span>·</span>
                     <span>Tel: {u.phone || '—'}</span>
                     <span>·</span>
+                    <span
+                      data-testid={`user-can-clock-badge-${u.id}`}
+                      className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded text-[11px] ${
+                        u.can_clock !== false
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span>Control fichaje: {u.can_clock !== false ? 'Sí' : 'No'}</span>
+                    </span>
+                    <span>·</span>
                     <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
                       <Clock className="w-3 h-3 text-indigo-600" />
                       {u.work_shift_type === 'partida' ? (
@@ -1051,7 +2006,7 @@ export const MasterDataAndUsersModule: React.FC<{
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-1 mobile-scroll-container">
                   <button
                     type="button"
                     data-testid={`btn-edit-user-${u.id}`}
@@ -1062,6 +2017,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       setUsrDni(u.dni || '');
                       setUsrPhone(u.phone || '');
                       setUsrRole(u.role);
+                      setUsrCanClock(u.can_clock !== false);
                       setUsrWorkShiftType(u.work_shift_type || 'continua');
                       setUsrWorkStartTime(u.work_start_time || '08:00');
                       setUsrWorkEndTime(u.work_end_time || '18:00');
@@ -1172,7 +2128,7 @@ export const MasterDataAndUsersModule: React.FC<{
       ===================================================================== */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 max-w-lg w-full h-full sm:h-auto overflow-y-auto flex flex-col justify-between mobile-scroll-container">
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
               <h3 className="font-bold text-base">
                 {editingId
@@ -1202,6 +2158,14 @@ export const MasterDataAndUsersModule: React.FC<{
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!custName.trim()) {
+                    notifyError('El nombre o razón social del cliente es obligatorio.');
+                    return;
+                  }
+                  if (!custPhone.trim()) {
+                    notifyError('El teléfono del cliente es obligatorio.');
+                    return;
+                  }
                   setShowCreateModal(false);
                   const isEdit = !!editingId;
                   requestSaveConfirmation({
@@ -1327,7 +2291,7 @@ export const MasterDataAndUsersModule: React.FC<{
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">
-                      Teléfono(s)
+                      Teléfono(s) *
                     </label>
                     <PhoneInputField
                       value={custPhone}
@@ -1475,8 +2439,8 @@ export const MasterDataAndUsersModule: React.FC<{
                 <SearchableSelect
                   value={addrCustomerId}
                   onChange={setAddrCustomerId}
-                  placeholder="-- Cliente a seleccionar --"
-                  emptyOptionLabel="-- Cliente a seleccionar --"
+                  placeholder="Seleccione un cliente"
+                  emptyOptionLabel="Seleccione un cliente"
                   options={customers.map((c) => ({
                     value: c.id,
                     label: c.name,
@@ -1602,7 +2566,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       onChange={(e) => setArtUnit(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                     >
-                      <option value="">-- Unidad a seleccionar --</option>
+                      <option value="">Seleccione una unidad</option>
                       <option value="ud">Unidad (ud)</option>
                       <option value="m">Metros (m)</option>
                       <option value="kg">Kilogramos (kg)</option>
@@ -1659,7 +2623,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     onChange={(e) => setArtSupplierId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                   >
-                    <option value="">-- Proveedor a seleccionar (opcional) --</option>
+                    <option value="">Seleccione un proveedor (opcional)</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1893,7 +2857,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     onChange={(e) => setRtUnit(e.target.value as typeof rtUnit)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                   >
-                    <option value="">-- Periodicidad a seleccionar --</option>
+                    <option value="">Seleccione una periodicidad</option>
                     <option value="months">Meses naturales</option>
                     <option value="years">Años</option>
                     <option value="days">Días</option>
@@ -1944,6 +2908,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Nombre completo', value: usrName },
                       { label: 'Email', value: usrEmail },
                       { label: 'Rol asignado', value: validRole },
+                      { label: 'Controlar fichaje', value: usrCanClock ? 'Sí' : 'No' },
                       {
                         label: 'Tipo de jornada',
                         value: usrWorkShiftType === 'partida'
@@ -1960,6 +2925,7 @@ export const MasterDataAndUsersModule: React.FC<{
                             dni: usrDni,
                             phone: usrPhone,
                             role: validRole,
+                            can_clock: usrCanClock,
                             work_shift_type: usrWorkShiftType,
                             work_start_time: usrWorkStartTime || '08:00',
                             work_end_time: usrWorkEndTime || '18:00',
@@ -1977,6 +2943,7 @@ export const MasterDataAndUsersModule: React.FC<{
                             email: usrEmail,
                             phone: usrPhone,
                             role: validRole,
+                            can_clock: usrCanClock,
                             work_shift_type: usrWorkShiftType,
                             work_start_time: usrWorkStartTime || '08:00',
                             work_end_time: usrWorkEndTime || '18:00',
@@ -1992,7 +2959,10 @@ export const MasterDataAndUsersModule: React.FC<{
                             email: res.email,
                             tempPass: res.temporaryPassword,
                             link: res.invitationLink,
+                            emailStatus: 'sending',
+                            emailMessage: 'Enviando correo de invitación al operario...',
                           });
+                          sendInvitationEmail(res.full_name, res.email, res.temporaryPassword, res.invitationLink);
                         }
                         setUsrName('');
                         setUsrDni('');
@@ -2053,10 +3023,62 @@ export const MasterDataAndUsersModule: React.FC<{
                   onChange={(e) => setUsrRole(e.target.value as 'operario' | 'admin')}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white font-semibold"
                 >
-                  <option value="">-- Rol a seleccionar --</option>
+                  <option value="">Seleccione un rol</option>
                   <option value="operario">Rol: Operario</option>
                   <option value="admin">Rol: Administrador</option>
                 </select>
+
+                {/* Controlar fichaje: Sí / No */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Controlar fichaje</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                        Indica si este usuario debe registrar entradas y salidas de jornada laboral.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-300 shrink-0">
+                      <button
+                        type="button"
+                        data-testid="btn-user-can-clock-yes"
+                        onClick={() => setUsrCanClock(true)}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                          usrCanClock
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Sí
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="btn-user-can-clock-no"
+                        onClick={() => setUsrCanClock(false)}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                          !usrCanClock
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        No
+                      </button>
+                    </div>
+                  </div>
+                  {!usrCanClock && (
+                    <div className="text-[11px] text-amber-900 bg-amber-50 p-2.5 rounded-lg border border-amber-200 leading-relaxed space-y-1">
+                      <p className="font-bold flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        Control de fichaje desactivado («No»)
+                      </p>
+                      <p>
+                        El usuario no verá opciones de fichar ni podrá registrar fichajes. Queda <strong>completamente excluido</strong> de la regularización automática y de los listados y documentos oficiales de firma.
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                   <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
@@ -2294,6 +3316,33 @@ export const MasterDataAndUsersModule: React.FC<{
                 </div>
               </div>
 
+              {invitationSummaryModal.emailStatus === 'sent' && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span className="font-medium">{invitationSummaryModal.emailMessage}</span>
+                </div>
+              )}
+              {invitationSummaryModal.emailStatus === 'sending' && (
+                <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 text-xs flex items-center gap-2 animate-pulse">
+                  <RefreshCw className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+                  <span>Enviando correo de invitación al operario mediante el servidor de la empresa...</span>
+                </div>
+              )}
+              {invitationSummaryModal.emailStatus === 'error' && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Aviso de envío de correo</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    {invitationSummaryModal.emailMessage}
+                  </p>
+                  <p className="text-[11px] text-slate-600">
+                    💡 El operario ya está dado de alta en el sistema. Puedes enviarle los datos por WhatsApp o pulsar el botón de reintentar correo.
+                  </p>
+                </div>
+              )}
+
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed text-[11px]">
                 ℹ️ <strong>Seguridad garantizada:</strong> La primera vez que{' '}
                 <strong>{invitationSummaryModal.fullName}</strong> inicie sesión con esta clave temporal, el sistema le obligará a definir su contraseña definitiva.
@@ -2314,13 +3363,23 @@ export const MasterDataAndUsersModule: React.FC<{
 
               <button
                 type="button"
-                onClick={() => {
-                  const messageText = `Hola ${invitationSummaryModal.fullName},\n\nHas sido dado/a de alta en la aplicación de Gestión de partes.\n\n🔗 Enlace directo con tus datos:\n${invitationSummaryModal.link}\n\n👤 Usuario / Email: ${invitationSummaryModal.email}\n🔑 Contraseña temporal: ${invitationSummaryModal.tempPass}\n\n(Por seguridad, deberás cambiar esta contraseña temporal la primera vez que entres).`;
-                  window.open(`mailto:${invitationSummaryModal.email}?subject=${encodeURIComponent('Invitación y acceso a Gestión de partes')}&body=${encodeURIComponent(messageText)}`, '_blank');
-                }}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
+                disabled={invitationSummaryModal.emailStatus === 'sending'}
+                onClick={() =>
+                  sendInvitationEmail(
+                    invitationSummaryModal.fullName,
+                    invitationSummaryModal.email,
+                    invitationSummaryModal.tempPass,
+                    invitationSummaryModal.link
+                  )
+                }
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer text-xs"
               >
-                <span>📧 Enviar por Correo</span>
+                <Mail className="w-4 h-4" />
+                <span>
+                  {invitationSummaryModal.emailStatus === 'sending'
+                    ? 'Enviando correo...'
+                    : '📧 Reintentar Envío de Correo'}
+                </span>
               </button>
 
               <button
@@ -2913,14 +3972,21 @@ export const AdminSystemModule: React.FC<{
     }
   };
 
-  const handleDownloadBackupSnapshot = () => {
+    const handleDownloadBackupSnapshot = async () => {
     try {
-      const snapshot = backend.exportFullSnapshot();
-      const compName = snapshot.company_settings?.company_name
-        ? snapshot.company_settings.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        : 'empresa';
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const filename = `copia-seguridad-${compName}-${dateStr}.json`;
+      notifySuccessGreen('Consultando y descargando la última copia de seguridad oficial de la nube (Supabase)...');
+      let snapshot: any;
+      try {
+        snapshot = await supabaseSyncEngine.fetchCloudSnapshot();
+      } catch (err: any) {
+        console.warn('Fallo al obtener directamente de Supabase, usando snapshot local:', err);
+        snapshot = backend.exportFullSnapshot();
+      }
+      const tz = settings.timezone || 'Europe/Madrid';
+      const now = new Date().toISOString();
+      const dateStr = getLocalDateString(now, tz);
+      const timeStr = formatTimeWithSecondsES(now, tz).replace(/:/g, '-');
+      const filename = `copia_${dateStr}_${timeStr}.json`;
       const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
         type: 'application/json',
       });
@@ -2932,9 +3998,9 @@ export const AdminSystemModule: React.FC<{
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      notifySuccessGreen(`Copia de seguridad descargada correctamente como «${filename}».`);
+      notifySuccessGreen('Copia de seguridad oficial descargada con éxito como «' + filename + '».');
     } catch (err: any) {
-      notifyError(err?.message || 'Error al descargar la copia de seguridad.');
+      notifyError(err?.message || 'Error al descargar la copia de seguridad de la nube.');
     }
   };
 
@@ -3011,14 +4077,17 @@ export const AdminSystemModule: React.FC<{
     });
   };
 
-  const handleDownloadBackupJob = (b: BackupJob) => {
+  const handleDownloadBackupJob = async (b: BackupJob) => {
     try {
-      const snapshot = backend.getBackupSnapshot(b.id);
-      const compName = snapshot.company_settings?.company_name
-        ? snapshot.company_settings.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        : 'empresa';
-      const trigger = b.trigger_type === 'auto_desktop' ? 'auto' : 'manual';
-      const filename = `copia-${compName}-${b.backup_date_local}-${trigger}.json`;
+      let snapshot: any;
+      try {
+        snapshot = await supabaseSyncEngine.fetchCloudSnapshot();
+      } catch {
+        snapshot = backend.getBackupSnapshot(b.id);
+      }
+      const filename =
+        b.filename ||
+        `copia_${b.backup_date_local}_${(b.backup_time_local || '00-00-00').replace(/:/g, '-')}.json`;
       const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
         type: 'application/json',
       });
@@ -3030,7 +4099,10 @@ export const AdminSystemModule: React.FC<{
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      notifySuccessGreen(`Copia del ${formatDateES(b.backup_date_local)} descargada con éxito («${filename}»).`);
+      const displayDate = b.started_at
+        ? formatDateTimeWithSecondsES(b.started_at, settings.timezone)
+        : formatDateES(b.backup_date_local);
+      notifySuccessGreen(`Copia descargada con éxito: «${filename}» (${displayDate}).`);
     } catch (err: any) {
       notifyError(err?.message || 'Error al descargar la copia.');
     }
@@ -3038,12 +4110,15 @@ export const AdminSystemModule: React.FC<{
 
   const handleRestoreDirectJob = (b: BackupJob) => {
     const triggerLabel = b.trigger_type === 'auto_desktop' ? 'Automática de apertura de escritorio' : 'Manual';
+    const displayDate = b.started_at
+      ? formatDateTimeWithSecondsES(b.started_at, settings.timezone)
+      : formatDateES(b.backup_date_local);
     requestSaveConfirmation({
-      title: `Restaurar Copia del ${formatDateES(b.backup_date_local)}`,
+      title: `Restaurar Copia: ${displayDate}`,
       changes: [
         {
           label: 'Copia seleccionada',
-          value: `${formatDateES(b.backup_date_local)} (${triggerLabel})`,
+          value: `${displayDate} (${triggerLabel})`,
         },
         {
           label: 'Advertencia de seguridad',
@@ -3281,7 +4356,7 @@ export const AdminSystemModule: React.FC<{
           <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1 text-xs">
               <h3 className="text-sm font-bold text-slate-900">
-                Copias Manuales y Copia Automática en Primera Apertura Diaria de Escritorio
+                Copias de Seguridad de la Base de Datos Central en la Nube (Supabase Cloud)
               </h3>
               <p className="text-slate-600">
                 Alcance integral: Base de Datos PostgreSQL + Archivos Privados de Storage (fotografías y firmas) + Metadatos de Identidades Auth.
@@ -3301,24 +4376,41 @@ export const AdminSystemModule: React.FC<{
                 type="button"
                 onClick={handleDownloadBackupSnapshot}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold"
-                title="Descargar archivo .json con la copia completa para guardarlo en un pendrive o disco externo"
+                title="Descargar archivo .json con la copia completa de la nube para guardarlo en un pendrive o disco externo"
               >
                 <Download className="w-4 h-4 text-slate-600" /> Descargar Copia (.json)
               </button>
-              <button
-                type="button"
-                data-testid="btn-create-manual-backup"
-                onClick={() => {
-                  const job = backend.createManualBackup();
-                  notifySuccessGreen(
-                    `Copia manual completada (${job.artifact_path}, ${job.size_bytes} bytes).`
-                  );
-                  refresh();
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
-              >
-                <Plus className="w-4 h-4" /> Lanzar Copia Manual Ahora
-              </button>
+              {isInstalledDesktopApp() ? (
+                <button
+                  type="button"
+                  data-testid="btn-create-manual-backup"
+                  onClick={async () => {
+                    try {
+                      await supabaseSyncEngine.forceSync();
+                    } catch {}
+                    const job = backend.createManualBackup();
+                    try {
+                      await supabaseSyncEngine.pushStateToSupabase();
+                    } catch {}
+                    notifySuccessGreen(
+                      'Copia de seguridad generada con éxito («' + (job.filename || job.id) + '»).'
+                    );
+                    refresh();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                >
+                  <Plus className="w-4 h-4" /> Lanzar Copia Manual en la Nube
+                </button>
+              ) : (
+                <div
+                  data-testid="desktop-backup-only-notice"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium"
+                  title="La creación de copias de seguridad está reservada a la aplicación de escritorio instalada en un PC"
+                >
+                  <ShieldCheck className="w-4 h-4 text-slate-400" />
+                  <span>Creación de copias reservada a app de escritorio PC</span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setShowRestoreModal(true)}
@@ -3428,16 +4520,28 @@ export const AdminSystemModule: React.FC<{
                       }}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white text-slate-800"
                     >
-                      <option value="">-- Elige una copia de la lista --</option>
+                      <option value="">Seleccione una copia de seguridad</option>
                       {backupJobs
                         .filter((b) => b.status === 'completed')
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {formatDateES(b.backup_date_local)} —{' '}
-                            {b.trigger_type === 'auto_desktop' ? 'Automática (Escritorio)' : 'Manual'} (
-                            {b.size_bytes ? `${Math.round(b.size_bytes / 1024)} KB` : 'OK'})
-                          </option>
-                        ))}
+                        .sort(
+                          (a, b) =>
+                            new Date(b.started_at || b.backup_date_local).getTime() -
+                            new Date(a.started_at || a.backup_date_local).getTime()
+                        )
+                        .map((b) => {
+                          const dateLabel = b.started_at
+                            ? formatDateTimeWithSecondsES(b.started_at, settings.timezone)
+                            : b.backup_time_local
+                            ? `${formatDateES(b.backup_date_local, settings.timezone)} — ${b.backup_time_local}`
+                            : `${formatDateES(b.backup_date_local, settings.timezone)} — [Histórica]`;
+                          return (
+                            <option key={b.id} value={b.id}>
+                              {dateLabel} —{' '}
+                              {b.trigger_type === 'auto_desktop' ? 'Automática (Escritorio)' : 'Manual'} (
+                              {b.filename || (b.size_bytes ? `${Math.round(b.size_bytes / 1024)} KB` : 'OK')})
+                            </option>
+                          );
+                        })}
                     </select>
                   </div>
 
@@ -3518,7 +4622,7 @@ export const AdminSystemModule: React.FC<{
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
                 <tr>
-                  <th className="p-3">Fecha Local</th>
+                  <th className="p-3">Fecha y Hora</th>
                   <th className="p-3">Tipo Disparador</th>
                   <th className="p-3">Estado</th>
                   <th className="p-3">Alcance Verificado</th>
@@ -3530,7 +4634,13 @@ export const AdminSystemModule: React.FC<{
               <tbody className="divide-y divide-slate-200">
                 {backupJobs.map((b) => (
                   <tr key={b.id} className="hover:bg-slate-50 transition">
-                    <td className="p-3 font-semibold">{formatDateES(b.backup_date_local)}</td>
+                    <td className="p-3 font-semibold font-mono text-[11px]">
+                      {b.started_at
+                        ? formatDateTimeWithSecondsES(b.started_at, settings.timezone)
+                        : b.backup_time_local
+                        ? `${formatDateES(b.backup_date_local, settings.timezone)} — ${b.backup_time_local}`
+                        : formatDateES(b.backup_date_local, settings.timezone)}
+                    </td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold">
                         {b.trigger_type === 'auto_desktop'

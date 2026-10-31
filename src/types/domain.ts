@@ -80,6 +80,7 @@ export interface UserProfile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  can_clock?: boolean;
   work_shift_type?: WorkShiftType;
   work_start_time?: string;
   work_end_time?: string;
@@ -291,6 +292,7 @@ export interface WorkOrder {
   // Planificación
   planned_work: string;
   scheduled_at: string;
+  is_unscheduled?: boolean;
   initial_notes: string;
   origin_review_occurrence_id: string | null;
   // Estado y finalización
@@ -408,6 +410,11 @@ export interface AttendanceSession {
   deleted_at: string | null;
   deleted_by: string | null;
   delete_reason: string | null;
+  is_closed?: boolean;
+  closure_processed_at?: string | null;
+  is_manually_corrected?: boolean;
+  manually_corrected_at?: string | null;
+  manually_corrected_by?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -426,6 +433,8 @@ export interface AttendanceCorrection {
 export interface BackupJob {
   id: string;
   backup_date_local: string; // YYYY-MM-DD
+  backup_time_local?: string; // HH:mm:ss
+  filename?: string; // copia_YYYY-MM-DD_HH-mm-ss.json
   trigger_type: BackupTriggerType;
   status: BackupStatus;
   scope: {

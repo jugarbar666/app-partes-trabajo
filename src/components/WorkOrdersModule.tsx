@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   ArrowRight,
   X,
+  CalendarX,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import {
@@ -43,6 +44,8 @@ import {
   formatDateES,
   formatDateTimeES,
   formatTimeES,
+  isWorkOrderUnscheduled,
+  formatWorkOrderScheduled,
   parseEurosToCents,
 } from '../utils/formatters';
 import { generateWorkOrderDetailPDF } from '../utils/exportImportUtils';
@@ -153,19 +156,13 @@ export const WorkOrderCreateModal: React.FC<{
   const getInitialScheduledAt = () => {
     if (preselectedScheduledAt) {
       const parsed = new Date(preselectedScheduledAt);
-      if (!isNaN(parsed.getTime()) && parsed.getTime() >= Date.now() - 60000) {
+      if (!isNaN(parsed.getTime())) {
         return preselectedScheduledAt.includes('T')
           ? preselectedScheduledAt.slice(0, 16)
           : `${preselectedScheduledAt}T09:00`;
       }
     }
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const h = String(now.getHours()).padStart(2, '0');
-    const min = String(now.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
+    return '';
   };
 
   const [scheduledAt, setScheduledAt] = useState(getInitialScheduledAt);
@@ -288,6 +285,10 @@ export const WorkOrderCreateModal: React.FC<{
       notifyError('El nombre del nuevo cliente es obligatorio.');
       return;
     }
+    if (!newCustomerPhone.trim()) {
+      notifyError('El teléfono del cliente es obligatorio.');
+      return;
+    }
     try {
       const created = backend.saveCustomer({
         code: newCustomerCode.trim(),
@@ -383,30 +384,37 @@ export const WorkOrderCreateModal: React.FC<{
       notifyError('Debes indicar la dirección y municipio del servicio.');
       return;
     }
-    if (selectedOperatorIds.length === 0) {
-      notifyError('Debes asignar al menos un operario al parte.');
-      return;
-    }
 
-    const scheduledDate = new Date(scheduledAt);
-    if (isNaN(scheduledDate.getTime())) {
-      notifyError('Fecha y hora prevista no válida.');
-      return;
-    }
-    if (scheduledDate.getTime() < Date.now() - 60 * 1000) {
-      notifyError('No se puede crear un parte con fecha u hora anterior a la actual.');
-      return;
-    }
+    const hasScheduledInput = Boolean(scheduledAt && scheduledAt.trim());
+    let scheduledIso = '';
+    let conflictWarnings: string[] = [];
 
-    const scheduledIso = scheduledAt.includes('Z')
-      ? scheduledAt
-      : new Date(scheduledAt).toISOString();
+    if (hasScheduledInput) {
+      const scheduledDate = new Date(scheduledAt);
+      const hasTime = scheduledAt.includes('T') && (scheduledAt.split('T')[1] || '').trim().length >= 4;
+      if (isNaN(scheduledDate.getTime()) || !hasTime) {
+        notifyError('Indique la fecha y la hora de ejecución.');
+        return;
+      }
+      if (selectedOperatorIds.length === 0) {
+        notifyError('Seleccione un operario para programar el parte.');
+        return;
+      }
+      if (scheduledDate.getTime() < Date.now() - 60 * 1000) {
+        notifyError('No se puede crear un parte con fecha u hora anterior a la actual.');
+        return;
+      }
 
-    const conflicts = backend.findOperatorScheduleConflicts(scheduledIso, selectedOperatorIds);
-    const conflictWarnings = conflicts.map(
-      (c) =>
-        `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
-    );
+      scheduledIso = scheduledAt.includes('Z')
+        ? scheduledAt
+        : new Date(scheduledAt).toISOString();
+
+      const conflicts = backend.findOperatorScheduleConflicts(scheduledIso, selectedOperatorIds);
+      conflictWarnings = conflicts.map(
+        (c) =>
+          `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
+      );
+    }
 
     const parsedCents = amountStr.trim() !== '' ? parseEurosToCents(amountStr) : null;
 
@@ -417,7 +425,10 @@ export const WorkOrderCreateModal: React.FC<{
         { label: 'Cliente', value: cust.name },
         { label: 'Dirección específica del servicio', value: `${addressLine}, ${city}` },
         { label: 'Trabajos a realizar', value: plannedWork },
-        { label: 'Fecha y hora prevista', value: formatDateTimeES(scheduledIso) },
+        {
+          label: 'Fecha y hora prevista',
+          value: scheduledIso ? formatDateTimeES(scheduledIso) : 'Pendiente de programar',
+        },
         ...(parsedCents !== null
           ? [
               {
@@ -428,10 +439,13 @@ export const WorkOrderCreateModal: React.FC<{
           : []),
         {
           label: 'Operarios asignados',
-          value: operators
-            .filter((o) => selectedOperatorIds.includes(o.id))
-            .map((o) => o.full_name)
-            .join(', '),
+          value:
+            selectedOperatorIds.length > 0
+              ? operators
+                  .filter((o) => selectedOperatorIds.includes(o.id))
+                  .map((o) => o.full_name)
+                  .join(', ')
+              : 'Sin asignar (Pendiente de programar)',
         },
       ],
       onConfirm: () => {
@@ -448,7 +462,8 @@ export const WorkOrderCreateModal: React.FC<{
           snapshot_city: city,
           snapshot_province: province,
           planned_work: plannedWork,
-          scheduled_at: scheduledIso,
+          scheduled_at: scheduledIso || '',
+          is_unscheduled: !scheduledIso,
           initial_notes: initialNotes,
           operator_ids: selectedOperatorIds,
           origin_review_occurrence_id: originReviewOccurrenceId || null,
@@ -503,8 +518,8 @@ export const WorkOrderCreateModal: React.FC<{
                   data-testid="select-wo-customer"
                   value={selectedCustomerId}
                   onChange={handleSelectCustomer}
-                  emptyOptionLabel="-- Cliente a seleccionar --"
-                  placeholder="-- Cliente a seleccionar --"
+                  emptyOptionLabel="Seleccione un cliente"
+                  placeholder="Seleccione un cliente"
                   options={customers.map((c) => ({
                     value: c.id,
                     label: c.name,
@@ -520,8 +535,8 @@ export const WorkOrderCreateModal: React.FC<{
                   data-testid="select-wo-address"
                   value={selectedAddressId}
                   onChange={handleSelectAddress}
-                  emptyOptionLabel="-- Dirección o calle a seleccionar --"
-                  placeholder="-- Dirección o calle a seleccionar --"
+                  emptyOptionLabel="Seleccione un domicilio / instalación"
+                  placeholder="Seleccione un domicilio / instalación"
                   disabled={addresses.length === 0}
                   options={addresses.map((a) => {
                     const cust = customers.find((c) => c.id === a.customer_id);
@@ -613,15 +628,18 @@ export const WorkOrderCreateModal: React.FC<{
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Fecha y hora previstas *
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Fecha y hora previstas</span>
+                <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
               </label>
               <DateTimePickerField
                 value={scheduledAt}
                 onChange={setScheduledAt}
-                required
                 testId="input-wo-scheduled-at"
               />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Dejar vacío para guardar como «Pendiente de programar».
+              </p>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
@@ -657,7 +675,7 @@ export const WorkOrderCreateModal: React.FC<{
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
-              3. Operarios asignados al parte (selecciona uno o varios) *
+              3. Operarios asignados al parte (obligatorio al programar fecha y hora)
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {operators.map((op) => {
@@ -818,7 +836,7 @@ export const WorkOrderCreateModal: React.FC<{
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Teléfono(s)
+                    Teléfono(s) *
                   </label>
                   <PhoneInputField
                     value={newCustomerPhone}
@@ -1671,17 +1689,24 @@ const WorkOrderDetailLoadedView: React.FC<{
                 <span>Fecha y Hora Prevista del Trabajo</span>
               </div>
               <div className="text-lg sm:text-xl font-extrabold tracking-tight flex flex-wrap items-center gap-3">
-                <span>{formatDateES(wo.scheduled_at)} a las {formatTimeES(wo.scheduled_at)} h</span>
+                {isWorkOrderUnscheduled(wo) ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-300 text-slate-950 font-black text-sm shadow-sm border border-amber-400">
+                    <Calendar className="w-4 h-4 text-slate-950" />
+                    Pendiente de programar
+                  </span>
+                ) : (
+                  <span>{formatDateES(wo.scheduled_at)} a las {formatTimeES(wo.scheduled_at)} h</span>
+                )}
                 {wo.status !== 'cerrado' && wo.archived_at === null && (
                   <button
                     type="button"
                     data-testid="btn-reschedule-wo"
                     onClick={() => setShowRescheduleModal(true)}
                     className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                    title="Reprogramar fecha y hora prevista (disponible para administradores y técnicos)"
+                    title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora' : 'Reprogramar fecha y hora'}
                   >
                     <Calendar className="w-3.5 h-3.5" />
-                    <span>Reprogramar</span>
+                    <span>{isWorkOrderUnscheduled(wo) ? 'Programar' : 'Reprogramar'}</span>
                   </button>
                 )}
               </div>
@@ -1723,7 +1748,7 @@ const WorkOrderDetailLoadedView: React.FC<{
             </span>
           )}
 
-          {wo.status === 'no_iniciado' && isEditable && (
+          {wo.status === 'no_iniciado' && !isWorkOrderUnscheduled(wo) && isEditable && (
             <button
               type="button"
               data-testid="btn-start-work"
@@ -2421,7 +2446,7 @@ const WorkOrderDetailLoadedView: React.FC<{
               <button
                 type="button"
                 onClick={() => onOpenAuditForWorkOrder(wo.id)}
-                className="text-xs font-semibold text-blue-600 hover:underline"
+                className="text-xs font-semibold text-blue-600 hover:underline hidden md:inline-block"
               >
                 Ver en Auditoría Técnica Completa →
               </button>
@@ -2608,8 +2633,8 @@ const WorkOrderDetailLoadedView: React.FC<{
                 <SearchableSelect
                   value={selectedArticleId}
                   onChange={setSelectedArticleId}
-                  placeholder="-- Artículo a seleccionar --"
-                  emptyOptionLabel="-- Artículo a seleccionar --"
+                  placeholder="Seleccione un artículo"
+                  emptyOptionLabel="Seleccione un artículo"
                   required
                   options={articlesCatalog.map((a) => ({
                     value: a.id,
@@ -2860,7 +2885,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                   onChange={(e) => setReopenTarget(e.target.value as 'reabierto' | 'en_curso' | 'terminado')}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
                 >
-                  <option value="">-- Estado de destino a seleccionar --</option>
+                  <option value="">Seleccione una opción</option>
                   <option value="reabierto">Reabierto (marrón en negrita - devolver a operarios)</option>
                   <option value="en_curso">Reabrir a En Curso</option>
                   <option value="terminado">Reabrir a Terminado (solo revisión admin)</option>
@@ -3128,7 +3153,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                   }}
                   className="w-full px-2.5 py-1.5 text-xs bg-white rounded-lg border border-blue-300 text-slate-800"
                 >
-                  <option value="">-- Seleccionar dirección guardada --</option>
+                  <option value="">Seleccione un domicilio / instalación</option>
                   {customerAddresses.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.address_line}, {a.city}
@@ -3632,7 +3657,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                   onChange={(e) => setFinalizeHasPaid(e.target.value as 'unset' | 'yes' | 'no')}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold bg-white"
                 >
-                  <option value="unset">-- Selecciona si el cliente ha pagado o no --</option>
+                  <option value="unset">Seleccione una opción</option>
                   <option value="yes">
                     SÍ, el cliente ha pagado{' '}
                     {currentEnteredCents !== null ? `(${formatCentsToEUR(currentEnteredCents)})` : ''}
@@ -3659,7 +3684,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white font-medium"
                 >
-                  <option value="unset">-- Selecciona respuesta explícita --</option>
+                  <option value="unset">Seleccione una opción</option>
                   <option value="yes">SÍ solicita factura</option>
                   <option value="no">NO solicita factura</option>
                 </select>
@@ -3962,7 +3987,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                   { label: 'Parte de trabajo', value: wo.code },
                   {
                     label: 'Fecha/hora anterior',
-                    value: `${formatDateES(wo.scheduled_at)} ${formatTimeES(wo.scheduled_at)} h`,
+                    value: isWorkOrderUnscheduled(wo)
+                      ? 'Pendiente de programar'
+                      : `${formatDateES(wo.scheduled_at)} ${formatTimeES(wo.scheduled_at)} h`,
                   },
                   {
                     label: 'Nueva fecha/hora prevista',

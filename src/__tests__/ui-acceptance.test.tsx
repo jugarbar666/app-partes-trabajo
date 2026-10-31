@@ -19,9 +19,10 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
 
   it('Escenario 19: El dashboard administrativo muestra las cinco tarjetas requeridas y el listado ordenado por fecha prevista ascendente', () => {
     const html = renderToString(<App />);
+    expect(html).toContain('Partes pendientes de programar');
     expect(html).toContain('1. Partes no iniciados');
     expect(html).toContain('2. Partes en curso');
-    expect(html).toContain('3. Finalizados pdtes. cierre');
+    expect(html).toContain('3. Pendientes de cierre');
     expect(html).toContain('4. Revisiones pendientes');
     expect(html).toContain('5. Cesta / Lista de compra');
 
@@ -706,6 +707,89 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       });
       container.remove();
     }
+  });
+
+  it('Verificación UI: Catálogos y ficheros, inclusión de partes y revisiones, y exclusividad de copias en escritorio', () => {
+    // 1. Verificar módulo Catálogos y ficheros
+    const htmlMaster = renderToString(
+      <UIConfirmationProvider>
+        <MasterDataAndUsersModule
+          backend={defaultBackend}
+          initialTab="customers"
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+
+    expect(htmlMaster).toContain('Catálogos y ficheros');
+    expect(htmlMaster).toContain('Partes de Trabajo');
+    expect(htmlMaster).toContain('Revisiones');
+    expect(htmlMaster).toContain('Importar / Exportar Ficheros');
+    expect(htmlMaster).toContain('Descargar Listado (PDF)');
+
+    // 2. Verificar que en la barra lateral de App NO existe apartado independiente "Importación / Exportación"
+    // y sí existe "Catálogos y ficheros"
+    const htmlApp = renderToString(
+      <UIConfirmationProvider>
+        <App />
+      </UIConfirmationProvider>
+    );
+    expect(htmlApp).toContain('Catálogos y ficheros');
+    expect(htmlApp).not.toContain('<span>Importación / Exportación</span>');
+
+    // 3. Verificar que en modo web la creación de copias muestra el aviso exclusivo de escritorio
+    (globalThis as any).__IS_INSTALLED_DESKTOP__ = false;
+    const htmlWebBackups = renderToString(
+      <UIConfirmationProvider>
+        <AdminSystemModule
+          backend={defaultBackend}
+          initialSection="backups"
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+    expect(htmlWebBackups).toContain('desktop-backup-only-notice');
+    expect(htmlWebBackups).toContain('Creación de copias reservada a app de escritorio PC');
+
+    // 4. En modo escritorio sí aparece el botón de crear copia
+    (globalThis as any).__IS_INSTALLED_DESKTOP__ = true;
+    const htmlDesktopBackups = renderToString(
+      <UIConfirmationProvider>
+        <AdminSystemModule
+          backend={defaultBackend}
+          initialSection="backups"
+          onBack={() => {}}
+          onRefresh={() => {}}
+        />
+      </UIConfirmationProvider>
+    );
+    expect(htmlDesktopBackups).toContain('btn-create-manual-backup');
+    expect(htmlDesktopBackups).toContain('Lanzar Copia Manual en la Nube');
+
+    delete (globalThis as any).__IS_INSTALLED_DESKTOP__;
+  });
+
+  it('Verificación UI: Identificación en amarillo de pendientes de programar y filtro móvil', () => {
+    const htmlApp = renderToString(
+      <UIConfirmationProvider>
+        <App />
+      </UIConfirmationProvider>
+    );
+
+    // 1. Tarjeta de escritorio en amarillo/ámbar
+    expect(htmlApp).toContain('card-pendientes-programar');
+    expect(htmlApp).toContain('from-amber-200');
+    expect(htmlApp).toContain('to-amber-400');
+
+    // 2. Botón móvil "Pendientes de programar" con clase de filtro y estilo ámbar
+    expect(htmlApp).toContain('btn-mobile-filter-pendientes-programar');
+    expect(htmlApp).toContain('Pendientes de programar');
+    expect(htmlApp).toContain('bg-amber-100');
+
+    // 3. Ocultación en móvil de copias de seguridad y auditoría técnica mediante hidden md:flex
+    expect(htmlApp).toContain('hidden md:flex');
   });
 });
 

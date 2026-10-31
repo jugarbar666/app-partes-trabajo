@@ -36,12 +36,16 @@ import {
   computeWorkOrderContentHash,
   formatPhoneWithPrefix34,
   formatTimeES,
+  formatTimeWithSecondsES,
   getCurrentLocalDate,
   getLocalDateString,
   getShiftMidpointTime,
+  isWorkOrderUnscheduled,
+  formatWorkOrderScheduled,
   parseDateRobust,
   sanitizeTimezone,
 } from '../utils/formatters';
+import { isInstalledDesktopApp } from '../config/branchConfig';
 import { createDemoSeedState, createCleanDatabaseState, DatabaseState } from './seedData';
 import { populateCiudadRealDemoData } from './demoDatasetCiudadReal';
 import { populateRomaOfficialDemoData } from './romaOfficialDemoGenerator';
@@ -92,6 +96,8 @@ export class InstallationBackendEngine {
   private simulatedEmailProviderFailure = false;
   private simulatedBackupFailure = false;
   private storageKey: string;
+  private syncListeners: Set<(state: DatabaseState) => void> = new Set();
+  private changeListeners: Set<() => void> = new Set();
 
   constructor(
     installationId = 'instalaciones-climalux-demo',
@@ -104,7 +110,10 @@ export class InstallationBackendEngine {
     if (persistToStorage && typeof window !== 'undefined' && window.localStorage) {
       // 1. Cargar el estado guardado de la clave actual si existe
       let loadedFromStorage = false;
-      const saved = window.localStorage.getItem(this.storageKey);
+      let saved = window.localStorage.getItem(this.storageKey);
+      if (!saved && installationId !== 'instalaciones-climalux-demo') {
+        saved = window.localStorage.getItem('agy_partes_installation_v6_instalaciones-climalux-demo');
+      }
       if (saved) {
         try {
           const parsed: DatabaseState = JSON.parse(saved);
@@ -141,26 +150,12 @@ export class InstallationBackendEngine {
           effectiveMode === 'demo'
             ? createDemoSeedState(installationId)
             : populateRomaOfficialDemoData(createCleanDatabaseState(installationId));
-      } else if (
-        effectiveMode === 'clean' &&
-        (this.state.work_orders || []).length === 0 &&
-        (this.state.articles || []).length === 0
-      ) {
-        // Solo si la base de datos estaba sin inicializar partes/artículos
-        this.state = populateRomaOfficialDemoData(this.state);
-      } else if (
-        effectiveMode === 'clean' &&
-        (this.state.shopping_requests || []).length === 0 &&
-        !(this.state as any)._romaShoppingSeededV1
-      ) {
-        // Preservar intactos todos los datos existentes de la base de datos y añadir únicamente la cesta si estaba vacía
-        const generated = populateRomaOfficialDemoData(this.state);
-        this.state.shopping_requests = generated.shopping_requests;
-        (this.state as any)._romaShoppingSeededV1 = true;
       }
 
+      this.syncOfficialRomaUsers();
+      this.purgeProductionSeedData();
       if (this.state && this.state.passwords) {
-        this.state.passwords['jugarbar@gmail.com'] = 'Anromago678.';
+        this.state.passwords['jugarbar@gmail.com'] = 'anromago678*';
       }
       this.persist();
       return;
@@ -174,6 +169,215 @@ export class InstallationBackendEngine {
     this.persist();
   }
 
+  public purgeProductionSeedData(): void {
+    const isDemoOrOldArticle = (a: any) =>
+      !a ||
+      !a.id ||
+      a.id.startsWith('art-roma-') ||
+      a.id.startsWith('art-1') ||
+      a.id.startsWith('art-2') ||
+      a.id.startsWith('art-3') ||
+      (typeof a.code === 'string' && (/^ART-0[0-9]{2}$/i.test(a.code) || a.code.startsWith('ART-0')));
+
+    // El usuario confirmó vaciar artículos demo, revisiones y cesta de compra para importar artículos reales en producción
+    this.state.articles = (this.state.articles || []).filter((a) => !isDemoOrOldArticle(a));
+    this.state.review_types = [];
+    this.state.installation_reviews = [];
+    this.state.review_occurrences = [];
+    this.state.shopping_requests = (this.state.shopping_requests || []).filter(
+      (s) => s && s.id && !s.id.startsWith('shop-roma-') && !s.id.startsWith('shop-')
+    );
+
+    if (Array.isArray(this.state.notification_outbox)) {
+      this.state.notification_outbox = this.state.notification_outbox.filter(
+        (n) => !n.installation_review_id && !n.review_occurrence_id
+      );
+    }
+    if (Array.isArray(this.state.work_orders)) {
+      this.state.work_orders = this.state.work_orders.map((wo) => {
+        if (wo.origin_review_occurrence_id) {
+          return { ...wo, origin_review_occurrence_id: null };
+        }
+        return wo;
+      });
+    }
+
+    (this.state as any)._romaArticlesClearedRealDataV1 = true;
+    (this.state as any)._romaArticlesPurgedByUserV2 = true;
+    (this.state as any)._romaReviewsClearedRealDataV1 = true;
+    (this.state as any)._romaReviewsPurgedByUserV2 = true;
+    (this.state as any)._romaShoppingSeededV1 = true;
+    (this.state as any)._romaShoppingUserCleared = true;
+    (this.state as any)._romaProductionCleanConfirmedV1 = true;
+    this.persist();
+  }
+
+  public purgeOfficialRomaArticles(): void {
+    const isDemo = (a: any) =>
+      !a ||
+      !a.id ||
+      a.id.startsWith('art-roma-') ||
+      a.id.startsWith('art-1') ||
+      a.id.startsWith('art-2') ||
+      a.id.startsWith('art-3') ||
+      (typeof a.code === 'string' && a.code.startsWith('ART-0') && a.code.length <= 7);
+
+    this.state.articles = (this.state.articles || []).filter((a) => !isDemo(a));
+    (this.state as any)._romaArticlesClearedRealDataV1 = true;
+    (this.state as any)._romaArticlesPurgedByUserV2 = true;
+  }
+
+  public clearAllArticles(): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const deletedCount = (this.state.articles || []).length;
+    if (!Array.isArray((this.state as any).deleted_article_ids)) {
+      (this.state as any).deleted_article_ids = [];
+    }
+    for (const a of this.state.articles || []) {
+      if (a?.id) (this.state as any).deleted_article_ids.push(a.id);
+    }
+    this.state.articles = [];
+    (this.state as any)._romaArticlesClearedRealDataV1 = true;
+    (this.state as any)._romaArticlesPurgedByUserV2 = true;
+    this.recordAudit(admin, 'maestros', 'article', 'all', 'VACIAR_CATALOGO_ARTICULOS', {
+      deleted_count: deletedCount,
+    });
+    this.persist();
+  }
+
+  public purgeOfficialRomaReviews(): void {
+    if (!(this.state as any)._romaReviewsClearedRealDataV1) {
+      this.state.review_types = [];
+      this.state.installation_reviews = [];
+      this.state.review_occurrences = [];
+      if (Array.isArray(this.state.notification_outbox)) {
+        this.state.notification_outbox = this.state.notification_outbox.filter(
+          (n) => !n.installation_review_id?.startsWith('rev-') && !n.review_occurrence_id?.startsWith('occ-')
+        );
+      }
+      if (Array.isArray(this.state.work_orders)) {
+        this.state.work_orders = this.state.work_orders.map((wo) => {
+          if (wo.origin_review_occurrence_id) {
+            return { ...wo, origin_review_occurrence_id: null };
+          }
+          return wo;
+        });
+      }
+      (this.state as any)._romaReviewsClearedRealDataV1 = true;
+    }
+  }
+
+  public syncOfficialRomaUsers(): void {
+    const nowIso = new Date().toISOString();
+    const existingMap = new Map((this.state.profiles || []).map((p) => [p.id, p]));
+
+    const defaultOfficialProfiles: UserProfile[] = [
+      {
+        id: 'usr-jc-admin',
+        full_name: 'Juan Carlos',
+        dni: '12345678X',
+        email: 'jugarbar@gmail.com',
+        phone: '+34 600 000 001',
+        role: 'admin',
+        is_active: true,
+        can_clock: true,
+        column_preferences: {},
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+      {
+        id: 'usr-admin-1',
+        full_name: 'Antonio Roma',
+        dni: '05687529C',
+        email: 'anromago@hotmail.com',
+        phone: '+34 600 000 002',
+        role: 'admin',
+        is_active: true,
+        can_clock: true,
+        column_preferences: {},
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+      {
+        id: 'usr-raul-oper',
+        full_name: 'Raúl García',
+        dni: '05971502N',
+        email: 'nocorreo@nocorreo1.es',
+        phone: '+34 600 000 003',
+        role: 'operario',
+        is_active: true,
+        can_clock: true,
+        column_preferences: {},
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+      {
+        id: 'usr-marcos-oper',
+        full_name: 'Marcos Roma',
+        dni: '05727599R',
+        email: 'nocorreo@nocorreo.es',
+        phone: '+34 600 000 004',
+        role: 'operario',
+        is_active: true,
+        can_clock: true,
+        column_preferences: {},
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+      {
+        id: 'usr-juan-oper',
+        full_name: 'Juan (operario)',
+        dni: '05658387L',
+        email: 'jcgbarrajon@gmail.com',
+        phone: '+34 600 000 005',
+        role: 'operario',
+        is_active: true,
+        can_clock: true,
+        column_preferences: {},
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    ];
+
+    const officialProfiles = defaultOfficialProfiles.map((def) => {
+      const existing = existingMap.get(def.id);
+      if (existing) {
+        return {
+          ...def,
+          ...existing,
+          can_clock: existing.can_clock !== undefined ? existing.can_clock : true,
+        };
+      }
+      return def;
+    });
+
+    const officialIds = new Set(defaultOfficialProfiles.map((p) => p.id));
+    const customUsers = (this.state.profiles || []).filter((p) => !officialIds.has(p.id));
+    this.state.profiles = [...officialProfiles, ...customUsers];
+
+    this.state.passwords = {
+      ...(this.state.passwords || {}),
+      'jugarbar@gmail.com': 'anromago678*',
+      'anromago@hotmail.com': 'anromago678*',
+      'nocorreo@nocorreo1.es': 'anromago678*',
+      'nocorreo@nocorreo.es': 'anromago678*',
+      'jcgbarrajon@gmail.com': 'anromago678*',
+      '12345678x': 'anromago678*',
+      '05687529c': 'anromago678*',
+      '05971502n': 'anromago678*',
+      '05727599r': 'anromago678*',
+      '05658387l': 'anromago678*',
+      'juan carlos': 'anromago678*',
+      'antonio roma': 'anromago678*',
+      'raúl garcía': 'anromago678*',
+      'raul garcia': 'anromago678*',
+      'marcos roma': 'anromago678*',
+      'juan (operario)': 'anromago678*',
+      'juan': 'anromago678*',
+    };
+  }
+
   private persist(): void {
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
@@ -182,6 +386,49 @@ export class InstallationBackendEngine {
         // ignore quota errors in tests
       }
     }
+    this.syncListeners.forEach((listener) => {
+      try {
+        listener(this.state);
+      } catch (err) {
+        console.error('Error in sync listener:', err);
+      }
+    });
+    this.notifySubscribers();
+  }
+
+  public onSyncPush(listener: (state: DatabaseState) => void): () => void {
+    this.syncListeners.add(listener);
+    return () => this.syncListeners.delete(listener);
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  public notifySubscribers(): void {
+    this.changeListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (err) {
+        console.error('Error in subscriber listener:', err);
+      }
+    });
+  }
+
+  public applyRemoteSyncState(remoteState: DatabaseState): void {
+    if (!remoteState || typeof remoteState !== 'object') return;
+    const currentSession = this.currentUserId;
+    this.state = remoteState;
+    if (currentSession) {
+      this.currentUserId = currentSession;
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+      } catch {}
+    }
+    this.notifySubscribers();
   }
 
   public resetToDemoSeed(): void {
@@ -201,7 +448,7 @@ export class InstallationBackendEngine {
 
   public loadCiudadRealDemoDataset(): void {
     this.requireAdmin();
-    this.state = populateRomaOfficialDemoData(this.state);
+    this.state = populateRomaOfficialDemoData(this.state, true);
     (this.state as any)._romaOfficialDemoSeededV1 = true;
     this.persist();
   }
@@ -270,30 +517,42 @@ export class InstallationBackendEngine {
   // ===========================================================================
   // AUTENTICACIÓN, SESIÓN Y CONTROL DE ROLES / USUARIOS ACTIVOS
   // ===========================================================================
-  public login(email: string, password: string): UserProfile {
+  public login(identifier: string, password: string): UserProfile {
     this.assertOnline();
-    const cleanInput = email.trim().toLowerCase();
-    const normalizeAccents = (s: string) =>
-      s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const normalizedInput = normalizeAccents(cleanInput);
+    const rawInput = (identifier || '').trim();
+    const cleanEmail = rawInput.toLowerCase();
 
-    let user = this.state.profiles.find(
-      (p) =>
-        p.email.toLowerCase() === cleanInput ||
-        (p.dni && p.dni.toLowerCase() === cleanInput) ||
-        p.full_name.toLowerCase() === cleanInput ||
-        normalizeAccents(p.full_name) === normalizedInput
-    );
+    // Solo se permite iniciar sesión con correo electrónico o DNI con la letra en mayúsculas
+    let user = this.state.profiles.find((p) => {
+      // 1. Correo electrónico (insensible a mayúsculas/minúsculas)
+      if (p.email && p.email.toLowerCase() === cleanEmail) {
+        return true;
+      }
+      // 2. DNI con la letra en mayúsculas (estricto en mayúsculas)
+      if (p.dni && p.dni === rawInput) {
+        return true;
+      }
+      return false;
+    });
 
-    const userKey = user ? user.email.toLowerCase() : cleanInput;
+    const userKey = user ? user.email.toLowerCase() : cleanEmail;
     let validPassword =
       this.state.passwords[userKey] === password ||
-      this.state.passwords[cleanInput] === password;
+      (user && user.dni && this.state.passwords[user.dni] === password) ||
+      (user && user.dni && this.state.passwords[user.dni.toLowerCase()] === password);
 
     if (
       user &&
-      ['12345678x', '05687529c', '05971502n', '05727599r'].includes(
-        (user.dni || '').toLowerCase()
+      ['12345678X', '05687529C', '05971502N', '05727599R', '05658387L'].includes(user.dni || '') &&
+      password === 'anromago678*'
+    ) {
+      validPassword = true;
+    }
+
+    if (
+      user &&
+      ['jugarbar@gmail.com', 'anromago@hotmail.com', 'nocorreo@nocorreo1.es', 'nocorreo@nocorreo.es', 'jcgbarrajon@gmail.com'].includes(
+        (user.email || '').toLowerCase()
       ) &&
       password === 'anromago678*'
     ) {
@@ -306,12 +565,12 @@ export class InstallationBackendEngine {
     if (userKey === 'anromago@hotmail.com' && (password === 'anromago' || password === 'anromago678*')) {
       validPassword = true;
     }
-    if (!user && cleanInput === 'admin@climalux-demo.es' && password === 'Admin1234!') {
+    if (!user && cleanEmail === 'admin@climalux-demo.es' && password === 'Admin1234!') {
       user = this.state.profiles.find((p) => p.role === 'admin' && p.is_active);
       validPassword = true;
     }
     if (!user || !validPassword) {
-      throw new AuthorizationError('Credenciales incorrectas.');
+      throw new AuthorizationError('Credenciales incorrectas. Solo se permite iniciar sesión con correo electrónico o DNI con la letra en mayúsculas.');
     }
     if (!user.is_active) {
       throw new AuthorizationError(
@@ -437,6 +696,7 @@ export class InstallationBackendEngine {
     email: string;
     phone: string;
     role: UserRole;
+    can_clock?: boolean;
     work_shift_type?: WorkShiftType;
     work_start_time?: string;
     work_morning_start_time?: string;
@@ -469,6 +729,7 @@ export class InstallationBackendEngine {
       phone: params.phone.trim(),
       role: params.role,
       is_active: true,
+      can_clock: params.can_clock !== undefined ? params.can_clock : true,
       work_shift_type: params.work_shift_type || 'continua',
       work_start_time: params.work_start_time || '08:00',
       work_morning_start_time: params.work_morning_start_time || '08:00',
@@ -721,7 +982,7 @@ export class InstallationBackendEngine {
 
   public updateUserProfile(
     targetUserId: string,
-    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active' | 'work_shift_type' | 'work_start_time' | 'work_end_time' | 'work_morning_start_time' | 'work_morning_end_time' | 'work_afternoon_start_time' | 'work_afternoon_end_time'>>
+    patch: Partial<Pick<UserProfile, 'full_name' | 'dni' | 'phone' | 'role' | 'is_active' | 'can_clock' | 'work_shift_type' | 'work_start_time' | 'work_end_time' | 'work_morning_start_time' | 'work_morning_end_time' | 'work_afternoon_start_time' | 'work_afternoon_end_time'>>
   ): UserProfile {
     this.assertOnline();
     const admin = this.requireAdmin();
@@ -912,6 +1173,10 @@ export class InstallationBackendEngine {
     if (!data.name.trim()) {
       throw new ValidationError('El nombre o razón social del cliente es obligatorio.');
     }
+    const validPhones = (data.phones || []).map((p) => (p || '').trim()).filter(Boolean);
+    if (validPhones.length === 0) {
+      throw new ValidationError('El teléfono del cliente es obligatorio.');
+    }
 
     const now = new Date().toISOString();
     if (data.id) {
@@ -947,15 +1212,15 @@ export class InstallationBackendEngine {
         id: genId('cust'),
         code: data.code?.trim() || `CLI-${String(nextNum).padStart(4, '0')}`,
         name: data.name.trim(),
-        tax_id: data.tax_id.trim(),
+        tax_id: (data.tax_id || '').trim(),
         contact_name: (data.contact_name || '').trim(),
-        phones: data.phones.filter(Boolean).map(formatPhoneWithPrefix34),
-        emails: data.emails.filter(Boolean),
-        main_address: data.main_address.trim(),
+        phones: (data.phones || []).filter(Boolean).map(formatPhoneWithPrefix34),
+        emails: (data.emails || []).filter(Boolean),
+        main_address: (data.main_address || '').trim(),
         postal_code: (data.postal_code || '').trim(),
         city: (data.city || '').trim(),
         province: (data.province || '').trim(),
-        notes: data.notes.trim(),
+        notes: (data.notes || '').trim(),
         is_active: data.is_active ?? true,
         created_at: now,
         updated_at: now,
@@ -1265,6 +1530,10 @@ export class InstallationBackendEngine {
 
     // Eliminar del catálogo
     this.state.articles.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_article_ids)) {
+      (this.state as any).deleted_article_ids = [];
+    }
+    (this.state as any).deleted_article_ids.push(articleId);
 
     // En los partes de trabajo: en las líneas de material donde aparezca este artículo, figurará 'Artículo borrado'
     this.state.work_materials.forEach((m) => {
@@ -1297,6 +1566,7 @@ export class InstallationBackendEngine {
     // Operario: Solo los asignados y visibles en su flujo activo (no terminados, no cerrados, no archivados, no borrados)
     if (wo.deleted_at !== null || wo.archived_at !== null) return false;
     if (wo.status !== 'no_iniciado' && wo.status !== 'en_curso' && wo.status !== 'reabierto') return false;
+    if (isWorkOrderUnscheduled(wo)) return false;
     return this.isOperatorAssignedAndActive(wo.id, user.id);
   }
 
@@ -1305,24 +1575,24 @@ export class InstallationBackendEngine {
     wo: Omit<WorkOrder, 'admin_data'>
   ): WorkOrder {
     const rawAny = wo as Record<string, unknown>;
-    const rawSched =
-      wo.scheduled_at ||
-      (typeof rawAny.scheduledAt === 'string' ? rawAny.scheduledAt : '') ||
-      (typeof rawAny.planned_date === 'string' ? rawAny.planned_date : '') ||
-      wo.created_at ||
-      '2026-10-21T09:00:00.000Z';
-
-    const parsedSched = parseDateRobust(rawSched);
-    const validScheduledAt = parsedSched
-      ? parsedSched.toISOString()
-      : '2026-10-21T09:00:00.000Z';
+    const isUnscheduled = isWorkOrderUnscheduled(wo);
+    let validScheduledAt = '';
+    if (!isUnscheduled) {
+      const rawSched =
+        wo.scheduled_at ||
+        (typeof rawAny.scheduledAt === 'string' ? rawAny.scheduledAt : '') ||
+        (typeof rawAny.planned_date === 'string' ? rawAny.planned_date : '');
+      const parsedSched = parseDateRobust(rawSched);
+      validScheduledAt = parsedSched ? parsedSched.toISOString() : '';
+    }
 
     const parsedCreated = parseDateRobust(wo.created_at);
-    const validCreatedAt = parsedCreated ? parsedCreated.toISOString() : validScheduledAt;
+    const validCreatedAt = parsedCreated ? parsedCreated.toISOString() : (validScheduledAt || new Date().toISOString());
 
     const clone: WorkOrder = {
       ...wo,
-      scheduled_at: validScheduledAt,
+      scheduled_at: isUnscheduled ? '' : validScheduledAt,
+      is_unscheduled: isUnscheduled,
       created_at: validCreatedAt,
     };
     // Los campos dinero_entregado y factura_emitida NUNCA llegan a operarios
@@ -1493,9 +1763,10 @@ export class InstallationBackendEngine {
     snapshot_city: string;
     snapshot_province: string;
     planned_work: string;
-    scheduled_at: string;
+    scheduled_at?: string | null;
+    is_unscheduled?: boolean;
     initial_notes: string;
-    operator_ids: string[];
+    operator_ids?: string[];
     origin_review_occurrence_id?: string | null;
     total_amount_cents?: number | null;
     allowPastScheduledAt?: boolean;
@@ -1504,23 +1775,43 @@ export class InstallationBackendEngine {
     this.assertOnline();
     const admin = this.requireAdmin();
 
-    if (!params.customer_id || !params.planned_work.trim() || !params.scheduled_at) {
-      throw new ValidationError('Cliente, trabajos a realizar y fecha/hora programada son obligatorios.');
-    }
-    if (!params.operator_ids || params.operator_ids.length === 0) {
-      throw new ValidationError('Debes asignar al menos un operario al parte.');
+    if (!params.customer_id || !params.planned_work.trim()) {
+      throw new ValidationError('Cliente y trabajos a realizar son obligatorios.');
     }
 
-    // "nunca se podra crear un parte con fecha u hora anterior a la actual"
-    if (!params.allowPastScheduledAt && (params.enforceFutureDate || process.env.NODE_ENV !== 'test')) {
-      const scheduledDate = parseDateRobust(params.scheduled_at);
-      if (scheduledDate && scheduledDate.getTime() < Date.now() - 2 * 60 * 1000) {
-        throw new ValidationError('No se puede crear un parte con fecha u hora anterior a la actual.');
+    const rawScheduled = (params.scheduled_at || '').trim();
+    const hasScheduledInput = Boolean(rawScheduled && rawScheduled !== 'Pendiente de programar');
+    const isExplicitlyUnscheduled = params.is_unscheduled === true || !hasScheduledInput;
+
+    let finalScheduledAt = '';
+    let finalIsUnscheduled = true;
+    const operatorIds = Array.isArray(params.operator_ids) ? params.operator_ids.filter(Boolean) : [];
+
+    if (isExplicitlyUnscheduled) {
+      finalScheduledAt = '';
+      finalIsUnscheduled = true;
+    } else {
+      const parsedSched = parseDateRobust(rawScheduled);
+      const hasTimePart = rawScheduled.includes('T') && (rawScheduled.split('T')[1] || '').trim().length >= 4;
+      if (!parsedSched || isNaN(parsedSched.getTime()) || !hasTimePart) {
+        throw new ValidationError('Indique la fecha y la hora de ejecución.');
       }
-    }
+      if (operatorIds.length === 0) {
+        throw new ValidationError('Seleccione un operario para programar el parte.');
+      }
 
-    // Validar que la hora prevista esté dentro del horario laboral de los operarios asignados
-    this.validateScheduledTimeWithinOperatorSchedules(params.scheduled_at, params.operator_ids);
+      // "nunca se podra crear un parte con fecha u hora anterior a la actual"
+      if (!params.allowPastScheduledAt && (params.enforceFutureDate || process.env.NODE_ENV !== 'test')) {
+        if (parsedSched.getTime() < Date.now() - 2 * 60 * 1000) {
+          throw new ValidationError('No se puede crear un parte con fecha u hora anterior a la actual.');
+        }
+      }
+
+      // Validar que la hora prevista esté dentro del horario laboral de los operarios asignados
+      this.validateScheduledTimeWithinOperatorSchedules(parsedSched.toISOString(), operatorIds);
+      finalScheduledAt = parsedSched.toISOString();
+      finalIsUnscheduled = false;
+    }
 
     // Evitar crear accidentalmente el mismo parte varias veces para un mismo vencimiento de revisión
     if (params.origin_review_occurrence_id) {
@@ -1551,6 +1842,20 @@ export class InstallationBackendEngine {
         ? Math.round(params.total_amount_cents)
         : null;
 
+    const cust = this.state.customers.find((c) => c.id === params.customer_id);
+    const addr = this.state.customer_addresses.find((a) => a.id === params.customer_address_id);
+
+    const snapshot_customer_name = (params.snapshot_customer_name ?? cust?.name ?? '').trim();
+    const snapshot_customer_tax_id = (params.snapshot_customer_tax_id ?? cust?.tax_id ?? '').trim();
+    const snapshot_contact_name = (params.snapshot_contact_name ?? addr?.contact_name ?? cust?.contact_name ?? '').trim();
+    const snapshot_contact_phone = formatPhoneWithPrefix34(params.snapshot_contact_phone ?? addr?.contact_phone ?? cust?.phones[0] ?? '');
+    const snapshot_contact_email = (params.snapshot_contact_email ?? addr?.contact_email ?? cust?.emails[0] ?? '').trim();
+    const snapshot_address_line = (params.snapshot_address_line ?? addr?.address_line ?? cust?.main_address ?? '').trim();
+    const snapshot_postal_code = (params.snapshot_postal_code ?? addr?.postal_code ?? cust?.postal_code ?? '').trim();
+    const snapshot_city = (params.snapshot_city ?? addr?.city ?? cust?.city ?? '').trim();
+    const snapshot_province = (params.snapshot_province ?? addr?.province ?? cust?.province ?? '').trim();
+    const initial_notes = (params.initial_notes ?? '').trim();
+
     const newWo: Omit<WorkOrder, 'admin_data'> = {
       id: genId('wo'),
       number_seq: seq,
@@ -1558,18 +1863,19 @@ export class InstallationBackendEngine {
       version: 1,
       customer_id: params.customer_id,
       customer_address_id: params.customer_address_id,
-      snapshot_customer_name: params.snapshot_customer_name.trim(),
-      snapshot_customer_tax_id: params.snapshot_customer_tax_id.trim(),
-      snapshot_contact_name: params.snapshot_contact_name.trim(),
-      snapshot_contact_phone: formatPhoneWithPrefix34(params.snapshot_contact_phone),
-      snapshot_contact_email: params.snapshot_contact_email.trim(),
-      snapshot_address_line: params.snapshot_address_line.trim(),
-      snapshot_postal_code: params.snapshot_postal_code.trim(),
-      snapshot_city: params.snapshot_city.trim(),
-      snapshot_province: params.snapshot_province.trim(),
+      snapshot_customer_name,
+      snapshot_customer_tax_id,
+      snapshot_contact_name,
+      snapshot_contact_phone,
+      snapshot_contact_email,
+      snapshot_address_line,
+      snapshot_postal_code,
+      snapshot_city,
+      snapshot_province,
       planned_work: params.planned_work.trim(),
-      scheduled_at: params.scheduled_at,
-      initial_notes: params.initial_notes.trim(),
+      scheduled_at: finalScheduledAt,
+      is_unscheduled: finalIsUnscheduled,
+      initial_notes,
       origin_review_occurrence_id: params.origin_review_occurrence_id || null,
       status: 'no_iniciado',
       total_amount_cents: initialAmountCents,
@@ -1611,7 +1917,7 @@ export class InstallationBackendEngine {
       updated_at: now,
     });
 
-    for (const opId of Array.from(new Set(params.operator_ids))) {
+    for (const opId of Array.from(new Set(operatorIds))) {
       this.state.work_order_assignments.push({
         id: genId('asg'),
         work_order_id: newWo.id,
@@ -1678,6 +1984,7 @@ export class InstallationBackendEngine {
       snapshot_province?: string;
       planned_work?: string;
       scheduled_at?: string;
+      is_unscheduled?: boolean;
       initial_notes?: string;
       operator_ids?: string[];
       total_amount_cents?: number | null;
@@ -1713,7 +2020,6 @@ export class InstallationBackendEngine {
     if (patch.snapshot_city !== undefined) wo.snapshot_city = patch.snapshot_city;
     if (patch.snapshot_province !== undefined) wo.snapshot_province = patch.snapshot_province;
     if (patch.planned_work !== undefined) wo.planned_work = patch.planned_work;
-    if (patch.scheduled_at !== undefined) wo.scheduled_at = patch.scheduled_at;
     if (patch.initial_notes !== undefined) wo.initial_notes = patch.initial_notes;
     if (patch.total_amount_cents !== undefined) {
       wo.total_amount_cents =
@@ -1724,16 +2030,37 @@ export class InstallationBackendEngine {
           : null;
     }
 
-    if (patch.operator_ids && patch.operator_ids.length === 0) {
-      throw new ValidationError('El parte debe tener al menos un operario asignado.');
-    }
-
-    if (patch.scheduled_at !== undefined || patch.operator_ids !== undefined) {
-      const targetScheduled = patch.scheduled_at || wo.scheduled_at;
-      const targetOpIds = patch.operator_ids || this.state.work_order_assignments
-        .filter((a) => a.work_order_id === workOrderId && a.is_active)
-        .map((a) => a.operator_id);
-      this.validateScheduledTimeWithinOperatorSchedules(targetScheduled, targetOpIds);
+    if (patch.is_unscheduled === true) {
+      wo.is_unscheduled = true;
+      wo.scheduled_at = '';
+    } else if (patch.scheduled_at !== undefined) {
+      const raw = patch.scheduled_at.trim();
+      if (!raw || raw === 'Pendiente de programar') {
+        wo.is_unscheduled = true;
+        wo.scheduled_at = '';
+      } else {
+        const parsed = parseDateRobust(raw);
+        const hasTime = raw.includes('T') && (raw.split('T')[1] || '').trim().length >= 4;
+        if (!parsed || isNaN(parsed.getTime()) || !hasTime) {
+          throw new ValidationError('Indique la fecha y la hora de ejecución.');
+        }
+        const targetOpIds = patch.operator_ids !== undefined
+          ? patch.operator_ids
+          : this.state.work_order_assignments
+              .filter((a) => a.work_order_id === workOrderId && a.is_active)
+              .map((a) => a.operator_id);
+        if (targetOpIds.length === 0) {
+          throw new ValidationError('Seleccione un operario para programar el parte.');
+        }
+        this.validateScheduledTimeWithinOperatorSchedules(parsed.toISOString(), targetOpIds);
+        wo.scheduled_at = parsed.toISOString();
+        wo.is_unscheduled = false;
+      }
+    } else if (patch.operator_ids !== undefined && !wo.is_unscheduled && wo.scheduled_at) {
+      if (patch.operator_ids.length === 0) {
+        throw new ValidationError('Seleccione un operario para programar el parte.');
+      }
+      this.validateScheduledTimeWithinOperatorSchedules(wo.scheduled_at, patch.operator_ids);
     }
 
     if (patch.operator_ids) {
@@ -1947,6 +2274,13 @@ export class InstallationBackendEngine {
   public startWorkOrder(workOrderId: string): WorkOrder {
     this.assertOnline();
     const user = this.getCurrentUser();
+    const rawWo = this.state.work_orders.find((w) => w.id === workOrderId);
+    if (!rawWo || rawWo.deleted_at !== null) {
+      throw new ValidationError('Parte no encontrado.');
+    }
+    if (rawWo.is_unscheduled || !rawWo.scheduled_at || rawWo.scheduled_at.trim() === '') {
+      throw new ValidationError('El parte está pendiente de programar y no se puede iniciar.');
+    }
     const wo = this.assertCanContributeToWorkOrder(user, workOrderId);
     if (wo.status !== 'no_iniciado') {
       return this.serializeWorkOrderForUser(user, wo);
@@ -3653,8 +3987,33 @@ export class InstallationBackendEngine {
     if (idx === -1) throw new ValidationError('Solicitud de compra no encontrada.');
     const prev = this.state.shopping_requests[idx];
     this.state.shopping_requests.splice(idx, 1);
+    (this.state as any)._romaShoppingSeededV1 = true;
+    (this.state as any)._romaShoppingUserCleared = true;
+    if (!Array.isArray((this.state as any).deleted_shopping_request_ids)) {
+      (this.state as any).deleted_shopping_request_ids = [];
+    }
+    (this.state as any).deleted_shopping_request_ids.push(requestId);
     this.recordAudit(admin, 'compras', 'shopping_request', requestId, 'BORRADO_COMPRA', {
       deleted: prev,
+    });
+    this.persist();
+  }
+
+  public clearShoppingRequests(): void {
+    this.assertOnline();
+    const admin = this.requireAdmin();
+    const deletedCount = this.state.shopping_requests.length;
+    if (!Array.isArray((this.state as any).deleted_shopping_request_ids)) {
+      (this.state as any).deleted_shopping_request_ids = [];
+    }
+    for (const sr of this.state.shopping_requests) {
+      (this.state as any).deleted_shopping_request_ids.push(sr.id);
+    }
+    this.state.shopping_requests = [];
+    (this.state as any)._romaShoppingSeededV1 = true;
+    (this.state as any)._romaShoppingUserCleared = true;
+    this.recordAudit(admin, 'compras', 'shopping_request', 'all', 'VACIAR_CESTA', {
+      deleted_count: deletedCount,
     });
     this.persist();
   }
@@ -3681,6 +4040,9 @@ export class InstallationBackendEngine {
   public clockIn(workerNotes = '', serverNowOverrideIso?: string): AttendanceSession {
     this.assertOnline();
     const user = this.getCurrentUser();
+    if (user.can_clock === false) {
+      throw new ValidationError('El usuario tiene desactivado el control de fichaje y no puede registrar fichajes.');
+    }
     const existingOpen = this.state.attendance_sessions.find(
       (s) => s.user_id === user.id && s.clock_out_at === null && !s.is_deleted
     );
@@ -3722,6 +4084,9 @@ export class InstallationBackendEngine {
   public clockOut(workerNotes = '', serverNowOverrideIso?: string): AttendanceSession {
     this.assertOnline();
     const user = this.getCurrentUser();
+    if (user.can_clock === false) {
+      throw new ValidationError('El usuario tiene desactivado el control de fichaje y no puede registrar fichajes.');
+    }
     const open = this.state.attendance_sessions.find(
       (s) => s.user_id === user.id && s.clock_out_at === null && !s.is_deleted
     );
@@ -3785,6 +4150,11 @@ export class InstallationBackendEngine {
         clock_out_at: params.clock_out_at,
         worker_notes_in: (params.worker_notes_in || '').trim(),
         worker_notes_out: (params.worker_notes_out || '').trim(),
+        is_closed: true,
+        closure_processed_at: prev.closure_processed_at || now,
+        is_manually_corrected: true,
+        manually_corrected_at: now,
+        manually_corrected_by: admin.id,
         updated_at: now,
       };
       this.state.attendance_sessions[idx] = updated;
@@ -3820,6 +4190,11 @@ export class InstallationBackendEngine {
         worker_notes_in: (params.worker_notes_in || '').trim(),
         worker_notes_out: (params.worker_notes_out || '').trim(),
         is_deleted: false,
+        is_closed: false,
+        closure_processed_at: null,
+        is_manually_corrected: false,
+        manually_corrected_at: null,
+        manually_corrected_by: null,
         deleted_at: null,
         deleted_by: null,
         delete_reason: null,
@@ -3905,9 +4280,11 @@ export class InstallationBackendEngine {
     const nowIso = params?.referenceNowIso || new Date().toISOString();
 
     // 1. Cerrar sesiones que hayan quedado abiertas pasada la hora habitual de salida (continua o partida)
+    // Se protegen estrictamente los fichajes ya procesados en cierres anteriores o corregidos manualmente
     for (const s of this.state.attendance_sessions) {
-      if (s.is_deleted || s.clock_out_at !== null) continue;
+      if (s.is_deleted || s.clock_out_at !== null || s.is_closed || s.closure_processed_at || s.is_manually_corrected) continue;
       const worker = this.state.profiles.find((p) => p.id === s.user_id);
+      if (worker && worker.can_clock === false) continue;
       const isPartida = worker?.work_shift_type === 'partida';
       const sInDate = getLocalDateString(s.clock_in_at, tz) || todayStr;
       const isPastDay = sInDate < todayStr;
@@ -3937,6 +4314,8 @@ export class InstallationBackendEngine {
           exitIso = new Date(new Date(s.clock_in_at).getTime() + 60000).toISOString();
         }
         s.clock_out_at = exitIso;
+        s.is_closed = true;
+        s.closure_processed_at = nowIso;
         s.worker_notes_out = [
           s.worker_notes_out,
           closeLabel,
@@ -3952,7 +4331,7 @@ export class InstallationBackendEngine {
     const targetDate = params?.targetDateCivil || todayStr;
 
     const activeOperators = this.state.profiles.filter(
-      (p) => p.is_active && (p.role === 'operario' || p.role === 'admin')
+      (p) => p.is_active && (p.role === 'operario' || p.role === 'admin') && p.can_clock !== false
     );
 
     for (const op of activeOperators) {
@@ -3984,6 +4363,8 @@ export class InstallationBackendEngine {
               worker_notes_in: `Fichaje por defecto mañana (${mStart})`,
               worker_notes_out: `Fichaje por defecto mañana (${mEnd})`,
               is_deleted: false,
+              is_closed: true,
+              closure_processed_at: nowIso,
               deleted_at: null,
               deleted_by: null,
               delete_reason: null,
@@ -4015,6 +4396,8 @@ export class InstallationBackendEngine {
               worker_notes_in: `Fichaje por defecto tarde (${aStart})`,
               worker_notes_out: `Fichaje por defecto tarde (${aEnd})`,
               is_deleted: false,
+              is_closed: true,
+              closure_processed_at: nowIso,
               deleted_at: null,
               deleted_by: null,
               delete_reason: null,
@@ -4051,6 +4434,8 @@ export class InstallationBackendEngine {
               worker_notes_in: `Fichaje por defecto fin de jornada (${opStartTime})`,
               worker_notes_out: `Fichaje por defecto fin de jornada (${opEndTime})`,
               is_deleted: false,
+              is_closed: true,
+              closure_processed_at: nowIso,
               deleted_at: null,
               deleted_by: null,
               delete_reason: null,
@@ -4066,10 +4451,11 @@ export class InstallationBackendEngine {
     }
 
     // 3. Consolidación de múltiples fichajes: hora más temprana y más tardía (apertura y cierre más cercanos)
+    // Se excluyen sesiones ya consolidadas o corregidas por un administrador
     for (const op of activeOperators) {
       const isPartida = op.work_shift_type === 'partida';
       const workerDaySessions = this.state.attendance_sessions.filter(
-        (s) => !s.is_deleted && s.user_id === op.id && getLocalDateString(s.clock_in_at, tz) === targetDate
+        (s) => !s.is_deleted && !s.is_manually_corrected && s.user_id === op.id && getLocalDateString(s.clock_in_at, tz) === targetDate
       );
 
       if (isPartida) {
@@ -4174,7 +4560,13 @@ export class InstallationBackendEngine {
   // ===========================================================================
   public getBackupJobs(): BackupJob[] {
     this.requireAdmin();
-    return this.state.backup_jobs.map((b) => ({ ...b }));
+    return [...this.state.backup_jobs]
+      .sort((a, b) => {
+        const timeA = new Date(a.started_at || a.backup_date_local).getTime();
+        const timeB = new Date(b.started_at || b.backup_date_local).getTime();
+        return timeB - timeA;
+      })
+      .map((b) => ({ ...b }));
   }
 
   /**
@@ -4213,9 +4605,23 @@ export class InstallationBackendEngine {
     return { triggered: true, job: user.role === 'admin' ? { ...job } : null };
   }
 
-  public createManualBackup(localDateOverride?: string): BackupJob {
+  public createManualBackup(localDateOverride?: string, forceDesktopContext?: boolean): BackupJob {
     this.assertOnline();
     const admin = this.requireAdmin();
+
+    const isDesktop =
+      forceDesktopContext !== undefined
+        ? forceDesktopContext
+        : (typeof (globalThis as any).__IS_INSTALLED_DESKTOP__ !== 'undefined'
+            ? Boolean((globalThis as any).__IS_INSTALLED_DESKTOP__)
+            : isInstalledDesktopApp());
+
+    if (!isDesktop) {
+      throw new ValidationError(
+        'La creación de copias de seguridad está reservada exclusivamente a la versión de escritorio instalada en un PC.'
+      );
+    }
+
     const todayLocal =
       localDateOverride || getCurrentLocalDate(this.state.company_settings.timezone);
     return this.executeServerBackupJob(admin, 'manual', todayLocal);
@@ -4229,11 +4635,23 @@ export class InstallationBackendEngine {
     const now = new Date().toISOString();
     const snapshotJson = JSON.stringify(this.state);
     const sizeBytes = snapshotJson.length;
+    const tz = this.state.company_settings?.timezone || 'Europe/Madrid';
+    const timeFormatted = formatTimeWithSecondsES(now, tz);
+    const safeTime = timeFormatted.replace(/:/g, '-');
+    const baseFilename = `copia_${localDate}_${safeTime}`;
+    let filename = `${baseFilename}.json`;
+    let counter = 1;
+    while (this.state.backup_jobs.some((b) => b.filename === filename)) {
+      filename = `${baseFilename}_${counter}.json`;
+      counter++;
+    }
 
     if (this.simulatedBackupFailure) {
       const failedJob: BackupJob = {
         id: genId('bkp'),
         backup_date_local: localDate,
+        backup_time_local: timeFormatted,
+        filename,
         trigger_type: triggerType,
         status: 'failed',
         scope: { database: true, storage_files: true, auth_identities: true },
@@ -4249,6 +4667,7 @@ export class InstallationBackendEngine {
       this.recordAudit(actor, 'backups', 'backup_job', failedJob.id, 'BACKUP_FALLIDO', {
         triggerType,
         localDate,
+        filename,
       });
       this.persist();
       return failedJob;
@@ -4257,10 +4676,12 @@ export class InstallationBackendEngine {
     const completedJob: BackupJob = {
       id: genId('bkp'),
       backup_date_local: localDate,
+      backup_time_local: timeFormatted,
+      filename,
       trigger_type: triggerType,
       status: 'completed',
       scope: { database: true, storage_files: true, auth_identities: true },
-      artifact_path: `s3://backups-${this.state.installationId}/${localDate}/full-backup-${Date.now()}.bundle.enc`,
+      artifact_path: `s3://backups-${this.state.installationId}/${localDate}/${filename.replace('.json', '.bundle.enc')}`,
       size_bytes: sizeBytes,
       checksum_sha256: `sha256-${sizeBytes}-${localDate.replace(/-/g, '')}`,
       error_message: null,
@@ -4273,6 +4694,7 @@ export class InstallationBackendEngine {
     this.recordAudit(actor, 'backups', 'backup_job', completedJob.id, 'BACKUP_COMPLETADO', {
       triggerType,
       localDate,
+      filename,
       artifact_path: completedJob.artifact_path,
       size_bytes: sizeBytes,
     });
@@ -4324,4 +4746,6 @@ export class InstallationBackendEngine {
   }
 }
 
-export const defaultBackend = new InstallationBackendEngine('instalaciones-climalux-demo', true, 'clean');
+const defaultSlug = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_INSTALLATION_SLUG) || 'fontaneria-roma';
+export const defaultBackend = new InstallationBackendEngine(defaultSlug, true, 'clean');
+defaultBackend.purgeProductionSeedData();

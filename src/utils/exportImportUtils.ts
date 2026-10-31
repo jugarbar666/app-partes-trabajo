@@ -81,12 +81,25 @@ export function exportRowsToPDF(params: {
 
   tryAddCompanyLogo(doc, params.company.logo_url, pageWidth - 55, 8, 40, 16);
 
+  const tableBody =
+    params.rows.length > 0
+      ? params.rows.map((r) =>
+          params.columns.map((c) => (r[c.key] !== undefined && r[c.key] !== null ? String(r[c.key]) : '—'))
+        )
+      : [
+          [
+            {
+              content: 'No existen datos para generar el listado con los filtros seleccionados.',
+              colSpan: Math.max(params.columns.length, 1),
+              styles: { halign: 'center', textColor: [100, 116, 139], fontStyle: 'italic', cellPadding: 6 },
+            } as any,
+          ],
+        ];
+
   autoTable(doc, {
     startY: params.subtitle ? 26 : 22,
     head: [params.columns.map((c) => c.header)],
-    body: params.rows.map((r) =>
-      params.columns.map((c) => (r[c.key] !== undefined && r[c.key] !== null ? String(r[c.key]) : '—'))
-    ),
+    body: tableBody,
     styles: {
       fontSize: 8,
       cellPadding: 2.2,
@@ -169,11 +182,11 @@ export function downloadImportTemplateExcel(
       sample: [
         {
           Codigo_Articulo: 'MAT-0100',
-          Nombre: 'Válvula Termostática 1/2"',
-          Descripcion: 'Válvula cromada radiador',
-          Precio_Compra_EUR: '12,50',
-          Precio_Venta_EUR: '24,00',
           Unidad_Medida: 'ud',
+          Nombre_Articulo: 'Válvula Termostática 1/2"',
+          Precio_Compra: '12,50',
+          Precio_Venta: '24,00',
+          Proveedor_Habitual: 'A.SS.RIBERA DEL DUERO',
         },
       ],
     },
@@ -301,16 +314,17 @@ export function validateAndPreviewImport(params: {
         existingId = match.id;
       }
     } else if (params.entityType === 'articles') {
-      if (!mapped.code) errors.push({ field: 'code', message: 'Código único de artículo obligatorio' });
-      if (!mapped.name) errors.push({ field: 'name', message: 'Nombre del artículo obligatorio' });
+      const artName = mapped.name || mapped.nombre || mapped.nombre_articulo;
+      if (!artName) errors.push({ field: 'name', message: 'Nombre del artículo obligatorio' });
       const saleCents = parseEurosToCents(mapped.sale_price || '0');
       const buyCents = parseEurosToCents(mapped.purchase_price || '0');
-      if (saleCents === null) errors.push({ field: 'sale_price', message: 'Precio de venta inválido' });
-      if (buyCents === null) errors.push({ field: 'purchase_price', message: 'Precio de compra inválido' });
+      if (mapped.sale_price && saleCents === null) errors.push({ field: 'sale_price', message: 'Precio de venta inválido' });
+      if (mapped.purchase_price && buyCents === null) errors.push({ field: 'purchase_price', message: 'Precio de compra inválido' });
 
-      const match = articles.find(
-        (a) => mapped.code && a.code.toUpperCase() === mapped.code.toUpperCase()
-      );
+      const artCode = (mapped.code || mapped.codigo || mapped.codigo_articulo || '').trim();
+      const match = artCode
+        ? articles.find((a) => a.code.toUpperCase() === artCode.toUpperCase())
+        : (artName ? articles.find((a) => a.name.toLowerCase() === artName.trim().toLowerCase()) : null);
       if (match) {
         isDuplicate = true;
         existingId = match.id;
@@ -428,7 +442,9 @@ export function executeValidatedImport(params: {
           name: row.mapped.name,
           tax_id: row.mapped.tax_id || '',
           contact_name: row.mapped.contact_name || '',
-          phones: row.mapped.phone ? [row.mapped.phone] : [],
+          phones: row.mapped.phone
+            ? [row.mapped.phone]
+            : (row.mapped.phones ? [row.mapped.phones] : ['000000000']),
           emails: row.mapped.email ? [row.mapped.email] : [],
           main_address: row.mapped.main_address || '',
           postal_code: row.mapped.postal_code || '',
@@ -457,15 +473,29 @@ export function executeValidatedImport(params: {
         if (row.isDuplicate) updated++;
         else inserted++;
       } else if (params.entityType === 'articles') {
+        const suppliers = params.backend.getSuppliers(true);
+        const suppInput = (row.mapped.supplier || row.mapped.supplier_name || row.mapped.proveedor_habitual || row.mapped.proveedor || '').trim().toLowerCase();
+        const matchedSupplier = suppInput
+          ? suppliers.find(
+              (s) =>
+                s.name.trim().toLowerCase() === suppInput ||
+                (s.tax_id && s.tax_id.trim().toLowerCase() === suppInput) ||
+                s.id.toLowerCase() === suppInput
+            )
+          : null;
+
+        const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
+        const artCode = (row.mapped.code || row.mapped.codigo || row.mapped.codigo_articulo || '').trim();
+
         params.backend.saveArticle({
           id: row.isDuplicate ? row.existingId : undefined,
-          code: row.mapped.code,
-          name: row.mapped.name,
+          code: artCode,
+          name: artName,
           description: row.mapped.description || '',
-          supplier_id: null,
+          supplier_id: matchedSupplier ? matchedSupplier.id : null,
           purchase_price_cents: parseEurosToCents(row.mapped.purchase_price || '0') || 0,
           sale_price_cents: parseEurosToCents(row.mapped.sale_price || '0') || 0,
-          unit: row.mapped.unit || 'ud',
+          unit: row.mapped.unit || row.mapped.unidad_medida || 'ud',
           is_active: true,
         });
         if (row.isDuplicate) updated++;
@@ -613,7 +643,26 @@ export function generateAttendanceReportPDF(
   const timezone = data.company.timezone || 'Europe/Madrid';
   const summaryLines: string[] = [];
 
-  data.workers.forEach((group, workerIdx) => {
+  // Excluir a los usuarios que tengan el control de fichaje desactivado (can_clock: false)
+  const eligibleWorkers = (data.workers || []).filter(
+    (group) => group.worker.can_clock !== false
+  );
+
+  if (eligibleWorkers.length === 0) {
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(data.company.company_name, 14, 16);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Periodo: ${data.periodLabel}`, 14, 23);
+    doc.text('No hay trabajadores con el control de fichaje habilitado en el periodo seleccionado.', 14, 32);
+    if (saveFile) {
+      doc.save(`Informe_Fichajes_${data.periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
+    }
+    return { doc, textSummary: 'Sin trabajadores con control de fichaje' };
+  }
+
+  eligibleWorkers.forEach((group, workerIdx) => {
     if (workerIdx > 0) {
       doc.addPage();
     }

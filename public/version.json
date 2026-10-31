@@ -1,5 +1,5 @@
 {
-  "version": "1.9.1",
-  "releasedAt": "2026-10-30T11:25:00.000Z",
-  "notes": "Nombre oficial Gestión Partes de Trabajo, iconos con logotipo corporativo de Fontanería Roma, instalación nativa en 1 clic para Android y Apple, configuración de correo SMTP/POP3/IMAP corporativo y recuperación de contraseña desde el email de contacto general"
+  "version": "1.9.2",
+  "releasedAt": "2026-10-31T08:57:35.980Z",
+  "notes": "Sincronización en tiempo real multidispositivo con Supabase WebSockets, copias de seguridad de la nube, y gestión automática de correos corporativos"
 }

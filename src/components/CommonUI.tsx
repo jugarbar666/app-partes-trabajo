@@ -20,6 +20,7 @@ import {
   cleanLocalPhone,
   parsePhoneAndPrefix,
   COUNTRY_PHONE_PREFIXES,
+  translateErrorMessageToSpanish,
 } from '../utils/formatters';
 import { WorkOrderStatus } from '../types/domain';
 
@@ -81,7 +82,7 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const notifyError = useCallback((message: string) => {
-    setBanner({ type: 'error_red', message });
+    setBanner({ type: 'error_red', message: translateErrorMessageToSpanish(message) });
   }, []);
 
   useEffect(() => {
@@ -178,17 +179,17 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
       {/* 1. Ventana modal con resumen de cambios antes de guardar o modificar */}
       {saveModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
           data-testid="modal-save-summary"
         >
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center gap-2.5">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center gap-2.5 shrink-0">
               <FileCheck2 className="w-5 h-5 text-blue-400" />
               <h3 className="font-semibold text-base">
                 Confirmar cambios antes de guardar: {saveModal.title}
               </h3>
             </div>
-            <div className="p-5 space-y-3 max-h-80 overflow-y-auto">
+            <div className="p-5 space-y-3 flex-1 overflow-y-auto overscroll-contain mobile-scroll-container">
               {saveModal.warnings && saveModal.warnings.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-900 text-xs" data-testid="modal-save-warnings">
                   <div className="flex items-center gap-1.5 font-bold text-amber-800">
@@ -216,7 +217,7 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
                 ))}
               </dl>
             </div>
-            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2.5">
+            <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 disabled={isProcessing}
@@ -242,11 +243,11 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
       {/* 3. Confirmación con FONDO ROJO antes de borrar, identificando registro y consecuencia */}
       {deleteModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
           data-testid="modal-delete-red"
         >
-          <div className="bg-red-700 text-white rounded-2xl shadow-2xl border-2 border-red-400 max-w-lg w-full overflow-hidden">
-            <div className="px-6 py-5 space-y-3">
+          <div className="bg-red-700 text-white rounded-2xl shadow-2xl border-2 border-red-400 max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
+            <div className="px-6 py-5 space-y-3 flex-1 overflow-y-auto overscroll-contain mobile-scroll-container">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-full bg-red-900/60">
                   <AlertTriangle className="w-6 h-6 text-red-200" />
@@ -297,7 +298,7 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
               )}
             </div>
 
-            <div className="bg-red-900/70 px-6 py-3.5 flex justify-end gap-3">
+            <div className="bg-red-900/70 px-6 py-3.5 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 disabled={isProcessing}

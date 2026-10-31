@@ -232,6 +232,79 @@ export function formatTimeES(iso: string | Date | null | undefined, timezone: st
 }
 
 /**
+ * Formatea un instante UTC en fecha y hora con segundos (dd/mm/aaaa — HH:mm:ss) según la zona horaria de la empresa
+ */
+export function formatDateTimeWithSecondsES(
+  iso: string | Date | null | undefined,
+  timezone: string | null = 'Europe/Madrid',
+  separator = ' — '
+): string {
+  if (!iso) return '—';
+  const date = parseDateRobust(iso);
+  if (!date) return '—';
+
+  const safeTz = sanitizeTimezone(timezone);
+  try {
+    const parts = new Intl.DateTimeFormat('es-ES', {
+      timeZone: safeTz,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+
+    const d = parts.find((p) => p.type === 'day')?.value || '01';
+    const m = parts.find((p) => p.type === 'month')?.value || '01';
+    const y = parts.find((p) => p.type === 'year')?.value || '2026';
+    const h = parts.find((p) => p.type === 'hour')?.value || '00';
+    const min = parts.find((p) => p.type === 'minute')?.value || '00';
+    const s = parts.find((p) => p.type === 'second')?.value || '00';
+
+    return `${d}/${m}/${y}${separator}${h}:${min}:${s}`;
+  } catch {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${d}/${m}/${y}${separator}${h}:${min}:${s}`;
+  }
+}
+
+/**
+ * Formatea la hora con segundos HH:mm:ss según la zona horaria configurada
+ */
+export function formatTimeWithSecondsES(
+  iso: string | Date | null | undefined,
+  timezone: string | null = 'Europe/Madrid'
+): string {
+  if (!iso) return '—';
+  const date = parseDateRobust(iso);
+  if (!date) return '—';
+
+  const safeTz = sanitizeTimezone(timezone);
+  try {
+    return new Intl.DateTimeFormat('es-ES', {
+      timeZone: safeTz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${h}:${min}:${s}`;
+  }
+}
+
+
+/**
  * Obtiene el nombre del día de la semana en español para un instante en la zona horaria indicada
  */
 export function getWeekdayNameES(iso: string, timezone: string | null = 'Europe/Madrid'): string {
@@ -910,4 +983,124 @@ export function getShiftMidpointTime(endMorning = '13:30', startAfternoon = '15:
   const midM = midMins % 60;
   return `${String(midH).padStart(2, '0')}:${String(midM).padStart(2, '0')}`;
 }
+
+/**
+ * Determina de forma unívoca si un parte de trabajo está pendiente de programar.
+ * Regla: solo partes en estado 'no_iniciado' que no hayan sido iniciados, finalizados ni cerrados,
+ * y que tengan is_unscheduled = true o carezcan de fecha/hora programada válida.
+ * Los partes históricos o en otro estado nunca se reclasifican como pendientes de programar.
+ */
+export function isWorkOrderUnscheduled(wo: {
+  status?: string;
+  is_unscheduled?: boolean | null;
+  scheduled_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  closed_at?: string | null;
+}): boolean {
+  if (wo.started_at || wo.finished_at || wo.closed_at) return false;
+  if (wo.status && wo.status !== 'no_iniciado') return false;
+  if (wo.is_unscheduled === true) return true;
+  if (!wo.scheduled_at || wo.scheduled_at.trim() === '') return true;
+  return false;
+}
+
+/**
+ * Formatea la fecha y hora prevista de un parte.
+ * Si el parte está pendiente de programar, devuelve «Pendiente de programar».
+ */
+export function formatWorkOrderScheduled(
+  wo: {
+    status?: string;
+    is_unscheduled?: boolean | null;
+    scheduled_at?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+    closed_at?: string | null;
+  },
+  timezone: string | null = 'Europe/Madrid'
+): string {
+  if (isWorkOrderUnscheduled(wo)) {
+    return 'Pendiente de programar';
+  }
+  return formatDateTimeES(wo.scheduled_at, timezone);
+}
+
+/**
+ * Traduce cualquier mensaje de error técnico, de red o de librerías externas a un español claro y comprensible.
+ */
+export function translateErrorMessageToSpanish(msg: string | unknown): string {
+  if (!msg) return 'Se ha producido un error inesperado.';
+  const str = typeof msg === 'string' ? msg : (msg as any)?.message || String(msg);
+  const lower = str.toLowerCase();
+  if (lower.includes('failed to fetch') || lower.includes('network error') || lower.includes('networkofflineerror')) {
+    return 'Sin conexión con el servidor. Compruebe su conexión a internet.';
+  }
+  if (lower.includes('abort') || lower.includes('timeout') || lower.includes('timed out')) {
+    return 'La operación ha superado el tiempo de espera. Inténtelo de nuevo.';
+  }
+  if (lower.includes('unauthorized') || lower.includes('jwt') || lower.includes('token') || lower.includes('forbidden')) {
+    return 'Sesión expirada o permisos insuficientes. Inicie sesión de nuevo.';
+  }
+  if (lower.includes('permission denied') || lower.includes('row-level security')) {
+    return 'No dispone de permisos para realizar esta acción.';
+  }
+  return str;
+}
+
+/**
+ * Ordenación de partes de trabajo para escritorio y móvil:
+ * 1. Primero, los partes que tienen fecha y hora de ejecución prevista (orden ascendente por scheduled_at).
+ * 2. Después, al final del listado, los partes pendientes de programar, ordenados por fecha de creación
+ *    del más antiguo al más reciente (ascendente por created_at).
+ * 3. Si coinciden las fechas, criterio secundario estable (id o code).
+ */
+export function compareWorkOrdersScheduledFirst<T extends {
+  id?: string;
+  code?: string;
+  created_at?: string | null;
+  scheduled_at?: string | null;
+  status?: string;
+  is_unscheduled?: boolean | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  closed_at?: string | null;
+}>(a: T, b: T): number {
+  const isUnscheduledA = isWorkOrderUnscheduled(a);
+  const isUnscheduledB = isWorkOrderUnscheduled(b);
+
+  // 1. Programados van siempre por delante de pendientes de programar
+  if (!isUnscheduledA && isUnscheduledB) return -1;
+  if (isUnscheduledA && !isUnscheduledB) return 1;
+
+  // 2. Si ambos son pendientes de programar: fecha de creación del más antiguo al más reciente (ascendente)
+  if (isUnscheduledA && isUnscheduledB) {
+    const createA = parseDateRobust(a.created_at)?.getTime() ?? 0;
+    const createB = parseDateRobust(b.created_at)?.getTime() ?? 0;
+    if (createA !== createB) {
+      return createA - createB;
+    }
+    return (a.id || a.code || '').localeCompare(b.id || b.code || '');
+  }
+
+  // 3. Si ambos son programados: orden por fecha y hora prevista estrictamente ascendente
+  const timeA = a.scheduled_at
+    ? parseDateRobust(a.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
+    : Number.MAX_SAFE_INTEGER;
+  const timeB = b.scheduled_at
+    ? parseDateRobust(b.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
+    : Number.MAX_SAFE_INTEGER;
+
+  if (timeA !== timeB) {
+    return timeA - timeB;
+  }
+  const createA = parseDateRobust(a.created_at)?.getTime() ?? 0;
+  const createB = parseDateRobust(b.created_at)?.getTime() ?? 0;
+  if (createA !== createB) {
+    return createA - createB;
+  }
+  return (a.code || a.id || '').localeCompare(b.code || b.id || '');
+}
+
+
 

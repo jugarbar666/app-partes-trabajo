@@ -40,7 +40,7 @@ function normalizeText(str: string): string {
  *   - Repartidos en los estados: sin comenzar trabajo (no_iniciado), en curso (en_curso),
  *     finalizado (terminado), cerrado (cerrado), reabierto (reabierto) y archivado (cerrado + archived_at).
  */
-export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseState {
+export function populateRomaOfficialDemoData(state: DatabaseState, includeDemoCatalog = false): DatabaseState {
   const nowIso = '2026-10-29T11:30:00.000Z';
 
   // 1. Asegurar usuarios oficiales
@@ -320,19 +320,22 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
     },
   ];
 
-  const articles: Article[] = plumbingArticlesCatalog.map((item, idx) => ({
-    id: `art-roma-${idx + 1}`,
-    code: item.code,
-    name: item.name,
-    description: item.description,
-    supplier_id: pickSupplierId(idx),
-    purchase_price_cents: item.purchase_price_cents,
-    sale_price_cents: item.sale_price_cents,
-    unit: item.unit,
-    is_active: true,
-    created_at: nowIso,
-    updated_at: nowIso,
-  }));
+  // Catálogo de artículos para Fontanería Roma (vacío por defecto, solo incluido si includeDemoCatalog = true para tests)
+  const articles: Article[] = includeDemoCatalog
+    ? plumbingArticlesCatalog.map((item, idx) => ({
+        id: `art-roma-${idx + 1}`,
+        code: item.code,
+        name: item.name,
+        description: item.description,
+        supplier_id: pickSupplierId(idx),
+        purchase_price_cents: item.purchase_price_cents,
+        sale_price_cents: item.sale_price_cents,
+        unit: item.unit,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      }))
+    : [];
 
   // 4. CLIENTES DE LA BASE DE DATOS INTRODUCIDOS POR EL USUARIO (excluyendo ficticios de pruebas)
   let customers: Customer[] = (state.customers || []).filter(
@@ -1283,21 +1286,23 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
       });
     }
 
-    if (isFinishedOrClosed) {
+    if (isFinishedOrClosed && articles.length > 0) {
       const art = articles[(spec.seq - 1) % articles.length];
-      work_materials.push({
-        id: `wm-roma-${spec.seq}`,
-        work_order_id: woId,
-        article_id: art.id,
-        article_name_snapshot: art.name,
-        unit_snapshot: art.unit,
-        quantity: 1,
-        unit_price_cents: art.sale_price_cents,
-        notes: 'Material instalado en la intervención',
-        created_by: spec.operatorIds[0],
-        created_at: spec.scheduled_at,
-        updated_at: spec.scheduled_at,
-      });
+      if (art) {
+        work_materials.push({
+          id: `wm-roma-${spec.seq}`,
+          work_order_id: woId,
+          article_id: art.id,
+          article_name_snapshot: art.name,
+          unit_snapshot: art.unit,
+          quantity: 1,
+          unit_price_cents: art.sale_price_cents,
+          notes: 'Material instalado en la intervención',
+          created_by: spec.operatorIds[0],
+          created_at: spec.scheduled_at,
+          updated_at: spec.scheduled_at,
+        });
+      }
     }
 
     work_order_events.push({
@@ -1394,26 +1399,9 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
     },
   ];
 
-  const shopping_requests: ShoppingRequest[] = shoppingSpecs.map((item, idx) => {
-    const art = articles[item.artIdx] || articles[0];
-    const reqTime = new Date(new Date(nowIso).getTime() - (idx + 1) * 3600 * 1000).toISOString();
-    return {
-      id: `shop-roma-${idx + 1}`,
-      article_id: art.id,
-      supplier_id: art.supplier_id,
-      purchase_price_cents: art.purchase_price_cents,
-      sale_price_cents: art.sale_price_cents,
-      quantity: item.quantity,
-      status: item.status,
-      requested_by: item.requestedBy,
-      requested_at: reqTime,
-      additional_requesters: item.additionalRequesters || [],
-      purchased_by: item.status === 'purchased' ? adminId : null,
-      purchased_at: item.status === 'purchased' ? nowIso : null,
-      notes: item.notes,
-      updated_at: nowIso,
-    };
-  });
+  const shopping_requests: ShoppingRequest[] = (state.shopping_requests || []).filter(
+    (s) => !s.id?.startsWith('shop-roma-') && !((state as any).deleted_shopping_request_ids || []).includes(s.id)
+  );
 
   return {
     ...state,
@@ -1425,10 +1413,24 @@ export function populateRomaOfficialDemoData(state: DatabaseState): DatabaseStat
     customers,
     customer_addresses: addresses,
     suppliers,
-    articles,
-    review_types,
-    installation_reviews,
-    review_occurrences,
+    articles: includeDemoCatalog
+      ? articles
+      : (state.articles || []).filter(
+          (a) =>
+            !a.id?.startsWith('art-roma-') &&
+            !a.id?.startsWith('art-1') &&
+            !a.id?.startsWith('art-2') &&
+            !a.id?.startsWith('art-3')
+        ),
+    review_types: includeDemoCatalog
+      ? review_types
+      : ((state as any)._romaReviewsClearedRealDataV1 ? (state.review_types || []) : review_types),
+    installation_reviews: includeDemoCatalog
+      ? installation_reviews
+      : ((state as any)._romaReviewsClearedRealDataV1 ? (state.installation_reviews || []) : installation_reviews),
+    review_occurrences: includeDemoCatalog
+      ? review_occurrences
+      : ((state as any)._romaReviewsClearedRealDataV1 ? (state.review_occurrences || []) : review_occurrences),
     work_orders,
     work_order_admin,
     work_order_assignments,

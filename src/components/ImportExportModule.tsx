@@ -51,12 +51,12 @@ const ENTITY_FIELDS: Record<
     { key: 'notes', label: 'Observaciones / Notas', defaultHeader: 'Notas' },
   ],
   articles: [
-    { key: 'code', label: 'Código Único Artículo *', defaultHeader: 'Codigo_Articulo' },
-    { key: 'name', label: 'Nombre *', defaultHeader: 'Nombre' },
-    { key: 'description', label: 'Descripción', defaultHeader: 'Descripcion' },
-    { key: 'purchase_price', label: 'Precio Compra (€) *', defaultHeader: 'Precio_Compra_EUR' },
-    { key: 'sale_price', label: 'Precio Venta (€) *', defaultHeader: 'Precio_Venta_EUR' },
+    { key: 'code', label: 'Código Artículo (automático si vacío)', defaultHeader: 'Codigo_Articulo' },
     { key: 'unit', label: 'Unidad de Medida', defaultHeader: 'Unidad_Medida' },
+    { key: 'name', label: 'Nombre del Artículo *', defaultHeader: 'Nombre_Articulo' },
+    { key: 'purchase_price', label: 'Precio de Compra (€)', defaultHeader: 'Precio_Compra' },
+    { key: 'sale_price', label: 'Precio de Venta (€) *', defaultHeader: 'Precio_Venta' },
+    { key: 'supplier', label: 'Proveedor Habitual', defaultHeader: 'Proveedor_Habitual' },
   ],
   reviews: [
     { key: 'customer_code', label: 'Código Cliente *', defaultHeader: 'Codigo_Cliente' },
@@ -114,10 +114,24 @@ export const ImportExportModule: React.FC<{
     headers: string[]
   ): Record<string, string> => {
     const map: Record<string, string> = {};
+    const norm = (s: string) =>
+      s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
     for (const f of ENTITY_FIELDS[type]) {
-      const found = headers.find(
-        (h) => h.toLowerCase() === f.defaultHeader.toLowerCase() || h.toLowerCase() === f.key.toLowerCase()
-      );
+      const defNorm = norm(f.defaultHeader);
+      const keyNorm = norm(f.key);
+
+      const found = headers.find((h) => {
+        const hNorm = norm(h);
+        if (hNorm === defNorm || hNorm === keyNorm) return true;
+        if (f.key === 'code' && (hNorm.includes('codigo') || hNorm.includes('referencia') || hNorm === 'cod')) return true;
+        if (f.key === 'unit' && (hNorm.includes('unidad') || hNorm === 'ud')) return true;
+        if (f.key === 'name' && (hNorm.includes('nombre') || hNorm.includes('articulo') || hNorm.includes('descrip'))) return true;
+        if (f.key === 'purchase_price' && (hNorm.includes('compra') || hNorm.includes('coste'))) return true;
+        if (f.key === 'sale_price' && (hNorm.includes('venta') || hNorm.includes('pvp'))) return true;
+        if (f.key === 'supplier' && (hNorm.includes('proveedor') || hNorm.includes('distribuidor'))) return true;
+        return false;
+      });
       map[f.key] = found || headers[0] || '';
     }
     return map;
@@ -250,11 +264,11 @@ export const ImportExportModule: React.FC<{
         : [
             {
               Codigo_Articulo: 'MAT-099',
-              Nombre: 'Manómetro Glicerina 0-10 Bar',
-              Descripcion: 'Rosca 1/4 inferior',
-              Precio_Compra_EUR: '9,80',
-              Precio_Venta_EUR: '19,50',
               Unidad_Medida: 'ud',
+              Nombre_Articulo: 'Manómetro Glicerina 0-10 Bar',
+              Precio_Compra: '9,80',
+              Precio_Venta: '19,50',
+              Proveedor_Habitual: 'A.SS.RIBERA DEL DUERO',
             },
           ];
 

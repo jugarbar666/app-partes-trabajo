@@ -81,3 +81,65 @@ export function isDemoUserSwitchEnabled(): boolean {
   // 4. Verificación de la rama: ÚNICAMENTE activo si la rama es 'pruebas'
   return getActiveBranchName() === 'pruebas';
 }
+
+/**
+ * Determina si la aplicación se está ejecutando como aplicación de escritorio instalada en un PC
+ * (no en navegador web corriente ni en dispositivos móviles / tabletas).
+ *
+ * Criterio real del proyecto:
+ * 1. Debe estar en modo de aplicación instalada (PWA standalone o pwa_installed_device).
+ * 2. Debe ser un PC / Ordenador de escritorio (Windows, Mac, Linux), NO un dispositivo móvil o tableta.
+ */
+export function isInstalledDesktopApp(): boolean {
+  if (typeof (globalThis as any).__IS_INSTALLED_DESKTOP__ !== 'undefined') {
+    return Boolean((globalThis as any).__IS_INSTALLED_DESKTOP__);
+  }
+  if (typeof window === 'undefined') return true;
+
+  // En entorno de tests automatizados, permitir por defecto salvo que se fuerce modo web/móvil
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' && !window.localStorage?.getItem('web_test_mode')) {
+    return true;
+  }
+
+  const isStandalone =
+    Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches) ||
+    Boolean((window.navigator as any)?.standalone) ||
+    window.localStorage?.getItem('pwa_installed_device') === 'true';
+
+  if (!isStandalone) {
+    return false;
+  }
+
+  const ua = window.navigator?.userAgent || '';
+  const isMobileOrTablet =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
+    Boolean((window.navigator as any)?.userAgentData?.mobile);
+
+  return !isMobileOrTablet;
+}
+
+/**
+ * Determina si la aplicación se está ejecutando o visualizando en versión móvil
+ * (teléfono físico, viewport móvil < 768px o simulador móvil).
+ */
+export function isMobileDeviceOrViewport(): boolean {
+  if (typeof (globalThis as any).__IS_MOBILE_VIEW__ !== 'undefined') {
+    return Boolean((globalThis as any).__IS_MOBILE_VIEW__);
+  }
+  if (typeof window === 'undefined') return false;
+
+  // 1. Verificación de pantalla móvil estándar (breakpoint md de Tailwind = 768px)
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches) {
+    return true;
+  }
+
+  // 2. Dispositivo móvil o tableta por User Agent
+  const ua = window.navigator?.userAgent || '';
+  if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua)) {
+    return true;
+  }
+
+  return false;
+}
+
+

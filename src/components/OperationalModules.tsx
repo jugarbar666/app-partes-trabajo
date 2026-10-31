@@ -1005,7 +1005,7 @@ export const ShoppingListModule: React.FC<{
                   onChange={(e) => setNaUnit(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
                 >
-                  <option value="">-- Unidad a seleccionar --</option>
+                  <option value="">Seleccione una unidad</option>
                   <option value="ud">Unidad (ud)</option>
                   <option value="m">Metros (m)</option>
                   <option value="kg">Kilogramos (kg)</option>
@@ -1069,7 +1069,7 @@ export const ShoppingListModule: React.FC<{
                 onChange={(e) => setNaSupplierId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
               >
-                <option value="">-- Sin proveedor habitual --</option>
+                <option value="">Seleccione un proveedor (opcional)</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -1127,8 +1127,8 @@ export const ShoppingListModule: React.FC<{
                   data-testid="select-shopping-article"
                   value={selectedArticleId}
                   onChange={setSelectedArticleId}
-                  placeholder="-- Artículo a seleccionar --"
-                  emptyOptionLabel="-- Artículo a seleccionar --"
+                  placeholder="Seleccione un artículo"
+                  emptyOptionLabel="Seleccione un artículo"
                   options={articles.map((a) => ({
                     value: a.id,
                     label: `${a.code} — ${a.name} (${a.unit})`,
@@ -1201,11 +1201,40 @@ export const ShoppingListModule: React.FC<{
 
       {/* Lista pendiente de compra */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
-        <div className="shrink-0 px-4 py-3 bg-slate-900 text-white text-xs font-bold">
-          Artículos Pendientes de Compra ({pendingList.length})
+        <div className="shrink-0 px-4 py-3 bg-slate-900 text-white text-xs font-bold flex items-center justify-between gap-2">
+          <span>Artículos Pendientes de Compra ({pendingList.length})</span>
+          {isAdmin && pendingList.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                requestDeleteConfirmation({
+                  recordName: 'Todos los artículos de la lista de compra',
+                  consequence: 'Se vaciarán todas las solicitudes pendientes de compra de la cesta definitivamente.',
+                  requireReason: false,
+                  onConfirm: () => {
+                    backend.clearShoppingRequests();
+                    refresh();
+                  },
+                });
+              }}
+              className="px-2.5 py-1 rounded bg-red-800 hover:bg-red-700 text-white text-[11px] font-bold cursor-pointer"
+              title="Vaciar completamente la lista de compra"
+            >
+              Vaciar Cesta
+            </button>
+          )}
         </div>
         <div className="flex-1 min-h-0 divide-y divide-slate-200 overflow-y-auto overscroll-contain">
-          {pendingList.map((item) => {
+          {pendingList.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              <ShoppingCart className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">La lista de compra está vacía</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Pulsa en «+ Pedir Material / Añadir a Lista» para solicitar nuevos materiales.
+              </p>
+            </div>
+          ) : (
+            pendingList.map((item) => {
             const art = articles.find((a) => a.id === item.article_id);
             const sup = suppliers.find((s) => s.id === item.supplier_id);
             const reqUser = profiles.find((p) => p.id === item.requested_by);
@@ -1330,7 +1359,7 @@ export const ShoppingListModule: React.FC<{
                 )}
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
 
@@ -1502,12 +1531,21 @@ export const AttendanceAndReportsModule: React.FC<{
   };
 
   const handleDownloadAttendancePDF = () => {
-    const targetWorkers =
+    const rawTarget =
       filterWorkerId === 'all'
         ? profiles.filter((p) => filteredSessions.some((s) => s.user_id === p.id))
         : profiles.filter((p) => p.id === filterWorkerId);
 
-    const workersPayload = (targetWorkers.length > 0 ? targetWorkers : [currentUser]).map((w) => ({
+    const targetWorkers = (rawTarget.length > 0 ? rawTarget : [currentUser]).filter(
+      (w) => w.can_clock !== false
+    );
+
+    if (targetWorkers.length === 0) {
+      notifyError('No hay usuarios con control de fichaje habilitado para generar el informe.');
+      return;
+    }
+
+    const workersPayload = targetWorkers.map((w) => ({
       worker: w,
       sessions: filteredSessions.filter((s) => s.user_id === w.id),
     }));
@@ -1592,48 +1630,57 @@ export const AttendanceAndReportsModule: React.FC<{
       )}
 
       {/* Panel de fichaje en directo para el usuario actual */}
-      <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="space-y-0.5">
-          <div className="text-xs font-bold uppercase text-slate-500 flex flex-wrap items-center gap-2">
-            <span>Tu Estado Actual de Jornada ({currentUser.full_name})</span>
-            <span className="text-[11px] font-normal text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-              🕒 Horario asignado: <strong>{currentUser.work_start_time || '08:00'}</strong> a <strong>{currentUser.work_end_time || '18:00'}</strong>
-            </span>
+      {currentUser.can_clock === false ? (
+        <div className="shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-2.5 text-xs text-slate-700">
+          <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+          <span>
+            Tu usuario tiene el <strong>control de fichaje desactivado</strong>. No se requiere registro de entradas ni salidas y estás excluido de los procesos de regularización y firmas de fichajes.
+          </span>
+        </div>
+      ) : (
+        <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="text-xs font-bold uppercase text-slate-500 flex flex-wrap items-center gap-2">
+              <span>Tu Estado Actual de Jornada ({currentUser.full_name})</span>
+              <span className="text-[11px] font-normal text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                🕒 Horario asignado: <strong>{currentUser.work_start_time || '08:00'}</strong> a <strong>{currentUser.work_end_time || '18:00'}</strong>
+              </span>
+            </div>
+            {openSession ? (
+              <div className="text-xs sm:text-sm font-bold text-emerald-700">
+                ● JORNADA ABIERTA — Entrada registrada a las{' '}
+                {formatDateTimeES(openSession.clock_in_at, tz)}
+              </div>
+            ) : (
+              <div className="text-xs sm:text-sm font-bold text-slate-700">
+                ○ Fuera de jornada (Sin entrada abierta)
+              </div>
+            )}
           </div>
-          {openSession ? (
-            <div className="text-xs sm:text-sm font-bold text-emerald-700">
-              ● JORNADA ABIERTA — Entrada registrada a las{' '}
-              {formatDateTimeES(openSession.clock_in_at, tz)}
-            </div>
-          ) : (
-            <div className="text-xs sm:text-sm font-bold text-slate-700">
-              ○ Fuera de jornada (Sin entrada abierta)
-            </div>
-          )}
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={workerNote}
-            onChange={(e) => setWorkerNote(e.target.value)}
-            placeholder="Observaciones del fichaje (opcional)..."
-            className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs w-64"
-          />
-          <button
-            type="button"
-            data-testid="btn-direct-clock-toggle"
-            onClick={handleClockInOrOut}
-            className={`px-4 py-1.5 rounded-lg text-white text-xs font-bold shadow-xs ${
-              openSession
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
-            }`}
-          >
-            {openSession ? 'Registrar Salida Ahora' : 'Registrar Entrada Ahora'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={workerNote}
+              onChange={(e) => setWorkerNote(e.target.value)}
+              placeholder="Observaciones del fichaje (opcional)..."
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs w-64"
+            />
+            <button
+              type="button"
+              data-testid="btn-direct-clock-toggle"
+              onClick={handleClockInOrOut}
+              className={`px-4 py-1.5 rounded-lg text-white text-xs font-bold shadow-xs ${
+                openSession
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
+            >
+              {openSession ? 'Registrar Salida Ahora' : 'Registrar Entrada Ahora'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filtros administrativos de escritorio */}
       {isAdmin && (
@@ -1845,7 +1892,7 @@ export const AttendanceAndReportsModule: React.FC<{
                 onChange={(e) => setAdminUserId(e.target.value)}
                 className="w-full px-3 py-2 rounded border border-slate-300 bg-white"
               >
-                <option value="">-- Trabajador a seleccionar --</option>
+                <option value="">Seleccione un operario</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name}
