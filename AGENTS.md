@@ -29,3 +29,22 @@
 
 ## 4. Obligación Permanente de Explicación Detallada ante Errores y Soluciones
 - Siempre que se detecte un error o se implemente una solución solicitada, se debe explicar de forma detallada y comprensible qué ocurría, cuál era la causa, qué se ha cambiado, cómo se ha verificado y qué medidas se han tomado para evitar que vuelva a ocurrir.
+
+## 5. Protocolo Obligatorio de Verificación Pre-Publicación y Blindaje de Créditos de Netlify
+Para evitar el gasto inútil de créditos y tokens de compilación en Netlify por despliegues fallidos o incompletos, **antes de solicitar la confirmación de publicación (Paso 2) o ejecutar cualquier `git push`**, el agente debe comprobar y verificar estrictamente en local los siguientes 4 pasos:
+
+1. **Compilación completa integral (Frontend + Funciones de Netlify):**
+   - Ejecutar `npm run build` y `npm run typecheck`, los cuales validan obligatoriamente:
+     - La aplicación cliente React (`tsc -b` y `vite build`).
+     - Todas las funciones serverless de Netlify (`tsc -p tsconfig.functions.json`).
+   - Si existe el más mínimo error de tipos, parámetros no definidos o sintaxis en cualquier función o archivo, **está terminantemente prohibido publicar**. Se debe corregir en local antes de interactuar con GitHub.
+2. **Validación íntegra de tests automatizados:**
+   - Ejecutar `npm test` y verificar que el 100% de las pruebas pasan satisfactoriamente sin fallos (0 errores).
+3. **Incremento obligatorio de versión de la aplicación:**
+   - Toda nueva publicación exige incrementar la versión semántica en sincronía en los 3 archivos clave:
+     1. `package.json` (campo `version`).
+     2. `public/version.json` (campos `version`, `releasedAt` y `notes`).
+     3. `src/config/versionConfig.ts` (`LATEST_APP_VERSION` y actualizar `INITIAL_DEVICE_VERSION`).
+   - Sin este incremento, los navegadores y dispositivos instalados no detectan la actualización y la ventanita amarilla de aviso de nueva versión no aparece, produciendo la falsa apariencia de que nada se ha publicado.
+4. **Verificación post-despliegue en el servidor en vivo:**
+   - Tras ejecutar el push autorizado (Paso 3), el agente debe consultar directamente mediante petición HTTP a `https://gestionpartestrabajoroma.netlify.app/version.json` para verificar fehacientemente que la compilación en Netlify concluyó con éxito y que la nueva versión ya está siendo entregada a los usuarios.
