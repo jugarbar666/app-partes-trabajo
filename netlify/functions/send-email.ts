@@ -15,6 +15,7 @@ export default async (req: Request) => {
       from,
       fromName,
       subject,
+      html,
       type,
       link,
       recoveryLink,

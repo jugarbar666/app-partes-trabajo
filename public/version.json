@@ -1,5 +1,5 @@
 {
-  "version": "1.9.2",
-  "releasedAt": "2026-10-31T08:57:35.980Z",
-  "notes": "Sincronización en tiempo real multidispositivo con Supabase WebSockets, copias de seguridad de la nube, y gestión automática de correos corporativos"
+  "version": "1.9.3",
+  "releasedAt": "2026-11-01T20:00:00.000Z",
+  "notes": "Importación no bloqueante con barra de progreso real, asignación exacta de artículos y proveedores, y adaptación responsive completa para tablets Android y iPad"
 }
