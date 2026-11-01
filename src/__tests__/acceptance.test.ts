@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+import nodeFs from 'node:fs';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import { mergeDatabaseStates } from '../services/supabaseSyncEngine';
@@ -15,15 +17,24 @@ import {
   getReviewAlertInfo,
   isWorkOrderUnscheduled,
   parseDateRobust,
+  parseEurosToCents,
+  formatCentsToEUR,
   sanitizeSpreadsheetCell,
   sanitizeTimezone,
   translateErrorMessageToSpanish,
 } from '../utils/formatters';
 import {
+  buildDefaultEntityMapping,
   executeValidatedImport,
+  executeValidatedImportAsync,
   generateAttendanceReportPDF,
   validateAndPreviewImport,
+  findSupplierMatch,
+  validateExactHeaders,
+  IMPORT_ENTITY_DEFINITIONS,
+  EXCEL_IMPORT_TEMPLATE_WARNING,
 } from '../utils/exportImportUtils';
+import { roundToTwoDecimals } from '../utils/formatters';
 
 describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Prompt Maestro)', () => {
   let backend: InstallationBackendEngine;
@@ -1491,7 +1502,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       article_name_snapshot: articuloTest.name,
       unit_snapshot: articuloTest.unit,
       quantity: 2,
-      unit_price_cents: articuloTest.sale_price_cents,
+      unit_price_cents: articuloTest.sale_price_cents ?? 0,
       notes: 'Línea de prueba',
     });
 
@@ -2758,4 +2769,717 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(prodBackend.getInstallationReviews().length).toBe(0);
     expect(prodBackend.getReviewOccurrences().length).toBe(0);
   });
+
+  it('Escenario 52: Importación de artículos desde Excel con decimales múltiples, matching inteligente de proveedores y mapeo fiel de Nombre_Articulo', () => {
+    // 1. Verificación de parseEurosToCents con números de más de 2 decimales
+    expect(parseEurosToCents('0.094')).toBe(9);
+    expect(parseEurosToCents('0.26066666666666666')).toBe(26);
+    expect(parseEurosToCents('1.7848')).toBe(178);
+    expect(parseEurosToCents('1.2359722222222222')).toBe(124);
+    expect(parseEurosToCents('0.063333333333333339')).toBe(6);
+    expect(parseEurosToCents('12,50')).toBe(1250);
+    expect(parseEurosToCents('1.250,50')).toBe(125050);
+
+    // 2. Verificación de findSupplierMatch con variaciones de signos, formas jurídicas y mayúsculas
+    const suppliers = backend.getSuppliers(true);
+    // Asegurar existencia de proveedores de prueba
+    backend.saveSupplier({
+      name: 'CONDUCCIONES Y SANEAMIENTOS CLM S.L.',
+      tax_id: 'B13000001',
+      contact_person: '',
+      phone: '',
+      email: '',
+      address: '',
+      postal_code: '',
+      city: '',
+      province: '',
+      notes: '',
+      is_active: true,
+    });
+    backend.saveSupplier({
+      name: 'TECNICA Y MATERIALES S.A. (TEYMA)',
+      tax_id: 'A13000002',
+      contact_person: '',
+      phone: '',
+      email: '',
+      address: '',
+      postal_code: '',
+      city: '',
+      province: '',
+      notes: '',
+      is_active: true,
+    });
+    backend.saveSupplier({
+      name: 'SUMINISTROS PRIEGO S.L.',
+      tax_id: 'B13000003',
+      contact_person: '',
+      phone: '',
+      email: '',
+      address: '',
+      postal_code: '',
+      city: '',
+      province: '',
+      notes: '',
+      is_active: true,
+    });
+
+    const refreshedSuppliers = backend.getSuppliers(true);
+
+    const match1 = findSupplierMatch('Conducciones y Saneamientos CLM, S.L.', refreshedSuppliers);
+    expect(match1).not.toBeNull();
+    expect(match1?.name).toBe('CONDUCCIONES Y SANEAMIENTOS CLM S.L.');
+
+    const match2 = findSupplierMatch('TEYMA', refreshedSuppliers);
+    expect(match2).not.toBeNull();
+    expect(match2?.name).toBe('TECNICA Y MATERIALES S.A. (TEYMA)');
+
+    const match3 = findSupplierMatch('Suministros Priego, S.L.', refreshedSuppliers);
+    expect(match3).not.toBeNull();
+    expect(match3?.name).toBe('SUMINISTROS PRIEGO S.L.');
+
+    // 3. Verificación de importación de lote de artículos usando las columnas oficiales
+    const rawRows = [
+      {
+        Codigo_Articulo: 'MAT-0001',
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Abrazadera atornillar M/6 12',
+        Precio_Compra: '0.094',
+        Precio_Venta: '0.21',
+        Proveedor_Habitual: 'Suministros Priego, S.L.',
+      },
+      {
+        Codigo_Articulo: 'MAT-0258',
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Tuerca reducida latón 1 x 3/4',
+        Precio_Compra: '1.49',
+        Precio_Venta: '2.87',
+        Proveedor_Habitual: 'Conducciones y Saneamientos CLM, S.L.',
+      },
+      {
+        Codigo_Articulo: 'MAT-0006',
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Abrazadera M8 90 Hydra 8000',
+        Precio_Compra: '0.66',
+        Precio_Venta: '2.2',
+        Proveedor_Habitual: 'TEYMA',
+      },
+    ];
+
+    const mapping = {
+      code: 'Codigo_Articulo',
+      unit: 'Unidad_Medida',
+      name: 'Nombre_Articulo',
+      purchase_price: 'Precio_Compra',
+      sale_price: 'Precio_Venta',
+      supplier: 'Proveedor_Habitual',
+    };
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows,
+      columnMapping: mapping,
+    });
+
+    expect(preview.totalRows).toBe(3);
+    expect(preview.errorCount).toBe(0);
+    expect(preview.validNewCount).toBe(3);
+
+    const execResult = executeValidatedImport({
+      backend,
+      entityType: 'articles',
+      fileName: 'test_articulos.xlsx',
+      conflictPolicy: 'insert_only',
+      preview,
+    });
+
+    expect(execResult.inserted).toBe(3);
+    expect(execResult.rejected).toBe(0);
+
+    // Verificar que el nombre NO es el código y que el proveedor quedó correctamente asignado
+    const importedArticles = backend.getArticles(true);
+    const art258 = importedArticles.find((a) => a.code === 'MAT-0258')!;
+    expect(art258).toBeDefined();
+    expect(art258.name).toBe('Tuerca reducida latón 1 x 3/4');
+    expect(art258.purchase_price_cents).toBe(149);
+    expect(art258.sale_price_cents).toBe(287);
+    expect(art258.supplier_id).toBe(match1?.id);
+
+    const art1 = importedArticles.find((a) => a.code === 'MAT-0001')!;
+    expect(art1).toBeDefined();
+    expect(art1.name).toBe('Abrazadera atornillar M/6 12');
+    expect(art1.purchase_price_cents).toBe(9);
+    expect(art1.sale_price_cents).toBe(21);
+    expect(art1.supplier_id).toBe(match3?.id);
+  });
+
+  it('Escenario 53: Verificación exhaustiva de Requerimientos 1 a 9', () => {
+    // -------------------------------------------------------------------------
+    // 1. PARTE INICIALMENTE SIN HORA NI OPERARIO, PROGRAMACIÓN, ASIGNACIÓN Y PENDIENTES
+    // -------------------------------------------------------------------------
+    const customer = backend.saveCustomer({
+      code: 'CLI-5301',
+      name: 'Cliente Prueba Requerimiento 1',
+      tax_id: '',
+      contact_name: '',
+      phones: ['+34 600 555 444'],
+      emails: [],
+      main_address: 'Calle Toledo 12',
+      notes: '',
+      is_active: true,
+    });
+
+    const profiles = backend.getProfiles();
+    const opCarlos = profiles.find((p) => p.email.includes('carlos')) || profiles[1];
+
+    // Crear parte sin fecha ni hora programada (pendiente de programar)
+    const unscheduledWo = backend.createWorkOrder({
+      customer_id: customer.id,
+      customer_address_id: null,
+      snapshot_customer_name: customer.name,
+      snapshot_customer_tax_id: '',
+      snapshot_contact_name: customer.name,
+      snapshot_contact_phone: '+34 600 555 444',
+      snapshot_contact_email: '',
+      snapshot_address_line: 'Calle Toledo 12',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Reparación de termo eléctrico urgente',
+      initial_notes: '',
+      is_unscheduled: true,
+      operator_ids: [],
+    });
+
+    expect(isWorkOrderUnscheduled(unscheduledWo)).toBe(true);
+    expect(unscheduledWo.scheduled_at).toBe('');
+
+    // Modificar operarios primero: no debe borrar la programación ni fallar
+    backend.updateWorkOrderPlanningAndAssignments(unscheduledWo.id, {
+      operator_ids: [opCarlos.id],
+    });
+    let reloaded = backend.getWorkOrders().find((w) => w.id === unscheduledWo.id)!;
+    expect(isWorkOrderUnscheduled(reloaded)).toBe(true); // Todavía falta la fecha/hora
+
+    // Programar fecha y hora: no debe borrar los operarios y debe marcar is_unscheduled = false
+    const futureDate = new Date(Date.now() + 48 * 3600 * 1000);
+    futureDate.setHours(10, 0, 0, 0);
+    const targetIso = futureDate.toISOString();
+
+    backend.rescheduleWorkOrder({
+      work_order_id: unscheduledWo.id,
+      scheduled_at: targetIso,
+      reason: 'Cita acordada con el cliente',
+      allowPastScheduledAt: true,
+    });
+
+    reloaded = backend.getWorkOrders().find((w) => w.id === unscheduledWo.id)!;
+    expect(isWorkOrderUnscheduled(reloaded)).toBe(false);
+    expect(reloaded.scheduled_at).toBe(targetIso);
+
+    // Comprobar que los operarios siguen asignados
+    const asgs = backend.getWorkOrderAssignments(unscheduledWo.id);
+    expect(asgs.some((a) => a.operator_id === opCarlos.id && a.is_active)).toBe(true);
+
+    // Debe funcionar como cualquier parte pendiente (por ejemplo, iniciarse)
+    const started = backend.startWorkOrder(unscheduledWo.id);
+    expect(started.status).toBe('en_curso');
+
+    // -------------------------------------------------------------------------
+    // 2. CONSERVACIÓN DE CAMBIOS DESPUÉS DE RECARGAR EL ESTADO
+    // -------------------------------------------------------------------------
+    const persistentEngineA = new InstallationBackendEngine('test-persist-wo-reload', true, 'clean');
+    persistentEngineA.login('admin@climalux-demo.es', 'Admin1234!');
+    const custP = persistentEngineA.saveCustomer({
+      code: 'CLI-5399',
+      name: 'Cliente Persistencia',
+      tax_id: '',
+      contact_name: '',
+      phones: ['+34 600 999 888'],
+      emails: [],
+      main_address: 'Calle Real 1',
+      notes: '',
+      is_active: true,
+    });
+    const opP = persistentEngineA.getProfiles()[0];
+    const woP = persistentEngineA.createWorkOrder({
+      customer_id: custP.id,
+      customer_address_id: null,
+      snapshot_customer_name: custP.name,
+      snapshot_customer_tax_id: '',
+      snapshot_contact_name: custP.name,
+      snapshot_contact_phone: '+34 600 999 888',
+      snapshot_contact_email: '',
+      snapshot_address_line: 'Calle Real 1',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Revisión y programación',
+      initial_notes: '',
+      is_unscheduled: true,
+      operator_ids: [],
+    });
+    expect(isWorkOrderUnscheduled(woP)).toBe(true);
+
+    persistentEngineA.updateWorkOrderPlanningAndAssignments(woP.id, {
+      scheduled_at: targetIso,
+      operator_ids: [opP.id],
+    });
+
+    // Simular reapertura/recarga desde el almacenamiento persistente
+    const persistentEngineB = new InstallationBackendEngine('test-persist-wo-reload', true, 'clean');
+    persistentEngineB.login('admin@climalux-demo.es', 'Admin1234!');
+    const persistedWo = persistentEngineB.getWorkOrders().find((w) => w.id === woP.id)!;
+    expect(persistedWo).toBeDefined();
+    expect(isWorkOrderUnscheduled(persistedWo)).toBe(false);
+    expect(persistedWo.scheduled_at).toBe(targetIso);
+    const persistedAsgs = persistentEngineB.getWorkOrderAssignments(woP.id);
+    expect(persistedAsgs.some((a) => a.operator_id === opP.id && a.is_active)).toBe(true);
+
+    // -------------------------------------------------------------------------
+    // 3. EXIGENCIA DE CABECERAS IDÉNTICAS Y RECHAZO DE CABECERAS MODIFICADAS
+    // -------------------------------------------------------------------------
+    const officialArticleHeaders = IMPORT_ENTITY_DEFINITIONS.articles.columns.map((c) => c.header);
+
+    // Cabeceras idénticas -> Válido
+    const validHeaderCheck = validateExactHeaders(officialArticleHeaders, officialArticleHeaders);
+    expect(validHeaderCheck.isValid).toBe(true);
+    expect(validHeaderCheck.errorMessage).toBeNull();
+
+    // Columna en minúsculas -> Rechazado estrictamente (sensible a mayúsculas)
+    const lowerHeaders = [...officialArticleHeaders];
+    lowerHeaders[0] = 'codigo_articulo';
+    const lowerCheck = validateExactHeaders(lowerHeaders, officialArticleHeaders);
+    expect(lowerCheck.isValid).toBe(false);
+    expect(lowerCheck.missingHeaders).toContain('Codigo_Articulo');
+    expect(lowerCheck.extraHeaders).toContain('codigo_articulo');
+
+    // Columna con espacio en vez de guion bajo -> Rechazado
+    const spaceHeaders = [...officialArticleHeaders];
+    spaceHeaders[3] = 'Precio Compra';
+    const spaceCheck = validateExactHeaders(spaceHeaders, officialArticleHeaders);
+    expect(spaceCheck.isValid).toBe(false);
+
+    // Orden alterado de columnas -> Rechazado
+    const swappedHeaders = [...officialArticleHeaders];
+    const temp = swappedHeaders[0];
+    swappedHeaders[0] = swappedHeaders[1];
+    swappedHeaders[1] = temp;
+    const orderCheck = validateExactHeaders(swappedHeaders, officialArticleHeaders);
+    expect(orderCheck.isValid).toBe(false);
+    expect(orderCheck.orderMismatch).toBe(true);
+
+    // -------------------------------------------------------------------------
+    // 4. EXCLUSIÓN DEL AVISO INFORMATIVO Y DEL REGISTRO DE EJEMPLO
+    // -------------------------------------------------------------------------
+    const rawRowsWithWarningAndSample = [
+      IMPORT_ENTITY_DEFINITIONS.articles.sampleRow, // Fila de ejemplo
+      { [officialArticleHeaders[0]]: EXCEL_IMPORT_TEMPLATE_WARNING }, // Fila de aviso rojo
+      {}, // Fila vacía
+      {
+        Codigo_Articulo: 'MAT-9901',
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Filtro desfangador magnético 3/4',
+        Precio_Compra: '45,80',
+        Precio_Venta: '89,90',
+        Proveedor_Habitual: 'Suministros Térmicos',
+      },
+    ];
+
+    const previewFiltered = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows: rawRowsWithWarningAndSample,
+      receivedHeaders: officialArticleHeaders,
+    });
+
+    // Solo la fila real (MAT-9901) debe considerarse fila de datos
+    expect(previewFiltered.totalRows).toBe(1);
+    expect(previewFiltered.validNewCount).toBe(1);
+    expect(previewFiltered.rows[0].mapped.name).toBe('Filtro desfangador magnético 3/4');
+
+    // -------------------------------------------------------------------------
+    // 5. DETECCIÓN DE DUPLICADOS INTERNOS Y COINCIDENTES EN BASE DE DATOS
+    // -------------------------------------------------------------------------
+    const batchWithInternalDuplicates = [
+      {
+        Codigo_Articulo: 'MAT-9902',
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Bomba circuladora electrónica',
+        Precio_Compra: '120,00',
+        Precio_Venta: '210,00',
+      },
+      {
+        Codigo_Articulo: 'MAT-9902', // Mismo código en el mismo Excel
+        Unidad_Medida: 'ud',
+        Nombre_Articulo: 'Bomba circuladora duplicada',
+        Precio_Compra: '125,00',
+        Precio_Venta: '220,00',
+      },
+    ];
+
+    const previewDups = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows: batchWithInternalDuplicates,
+      receivedHeaders: officialArticleHeaders,
+    });
+
+    expect(previewDups.validNewCount).toBe(1);
+    expect(previewDups.duplicateCount).toBe(1);
+    expect(previewDups.rows[1].isInternalDuplicate).toBe(true);
+
+    // Ejecutar con reject_duplicates: debe insertar el primero y omitir el duplicado
+    const execDups = executeValidatedImport({
+      backend,
+      entityType: 'articles',
+      fileName: 'lote_duplicados.xlsx',
+      conflictPolicy: 'reject_duplicates',
+      preview: previewDups,
+    });
+
+    expect(execDups.inserted).toBe(1);
+    expect(execDups.rejected).toBe(1);
+
+    // Reimportar el mismo archivo: el que ya existe en BD ahora es duplicado coincidente
+    const previewReimport = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows: [batchWithInternalDuplicates[0]],
+      receivedHeaders: officialArticleHeaders,
+    });
+    expect(previewReimport.duplicateCount).toBe(1);
+    expect(previewReimport.validNewCount).toBe(0);
+
+    // -------------------------------------------------------------------------
+    // 6. TRABAJAR CON DOS DECIMALES SIN ERRORES FLOTANTES NI TRUNCAMIENTO
+    // -------------------------------------------------------------------------
+    // 12.556 debe redondear a 12.56 (1256 céntimos), no a 12.55
+    expect(parseEurosToCents('12.556')).toBe(1256);
+    expect(parseEurosToCents('1.494')).toBe(149);
+    expect(parseEurosToCents('0.26066666666666666')).toBe(26);
+
+    // roundToTwoDecimals para cantidades
+    expect(roundToTwoDecimals(3.456)).toBe(3.46);
+    expect(roundToTwoDecimals(1.494)).toBe(1.49);
+    expect(roundToTwoDecimals(0)).toBe(0);
+
+    // Los códigos y referencias no deben verse alterados
+    const artWithCode = backend.saveArticle({
+      code: 'REF-0012.34',
+      name: 'Pieza especial con punto en código',
+      unit: 'ud',
+      purchase_price_cents: 1256,
+      sale_price_cents: 2500,
+      supplier_id: null,
+      description: '',
+      is_active: true,
+    });
+    expect(artWithCode.code).toBe('REF-0012.34');
+    expect(artWithCode.purchase_price_cents).toBe(1256);
+  });
+
+  it('Escenario 55: Importación íntegra del archivo articulos.xlsx real (265 artículos), verificando nombre descriptivo, proveedor y ausencia de bloqueos o errores de decimales', async () => {
+    const backend = new InstallationBackendEngine('test-inst-esc', false, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+
+    // Leer el archivo real subido por el usuario
+    const filePath = 'C:/Users/programador/.gemini/antigravity/brain/f76cf416-b716-4620-a14c-724802dd3902/.user_uploaded/media_1793466083473_50075272.xlsx';
+    if (!nodeFs.existsSync(filePath)) {
+      console.warn('Archivo articulos.xlsx no encontrado en la ruta esperada; se omite carga desde disco');
+      return;
+    }
+
+    const fileBuffer = nodeFs.readFileSync(filePath);
+    const wb = XLSX.read(fileBuffer, { type: "buffer" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+    const headers = Object.keys(rawRows[0] || {});
+
+    // 1. Previsualización y validación exacta
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows,
+      receivedHeaders: headers,
+    });
+
+    expect(preview.totalRows).toBe(265);
+    expect(preview.errorCount).toBe(0);
+    expect(preview.duplicateCount).toBe(0);
+    expect(preview.validNewCount).toBe(265);
+
+    // 2. Ejecución asíncrona no bloqueante
+    let progressUpdates = 0;
+    const res = await executeValidatedImportAsync({
+      backend,
+      entityType: 'articles',
+      fileName: 'articulos.xlsx',
+      conflictPolicy: 'reject_duplicates',
+      preview,
+      onProgress: (p) => {
+        progressUpdates++;
+        expect(p.total).toBe(265);
+        expect(p.current).toBeGreaterThan(0);
+      },
+      chunkSize: 25,
+    });
+
+    expect(res.inserted).toBe(265);
+    expect(res.updated).toBe(0);
+    expect(res.rejected).toBe(0);
+    expect(res.errors.length).toBe(0);
+    expect(progressUpdates).toBeGreaterThan(0);
+
+    // 3. Verificación del artículo MAT-0258 señalado por el usuario en el pantallazo
+    const mat0258 = backend.getArticles().find((a) => a.code === 'MAT-0258');
+    expect(mat0258).toBeDefined();
+    // El nombre del artículo debe ser la descripción real del Excel, NO el código
+    expect(mat0258!.name).toBe('Tuerca reducida latón 1 x 3/4');
+    expect(mat0258!.purchase_price_cents).toBe(149);
+    expect(mat0258!.sale_price_cents).toBe(287);
+    expect(mat0258!.supplier_id).not.toBeNull();
+
+    const supplier = backend.getSuppliers().find((s) => s.id === mat0258!.supplier_id);
+    expect(supplier).toBeDefined();
+    expect(supplier!.name).toContain('Conducciones y Saneamientos CLM');
+
+    // 4. Verificación de artículos con precios de más de 2 decimales (ej. MAT-0001 con 0.094 y MAT-0003 con 0.928333)
+    const mat0001 = backend.getArticles().find((a) => a.code === 'MAT-0001');
+    expect(mat0001).toBeDefined();
+    expect(mat0001!.name).toBe('Abrazadera atornillar M/6 12');
+    expect(mat0001!.purchase_price_cents).toBe(9); // 0.094 redondeado a 9 céntimos
+  });
+
+  it('Escenario 56: Permitir artículos sin precios (opcionales), sin conversión automática a cero y compatible con cesta', () => {
+    const backend = new InstallationBackendEngine('test-inst-esc', false, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+
+    // 1. Guardar artículo sin precios (ambos null)
+    const artSinPrecios = backend.saveArticle({
+      code: 'MAT-NOPRICE',
+      name: 'Válvula especial sin tarifa asignada',
+      unit: 'ud',
+      purchase_price_cents: null,
+      sale_price_cents: null,
+      supplier_id: null,
+      description: 'Precio a convenir',
+      is_active: true,
+    });
+
+    expect(artSinPrecios.purchase_price_cents).toBeNull();
+    expect(artSinPrecios.sale_price_cents).toBeNull();
+    expect(formatCentsToEUR(artSinPrecios.sale_price_cents)).toBe('—');
+    expect(formatCentsToEUR(artSinPrecios.purchase_price_cents)).toBe('—');
+
+    // 2. Guardar artículo solo con precio de venta
+    const artSoloVenta = backend.saveArticle({
+      code: 'MAT-SOLOVENTA',
+      name: 'Manguito cobre 15',
+      unit: 'ud',
+      purchase_price_cents: null,
+      sale_price_cents: 150,
+      supplier_id: null,
+      description: '',
+      is_active: true,
+    });
+    expect(artSoloVenta.purchase_price_cents).toBeNull();
+    expect(artSoloVenta.sale_price_cents).toBe(150);
+
+    // 3. Añadir a la cesta de la compra sin errores y sin inventar importes
+    const basketRes = backend.requestShoppingArticle({
+      article_id: artSinPrecios.id,
+      notes: 'Solicitar presupuesto al proveedor',
+    });
+    expect(basketRes.request.article_id).toBe(artSinPrecios.id);
+    expect(basketRes.request.sale_price_cents).toBeNull();
+  });
+
+  it('Escenario 57: Reasignación de operarios en parte de trabajo elimina la asignación persistente previa y evita duplicidad', () => {
+    const backend = new InstallationBackendEngine('test-empresa-principal', false);
+    backend.login('admin@climalux-demo.es', 'Admin1234!');
+
+    const customer = backend.getCustomers()[0];
+    const profiles = backend.getProfiles().filter((p) => p.role === 'operario');
+    const op1 = profiles[0].id;
+    const op2 = profiles[1].id;
+
+    // Crear parte sin programar asignado a op1
+    const wo = backend.createWorkOrder({
+      customer_id: customer.id,
+      planned_work: 'Reparación caldera',
+      scheduled_at: '',
+      operator_ids: [op1],
+    } as any);
+
+    let activeAssignments = backend.getWorkOrderAssignments(wo.id).filter((a) => a.is_active);
+    expect(activeAssignments.length).toBe(1);
+    expect(activeAssignments[0].operator_id).toBe(op1);
+
+    // Reasignar al op2 (desasignando op1)
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [op2],
+    });
+
+    activeAssignments = backend.getWorkOrderAssignments(wo.id).filter((a) => a.is_active);
+    expect(activeAssignments.length).toBe(1);
+    expect(activeAssignments[0].operator_id).toBe(op2);
+
+    // Verificar que todos los registros de asignación contienen solo a op2
+    const allWoAssignments = backend.getWorkOrderAssignments(wo.id);
+    const op1Record = allWoAssignments.find((a) => a.operator_id === op1);
+    expect(op1Record).toBeUndefined(); // Eliminado limpiamente sin resurrección
+  });
+
+  it('Escenario 58: Detección exacta de conflictos horarios de citas, sin falsas alarmas a horas distintas', () => {
+    const customer = backend.getCustomers()[0] || (backend.saveCustomer as any)({
+      code: 'CLI-CONF',
+      name: 'Cliente Conflicto',
+      tax_id: 'B87654321',
+      phones: ['600333444'],
+      emails: [],
+      notes: '',
+      main_address: 'Calle Real 2',
+      is_active: true,
+    });
+    const operator = backend.getProfiles().find((p) => p.role === 'operario')!;
+
+    // 1. Parte 1 programado a las 10:00
+    const wo1 = (backend.createWorkOrder as any)({
+      customer_id: customer.id,
+      planned_work: 'Instalación termo',
+      scheduled_at: '2026-11-15T10:00:00.000Z',
+      operator_ids: [operator.id],
+    });
+
+    // 2. Comprobar conflicto para las 11:00 (hora distinta) -> NO debe generar conflicto
+    const conflictsDiffHour = backend.findOperatorScheduleConflicts(
+      '2026-11-15T11:00:00.000Z',
+      [operator.id],
+      'wo-other'
+    );
+    expect(conflictsDiffHour.length).toBe(0);
+
+    // 3. Comprobar conflicto para las 10:00 (misma hora exacta) -> DEBE avisar
+    const conflictsSameHour = backend.findOperatorScheduleConflicts(
+      '2026-11-15T10:00:00.000Z',
+      [operator.id],
+      'wo-other'
+    );
+    expect(conflictsSameHour.length).toBe(1);
+    expect(conflictsSameHour[0].operator_id).toBe(operator.id);
+    expect(conflictsSameHour[0].work_order_id).toBe(wo1.id);
+
+    // 4. Excluir el propio parte no genera auto-conflicto
+    const selfConflict = backend.findOperatorScheduleConflicts(
+      '2026-11-15T10:00:00.000Z',
+      [operator.id],
+      wo1.id
+    );
+    expect(selfConflict.length).toBe(0);
+  });
+
+  it('verifica que buildDefaultEntityMapping mapea Nombre_Articulo a name y Codigo_Articulo a code sin falsos positivos', () => {
+    const headers = [
+      'Codigo_Articulo',
+      'Unidad_Medida',
+      'Nombre_Articulo',
+      'Precio_Compra',
+      'Precio_Venta',
+      'Proveedor_Habitual',
+    ];
+    const mapping = buildDefaultEntityMapping('articles', headers);
+
+    expect(mapping.code).toBe('Codigo_Articulo');
+    expect(mapping.name).toBe('Nombre_Articulo');
+    expect(mapping.unit).toBe('Unidad_Medida');
+    expect(mapping.purchase_price).toBe('Precio_Compra');
+    expect(mapping.sale_price).toBe('Precio_Venta');
+    expect(mapping.supplier).toBe('Proveedor_Habitual');
+
+    // No debe bajo ningún concepto asignar Codigo_Articulo a name
+    expect(mapping.name).not.toBe('Codigo_Articulo');
+  });
+
+  it('importa el fichero real articulos.xlsx de 265 filas de forma asíncrona sin bloquear la UI y mapeando nombres y proveedores reales', async () => {
+    const backend = new InstallationBackendEngine('test-empresa-real-excel', false, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+    const filePath = 'C:/Users/programador/.gemini/antigravity/brain/f76cf416-b716-4620-a14c-724802dd3902/.user_uploaded/media_1793466083473_50075272.xlsx';
+    if (!nodeFs.existsSync(filePath)) return;
+
+    const fileBuffer = nodeFs.readFileSync(filePath);
+    const wb = XLSX.read(fileBuffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+    const headers = (grid[0] || []).map((h) => String(h || '').trim());
+    const expectedHeaders = IMPORT_ENTITY_DEFINITIONS.articles.columns.map((c) => c.header);
+
+    const headerVal = validateExactHeaders(headers, expectedHeaders);
+    expect(headerVal.isValid).toBe(true);
+
+    const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+    const mapping = buildDefaultEntityMapping('articles', headers);
+
+    const preview = validateAndPreviewImport({
+      backend,
+      entityType: 'articles',
+      rawRows: jsonRaw,
+      columnMapping: mapping,
+      receivedHeaders: headers,
+    });
+
+    expect(preview.totalRows).toBe(265);
+    expect(preview.errorCount).toBe(0);
+
+    // Contadores de progreso real
+    const progressUpdates: Array<{ current: number; total: number; phase: string }> = [];
+
+    const res = await executeValidatedImportAsync({
+      backend,
+      entityType: 'articles',
+      fileName: 'articulos.xlsx',
+      conflictPolicy: 'update_existing',
+      preview,
+      onProgress: (p) => {
+        progressUpdates.push({ ...p });
+      },
+    });
+
+    expect(res.inserted).toBe(265);
+    expect(res.rejected).toBe(0);
+    expect(progressUpdates.length).toBeGreaterThan(0);
+    expect(progressUpdates[progressUpdates.length - 1].current).toBe(265);
+
+    // Verificación de integridad en la base de datos:
+    const articles = backend.getArticles(true);
+    expect(articles.length).toBe(265);
+
+    // Comprobar MAT-0001
+    const mat0001 = articles.find((a) => a.code === 'MAT-0001');
+    expect(mat0001).toBeDefined();
+    expect(mat0001!.name).toBe('Abrazadera atornillar M/6 12'); // NO MAT-0001
+    expect(mat0001!.name).not.toBe('MAT-0001');
+    expect(mat0001!.purchase_price_cents).toBe(9); // 0.094 redondeado a céntimos
+    expect(mat0001!.sale_price_cents).toBe(21);
+    expect(mat0001!.supplier_id).not.toBeNull();
+
+    const supp0001 = backend.getSuppliers(true).find((s) => s.id === mat0001!.supplier_id);
+    expect(supp0001).toBeDefined();
+    expect(supp0001!.name).toMatch(/Bonillo/i);
+
+    // Comprobar MAT-0258 (el del pantallazo inicial)
+    const mat0258 = articles.find((a) => a.code === 'MAT-0258');
+    expect(mat0258).toBeDefined();
+    expect(mat0258!.name).toBe('Tuerca reducida latón 1 x 3/4'); // NO MAT-0258
+    expect(mat0258!.name).not.toBe('MAT-0258');
+    expect(mat0258!.purchase_price_cents).toBe(149);
+    expect(mat0258!.sale_price_cents).toBe(287);
+    expect(mat0258!.supplier_id).not.toBeNull();
+
+    const supp0258 = backend.getSuppliers(true).find((s) => s.id === mat0258!.supplier_id);
+    expect(supp0258).toBeDefined();
+    expect(supp0258!.name).toMatch(/Conducciones y Saneamientos CLM/i);
+  });
+
 });

@@ -1296,7 +1296,7 @@ export function populateRomaOfficialDemoData(state: DatabaseState, includeDemoCa
           article_name_snapshot: art.name,
           unit_snapshot: art.unit,
           quantity: 1,
-          unit_price_cents: art.sale_price_cents,
+          unit_price_cents: art.sale_price_cents ?? 0,
           notes: 'Material instalado en la intervención',
           created_by: spec.operatorIds[0],
           created_at: spec.scheduled_at,

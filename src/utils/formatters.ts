@@ -29,20 +29,27 @@ export function parseEurosToCents(input: string | number): number | null {
   const trimmed = input.trim().replace(/\s/g, '').replace('€', '');
   if (!trimmed) return null;
 
-  // Normalizar separador decimal español o punto
-  const normalized = trimmed.includes(',')
-    ? trimmed.replace(/\./g, '').replace(',', '.')
-    : trimmed;
+  // Normalizar separador decimal español o punto y separador de miles
+  let normalized = trimmed;
+  if (trimmed.includes(',') && trimmed.includes('.')) {
+    if (trimmed.indexOf('.') < trimmed.indexOf(',')) {
+      normalized = trimmed.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = trimmed.replace(/,/g, '');
+    }
+  } else if (trimmed.includes(',')) {
+    normalized = trimmed.replace(',', '.');
+  }
 
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+  // Permitir enteros y decimales con cualquier número de posiciones (ej. 0.094, 0.26066666666666666, 117.73)
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
     return null;
   }
 
-  const parts = normalized.split('.');
-  const integerPart = parseInt(parts[0], 10);
-  const decimalPart = parts[1] ? parseInt(parts[1].padEnd(2, '0'), 10) : 0;
-  const totalCents = integerPart * 100 + decimalPart;
-  return totalCents >= 0 ? totalCents : null;
+  const val = parseFloat(normalized);
+  if (!Number.isFinite(val) || val < 0) return null;
+
+  return Math.round(val * 100);
 }
 
 /**
@@ -50,6 +57,15 @@ export function parseEurosToCents(input: string | number): number | null {
  * Si es inválida, nula o un nombre coloquial (ej. "Madrid", "España"),
  * devuelve una zona horaria IANA válida y segura (por defecto Europe/Madrid).
  */
+/**
+ * Redondea un número decimal de negocio a un máximo de dos decimales sin truncar,
+ * evitando errores de coma flotante.
+ */
+export function roundToTwoDecimals(val: number | null | undefined): number {
+  if (val === null || val === undefined || !Number.isFinite(val)) return 0;
+  return Math.round((val + Number.EPSILON) * 100) / 100;
+}
+
 export function sanitizeTimezone(tz?: string | null): string {
   if (!tz || typeof tz !== 'string') return 'Europe/Madrid';
   const trimmed = tz.trim();

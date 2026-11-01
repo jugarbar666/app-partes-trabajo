@@ -153,9 +153,9 @@ export interface Article {
   description: string;
   supplier_id: string | null;
   /** Céntimos de euro (solo visible para Administrador) */
-  purchase_price_cents?: number;
+  purchase_price_cents?: number | null;
   /** Céntimos de euro */
-  sale_price_cents: number;
+  sale_price_cents: number | null;
   unit: string;
   is_active: boolean;
   created_at: string;
@@ -386,8 +386,8 @@ export interface ShoppingRequest {
   article_id: string;
   supplier_id: string | null;
   /** Solo presente para Administrador */
-  purchase_price_cents?: number;
-  sale_price_cents: number;
+  purchase_price_cents?: number | null;
+  sale_price_cents: number | null;
   quantity: number | null;
   status: ShoppingStatus;
   requested_by: string;

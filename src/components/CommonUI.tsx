@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Calendar,
   Check,
+  Loader2,
 } from 'lucide-react';
 import {
   normalizePhoneLinks,
@@ -36,11 +37,15 @@ export interface SaveSummaryItem {
   value: string;
 }
 
-interface SaveConfirmModalState {
+export interface SaveProgressHelpers {
+  updateProgress?: (info: { current: number; total: number; message?: string }) => void;
+}
+
+export interface SaveConfirmModalState {
   title: string;
   changes: SaveSummaryItem[];
   warnings?: string[];
-  onConfirm: () => Promise<void> | void;
+  onConfirm: (helpers?: SaveProgressHelpers) => Promise<void> | void;
 }
 
 interface DeleteConfirmModalState {
@@ -76,6 +81,11 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
   const [deleteReason, setDeleteReason] = useState('');
   const [banner, setBanner] = useState<FeedbackBannerState | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progressInfo, setProgressInfo] = useState<{
+    current: number;
+    total: number;
+    message?: string;
+  } | null>(null);
 
   const notifySuccessGreen = useCallback((message: string) => {
     setBanner({ type: 'success_green', message });
@@ -92,6 +102,7 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
   }, [banner]);
 
   const requestSaveConfirmation = useCallback((params: SaveConfirmModalState) => {
+    setProgressInfo(null);
     setSaveModal(params);
   }, []);
 
@@ -103,14 +114,21 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
   const handleExecuteSave = async () => {
     if (!saveModal) return;
     setIsProcessing(true);
+    setProgressInfo(null);
     try {
-      await saveModal.onConfirm();
+      await saveModal.onConfirm({
+        updateProgress: (info) => {
+          setProgressInfo(info);
+        },
+      });
       setSaveModal(null);
+      setProgressInfo(null);
       // Confirmación con fondo verde SOLO tras persistencia correcta en servidor
       notifySuccessGreen('Datos guardados correctamente en el servidor.');
     } catch (err: any) {
       // No muestra éxito si falla; preserva datos del formulario tras un error
       setSaveModal(null);
+      setProgressInfo(null);
       notifyError(err?.message || 'Error al guardar en el servidor. Los datos del formulario se han conservado.');
     } finally {
       setIsProcessing(false);
@@ -216,25 +234,57 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
                   </div>
                 ))}
               </dl>
+
+              {/* Indicador de actividad y barra de progreso real durante el guardado / importación */}
+              {isProcessing && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2.5 my-2" data-testid="import-save-progress-box">
+                  <div className="flex items-center justify-between text-xs font-semibold text-blue-900">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                      {progressInfo?.message || 'Guardando registros en el servidor...'}
+                    </span>
+                    {progressInfo && progressInfo.total > 0 && (
+                      <span className="tabular-nums font-bold text-blue-700">
+                        Procesados {progressInfo.current} de {progressInfo.total} registros ({Math.min(100, Math.round((progressInfo.current / progressInfo.total) * 100))}%)
+                      </span>
+                    )}
+                  </div>
+                  {progressInfo && progressInfo.total > 0 && (
+                    <div className="w-full bg-blue-200/70 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-150 ease-out"
+                        style={{ width: `${Math.min(100, Math.max(3, Math.round((progressInfo.current / progressInfo.total) * 100)))}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 disabled={isProcessing}
-                onClick={() => setSaveModal(null)}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 text-sm font-medium"
+                onClick={() => {
+                  if (!isProcessing) {
+                    setSaveModal(null);
+                    setProgressInfo(null);
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 text-sm font-medium ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 Cancelar
               </button>
-              <button
-                type="button"
-                disabled={isProcessing}
-                data-testid="btn-confirm-save-summary"
-                onClick={handleExecuteSave}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs"
-              >
-                {isProcessing ? 'Guardando...' : 'Confirmar y Guardar'}
-              </button>
+              {/* Una vez iniciada la importación/guardado, oculta el botón «Aceptar» / «Confirmar y Guardar» para impedir nuevas confirmaciones */}
+              {!isProcessing && (
+                <button
+                  type="button"
+                  data-testid="btn-confirm-save-summary"
+                  onClick={handleExecuteSave}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs"
+                >
+                  Confirmar y Guardar
+                </button>
+              )}
             </div>
           </div>
         </div>

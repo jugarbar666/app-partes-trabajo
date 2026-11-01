@@ -26,3 +26,6 @@
   1. Está terminantemente prohibido modificar, añadir, borrar o regenerar datos de la base de datos por iniciativa propia.
   2. Solo se podrá tocar la base de datos si el usuario da una **orden expresa** para ello.
   3. Aun tras recibir la orden expresa del usuario, el agente **debe pedir confirmación explícita** al usuario detallando qué datos se van a tocar y **esperar a recibir dicha confirmación expresa** antes de ejecutar cualquier modificación sobre la base de datos.
+
+## 4. Obligación Permanente de Explicación Detallada ante Errores y Soluciones
+- Siempre que se detecte un error o se implemente una solución solicitada, se debe explicar de forma detallada y comprensible qué ocurría, cuál era la causa, qué se ha cambiado, cómo se ha verificado y qué medidas se han tomado para evitar que vuelva a ocurrir.

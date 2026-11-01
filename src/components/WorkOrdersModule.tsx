@@ -1135,6 +1135,8 @@ const WorkOrderDetailLoadedView: React.FC<{
     );
   }, [backend, rescheduleDateStr, assignments, wo.id]);
   const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleOpIds, setRescheduleOpIds] = useState<string[]>([]);
+  const [isSubmittingReschedule, setIsSubmittingReschedule] = useState(false);
 
   // Personal activo disponible para asignaciones (operarios y administradores)
   const activeOperators = useMemo(
@@ -1452,7 +1454,7 @@ const WorkOrderDetailLoadedView: React.FC<{
           article_name_snapshot: art.name,
           unit_snapshot: art.unit,
           quantity: qty,
-          unit_price_cents: art.sale_price_cents,
+          unit_price_cents: art.sale_price_cents ?? 0,
           notes: notesToSave,
         });
         setMatNotes('');
@@ -1701,7 +1703,10 @@ const WorkOrderDetailLoadedView: React.FC<{
                   <button
                     type="button"
                     data-testid="btn-reschedule-wo"
-                    onClick={() => setShowRescheduleModal(true)}
+                    onClick={() => {
+                    setRescheduleOpIds(assignments.filter((a) => a.is_active).map((a) => a.operator_id));
+                    setShowRescheduleModal(true);
+                  }}
                     className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                     title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora' : 'Reprogramar fecha y hora'}
                   >
@@ -1731,7 +1736,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                 title="Reasignar operarios al parte (Solo Administrador)"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>Reasignar</span>
+                <span>{assignments.length === 0 ? 'Asignar' : 'Reasignar'}</span>
               </button>
             )}
           </div>
@@ -3953,11 +3958,12 @@ const WorkOrderDetailLoadedView: React.FC<{
       {showRescheduleModal && (
         <div
           data-testid="modal-reschedule-work-order"
-          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
         >
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (isSubmittingReschedule) return;
               if (!rescheduleDateStr) {
                 notifyError('Debes indicar una fecha y hora prevista válida.');
                 return;
@@ -3975,53 +3981,36 @@ const WorkOrderDetailLoadedView: React.FC<{
                 ? rescheduleDateStr
                 : new Date(rescheduleDateStr).toISOString();
 
-              const reschedWarnings = rescheduleConflicts.map(
-                (c) =>
-                  `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at)} ${formatTimeES(c.scheduled_at)} h - ${c.customer_name}).`
-              );
-
-              requestSaveConfirmation({
-                title: 'Confirmar Reprogramación de Fecha y Hora Prevista',
-                warnings: reschedWarnings.length > 0 ? reschedWarnings : undefined,
-                changes: [
-                  { label: 'Parte de trabajo', value: wo.code },
-                  {
-                    label: 'Fecha/hora anterior',
-                    value: isWorkOrderUnscheduled(wo)
-                      ? 'Pendiente de programar'
-                      : `${formatDateES(wo.scheduled_at)} ${formatTimeES(wo.scheduled_at)} h`,
-                  },
-                  {
-                    label: 'Nueva fecha/hora prevista',
-                    value: `${formatDateES(isoTarget)} ${formatTimeES(isoTarget)} h`,
-                  },
-                  ...(rescheduleReason.trim()
-                    ? [{ label: 'Motivo', value: rescheduleReason.trim() }]
-                    : []),
-                ],
-                onConfirm: () => {
-                  try {
-                    backend.rescheduleWorkOrder({
-                      work_order_id: wo.id,
-                      scheduled_at: isoTarget,
-                      reason: rescheduleReason.trim() || undefined,
-                    });
-                    notifySuccessGreen(`Parte ${wo.code} reprogramado con éxito.`);
-                    setShowRescheduleModal(false);
-                    refreshLocal();
-                  } catch (err: any) {
-                    notifyError(err?.message || 'Error al reprogramar el parte.');
-                  }
-                },
-              });
+              try {
+                setIsSubmittingReschedule(true);
+                if (isAdmin) {
+                  backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+                    scheduled_at: isoTarget,
+                    operator_ids: rescheduleOpIds,
+                  });
+                } else {
+                  backend.rescheduleWorkOrder({
+                    work_order_id: wo.id,
+                    scheduled_at: isoTarget,
+                    reason: rescheduleReason.trim() || undefined,
+                  });
+                }
+                notifySuccessGreen(`Parte ${wo.code} programado con éxito.`);
+                setShowRescheduleModal(false);
+                refreshLocal();
+              } catch (err: any) {
+                notifyError(err?.message || 'Error al reprogramar el parte.');
+              } finally {
+                setIsSubmittingReschedule(false);
+              }
             }}
-            className="bg-white rounded-none sm:rounded-2xl max-w-md w-full h-full sm:h-auto overflow-y-auto p-5 sm:p-6 space-y-4 shadow-xl text-xs flex flex-col justify-between"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 text-xs flex flex-col justify-between my-auto"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-blue-600" />
                 <h3 className="font-extrabold text-sm text-slate-900">
-                  Reprogramar Fecha y Hora Prevista
+                  {isWorkOrderUnscheduled(wo) ? 'Programar Fecha, Hora y Operarios' : 'Reprogramar Fecha y Hora Prevista'}
                 </h3>
               </div>
               <button
@@ -4037,35 +4026,69 @@ const WorkOrderDetailLoadedView: React.FC<{
               Tanto administradores como operarios pueden reprogramar la cita prevista del parte {wo.code} en cualquier momento.
             </p>
 
+            {rescheduleConflicts.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-900 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Aviso de solapamiento horario en la cita prevista:</span>
+                </div>
+                {rescheduleConflicts.map((c, i) => (
+                  <p key={i} className="pl-5 text-amber-800">
+                    El operario <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
+                    <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
+                  </p>
+                ))}
+                <p className="pl-5 text-[11px] text-amber-700 italic">
+                  Este aviso es informativo. Puedes guardar la programación si deseas asignar ambos partes al operario.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nueva fecha y hora prevista *
+                Fecha y hora prevista de ejecución *
               </label>
-              <DateTimePickerField
-                value={rescheduleDateStr}
-                onChange={setRescheduleDateStr}
+              <input
+                type="datetime-local"
+                data-testid="input-reschedule-datetime"
                 required
-                testId="input-reschedule-datetime"
+                value={rescheduleDateStr}
+                onChange={(e) => setRescheduleDateStr(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium"
               />
             </div>
 
-            {rescheduleConflicts.length > 0 && (
-              <div
-                className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-xs text-amber-900"
-                data-testid="alert-reschedule-schedule-conflict"
-              >
-                <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Aviso de solapamiento (se permite reprogramar):</span>
+            {isAdmin && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Operarios asignados a este parte
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-medium">{rescheduleOpIds.length} seleccionado(s)</span>
                 </div>
-                <ul className="list-disc pl-5 space-y-0.5 text-[11px]">
-                  {rescheduleConflicts.map((c, i) => (
-                    <li key={i}>
-                      <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
-                      <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50">
+                  {activeOperators.map((op) => {
+                    const isChecked = rescheduleOpIds.includes(op.id);
+                    return (
+                      <label
+                        key={op.id}
+                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white text-xs cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) setRescheduleOpIds([...rescheduleOpIds, op.id]);
+                            else setRescheduleOpIds(rescheduleOpIds.filter((id) => id !== op.id));
+                          }}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="font-medium text-slate-800">{op.full_name}</span>
+                        <span className="text-[10px] text-slate-400 capitalize">({op.role})</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -4093,10 +4116,15 @@ const WorkOrderDetailLoadedView: React.FC<{
               </button>
               <button
                 type="submit"
+                disabled={isSubmittingReschedule}
                 data-testid="btn-submit-reschedule"
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
               >
-                Guardar Reprogramación
+                {isSubmittingReschedule
+                  ? 'Guardando...'
+                  : isWorkOrderUnscheduled(wo)
+                  ? 'Guardar Programación'
+                  : 'Guardar Reprogramación'}
               </button>
             </div>
           </form>

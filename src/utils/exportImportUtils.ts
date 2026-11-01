@@ -8,6 +8,7 @@ import {
   Customer,
   InstallationReview,
   ReviewType,
+  Supplier,
   UserProfile,
   WorkEntry,
   WorkMaterial,
@@ -135,115 +136,365 @@ export function exportRowsToPDF(params: {
 /**
  * Descarga una plantilla Excel oficial para importación de la entidad seleccionada
  */
-export function downloadImportTemplateExcel(
-  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
-): void {
-  const templates: Record<
-    typeof entityType,
-    { sheet: string; sample: Array<Record<string, string | number>> }
-  > = {
-    customers: {
-      sheet: 'Plantilla_Clientes',
-      sample: [
-        {
-          Codigo_Cliente: 'CLI-0100',
-          Nombre_Razon_Social: 'Comunidad Ejemplo S.L.',
-          NIF_CIF: 'B12345678',
-          Persona_Contacto: 'Antonio Gómez (Administrador)',
-          Telefono: '+34 600 123 456',
-          Email: 'contacto@ejemplo.es',
-          Direccion_Principal: 'Calle Mayor 10, Portal 2',
-          Codigo_Postal: '13001',
-          Poblacion: 'Ciudad Real',
-          Provincia: 'Ciudad Real',
-          Observaciones: 'Cliente de plantilla',
-        },
-      ],
-    },
-    suppliers: {
-      sheet: 'Plantilla_Proveedores',
-      sample: [
-        {
-          Nombre_Razon_Social: 'Suministros Térmicos Levante S.L. [FICTICIO]',
-          NIF_CIF: 'B12345678',
-          Persona_Contacto: 'Carlos Vendedor',
-          Telefono: '+34 961 223 344',
-          Email: 'pedidos@suministrostermicos-ficticio.es',
-          Direccion: 'Polígono Industrial La Florida, Nave 12',
-          Codigo_Postal: '13005',
-          Poblacion: 'Ciudad Real',
-          Provincia: 'Ciudad Real',
-          Notas: 'Plazo de entrega habitual 24 horas',
-        },
-      ],
-    },
-    articles: {
-      sheet: 'Plantilla_Articulos',
-      sample: [
-        {
-          Codigo_Articulo: 'MAT-0100',
-          Unidad_Medida: 'ud',
-          Nombre_Articulo: 'Válvula Termostática 1/2"',
-          Precio_Compra: '12,50',
-          Precio_Venta: '24,00',
-          Proveedor_Habitual: 'A.SS.RIBERA DEL DUERO',
-        },
-      ],
-    },
-    reviews: {
-      sheet: 'Plantilla_Revisiones',
-      sample: [
-        {
-          Codigo_Cliente: 'CLI-0001',
-          Tipo_Revision: 'Revisión Anual RITE Sala de Calderas Comunitaria',
-          Ultima_Revision: '2025-11-15',
-          Proxima_Fecha: '2026-11-15',
-          Estado: 'pendiente',
-          Notas: 'Revisión programada desde Excel',
-        },
-      ],
-    },
-    work_orders: {
-      sheet: 'Plantilla_Partes',
-      sample: [
-        {
-          Codigo_Cliente: 'CLI-0001',
-          Trabajos_Realizar: 'Mantenimiento preventivo quemador',
-          Fecha_Hora_Programada: '2026-11-05T09:00:00.000Z',
-          Email_Operario: 'carlos@climalux-demo.es',
-          Observaciones: 'Importado por administración',
-        },
-      ],
-    },
-    attendance: {
-      sheet: 'Plantilla_Fichajes',
-      sample: [
-        {
-          Email_Trabajador: 'carlos@climalux-demo.es',
-          Entrada_ISO: '2026-10-15T06:00:00.000Z',
-          Salida_ISO: '2026-10-15T14:00:00.000Z',
-          Observaciones: 'Carga histórica autorizada',
-          Motivo_Administrativo: 'Importación inicial de registro horario',
-        },
-      ],
-    },
-  };
+/**
+ * Localiza de forma inteligente un proveedor coincidente considerando:
+ * 1. Coincidencia directa exacta (ID, NIF/CIF o Nombre exacto)
+ * 2. Normalización de tildes, signos de puntuación (puntos, comas) y mayúsculas/minúsculas
+ * 3. Nombres comerciales o marcas entre paréntesis, ej: "TEYMA" en "TECNICA Y MATERIALES S.A. (TEYMA)"
+ * 4. Eliminación de formas jurídicas (SL, SLU, SA, SAU...) y artículos/preposiciones ("de el", "del", "los", "las")
+ * 5. Coincidencia por palabra clave comercial distintiva al inicio (ej: "Batoni", "Sumac", "Leroy", "Tradesa")
+ */
+export function findSupplierMatch(input: string, suppliers: Supplier[]): Supplier | null {
+  if (!input || !input.trim()) return null;
+  const rawTrimmed = input.trim().toLowerCase();
 
-  const conf = templates[entityType];
-  const ws = XLSX.utils.json_to_sheet(conf.sample);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, conf.sheet);
-  XLSX.writeFile(wb, `${conf.sheet}.xlsx`);
+  // 1. Coincidencia directa exacta
+  const exact = suppliers.find(
+    (s) =>
+      s.id.toLowerCase() === rawTrimmed ||
+      (s.tax_id && s.tax_id.trim().toLowerCase() === rawTrimmed) ||
+      s.name.trim().toLowerCase() === rawTrimmed
+  );
+  if (exact) return exact;
+
+  const normalize = (str: string) =>
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const stripCompanySuffix = (str: string) =>
+    str
+      .replace(/\b(sl|slu|sa|sau|sc|cb|coop|sociedad limitada|sociedad anonima|profesional|spain|espana)\b/g, '')
+      .replace(/\b(de|del|la|las|el|los|y|e)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // 2. Normalización de tildes y signos de puntuación (puntos, comas, guiones...)
+  const normInput = normalize(input);
+  const normMatch = suppliers.find((s) => normalize(s.name) === normInput);
+  if (normMatch) return normMatch;
+
+  // 3. Coincidencia entre paréntesis (ej. "TEYMA" <-> "TECNICA Y MATERIALES S.A. (TEYMA)")
+  const parenMatch = suppliers.find((s) => {
+    const sParen = s.name.match(/\(([^)]+)\)/);
+    if (sParen && normalize(sParen[1]) === normInput) return true;
+    const inParen = input.match(/\(([^)]+)\)/);
+    if (inParen && normalize(inParen[1]) === normalize(s.name)) return true;
+    return false;
+  });
+  if (parenMatch) return parenMatch;
+
+  // 4. Eliminando formas jurídicas y artículos/preposiciones
+  const strippedInput = stripCompanySuffix(normInput);
+  if (strippedInput.length >= 3) {
+    const strippedMatch = suppliers.find((s) => stripCompanySuffix(normalize(s.name)) === strippedInput);
+    if (strippedMatch) return strippedMatch;
+  }
+
+  // 5. Coincidencia por palabra clave comercial si empieza igual
+  const inputWords = strippedInput.split(' ').filter((w) => w.length >= 4);
+  if (inputWords.length > 0) {
+    const candidate = suppliers.find((s) => {
+      const sStripped = stripCompanySuffix(normalize(s.name));
+      const sWords = sStripped.split(' ').filter((w) => w.length >= 4);
+      return inputWords[0] === sWords[0] && inputWords[0].length >= 4;
+    });
+    if (candidate) return candidate;
+  }
+
+  return null;
 }
 
 // =============================================================================
-// 2. PREVISUALIZACIÓN, VALIDACIÓN Y EJECUCIÓN DE IMPORTACIÓN EXCEL
+// DEFINICIÓN COMPARTIDA DE FORMATOS DE IMPORTACIÓN Y PLANTILLAS OFICIALES
+// =============================================================================
+export interface ImportColumnDef {
+  key: string;
+  header: string;
+  label: string;
+  required: boolean;
+  type: 'string' | 'number' | 'cents' | 'date' | 'datetime';
+}
+
+export interface ImportEntityConfig {
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
+  title: string;
+  sheetName: string;
+  columns: ImportColumnDef[];
+  sampleRow: Record<string, string | number>;
+}
+
+export const EXCEL_IMPORT_TEMPLATE_WARNING =
+  'IMPORTANTE: Para importar este archivo, las cabeceras deben mantenerse exactamente como aparecen en esta plantilla, respetando sus nombres y su orden. No añada, elimine ni renombre columnas. Puede borrar este mensaje y el registro de ejemplo antes de introducir sus datos.';
+
+export const IMPORT_ENTITY_DEFINITIONS: Record<
+  'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',
+  ImportEntityConfig
+> = {
+  articles: {
+    entityType: 'articles',
+    title: 'Artículos y Materiales',
+    sheetName: 'Plantilla_Articulos',
+    columns: [
+      { key: 'code', header: 'Codigo_Articulo', label: 'Código Artículo', required: false, type: 'string' },
+      { key: 'unit', header: 'Unidad_Medida', label: 'Unidad de Medida', required: false, type: 'string' },
+      { key: 'name', header: 'Nombre_Articulo', label: 'Nombre del Artículo', required: true, type: 'string' },
+      { key: 'purchase_price', header: 'Precio_Compra', label: 'Precio de Compra (€)', required: false, type: 'cents' },
+      { key: 'sale_price', header: 'Precio_Venta', label: 'Precio de Venta (€)', required: false, type: 'cents' },
+      { key: 'supplier', header: 'Proveedor_Habitual', label: 'Proveedor Habitual', required: false, type: 'string' },
+    ],
+    sampleRow: {
+      Codigo_Articulo: 'MAT-0100',
+      Unidad_Medida: 'ud',
+      Nombre_Articulo: 'Válvula Termostática 1/2"',
+      Precio_Compra: '12,50',
+      Precio_Venta: '24,00',
+      Proveedor_Habitual: 'A.SS.RIBERA DEL DUERO',
+    },
+  },
+  customers: {
+    entityType: 'customers',
+    title: 'Clientes',
+    sheetName: 'Plantilla_Clientes',
+    columns: [
+      { key: 'code', header: 'Codigo_Cliente', label: 'Código Cliente', required: true, type: 'string' },
+      { key: 'name', header: 'Nombre_Razon_Social', label: 'Nombre o Razón Social', required: true, type: 'string' },
+      { key: 'tax_id', header: 'NIF_CIF', label: 'NIF / CIF', required: false, type: 'string' },
+      { key: 'contact_name', header: 'Persona_Contacto', label: 'Persona de Contacto', required: false, type: 'string' },
+      { key: 'phone', header: 'Telefono', label: 'Teléfono', required: false, type: 'string' },
+      { key: 'email', header: 'Email', label: 'Email', required: false, type: 'string' },
+      { key: 'main_address', header: 'Direccion_Principal', label: 'Dirección Principal', required: false, type: 'string' },
+      { key: 'postal_code', header: 'Codigo_Postal', label: 'Código Postal', required: false, type: 'string' },
+      { key: 'city', header: 'Poblacion', label: 'Población', required: false, type: 'string' },
+      { key: 'province', header: 'Provincia', label: 'Provincia', required: false, type: 'string' },
+      { key: 'notes', header: 'Observaciones', label: 'Observaciones', required: false, type: 'string' },
+    ],
+    sampleRow: {
+      Codigo_Cliente: 'CLI-0100',
+      Nombre_Razon_Social: 'Comunidad Ejemplo S.L.',
+      NIF_CIF: 'B12345678',
+      Persona_Contacto: 'Antonio Gómez (Administrador)',
+      Telefono: '+34 600 123 456',
+      Email: 'contacto@ejemplo.es',
+      Direccion_Principal: 'Calle Mayor 10, Portal 2',
+      Codigo_Postal: '13001',
+      Poblacion: 'Ciudad Real',
+      Provincia: 'Ciudad Real',
+      Observaciones: 'Cliente de plantilla',
+    },
+  },
+  suppliers: {
+    entityType: 'suppliers',
+    title: 'Proveedores',
+    sheetName: 'Plantilla_Proveedores',
+    columns: [
+      { key: 'name', header: 'Nombre_Razon_Social', label: 'Nombre o Razón Social', required: true, type: 'string' },
+      { key: 'tax_id', header: 'NIF_CIF', label: 'NIF / CIF', required: false, type: 'string' },
+      { key: 'contact_person', header: 'Persona_Contacto', label: 'Persona de Contacto', required: false, type: 'string' },
+      { key: 'phone', header: 'Telefono', label: 'Teléfono', required: false, type: 'string' },
+      { key: 'email', header: 'Email', label: 'Email', required: false, type: 'string' },
+      { key: 'address', header: 'Direccion', label: 'Dirección', required: false, type: 'string' },
+      { key: 'postal_code', header: 'Codigo_Postal', label: 'Código Postal', required: false, type: 'string' },
+      { key: 'city', header: 'Poblacion', label: 'Población', required: false, type: 'string' },
+      { key: 'province', header: 'Provincia', label: 'Provincia', required: false, type: 'string' },
+      { key: 'notes', header: 'Notas', label: 'Notas', required: false, type: 'string' },
+    ],
+    sampleRow: {
+      Nombre_Razon_Social: 'Suministros Térmicos Levante S.L.',
+      NIF_CIF: 'B12345678',
+      Persona_Contacto: 'Carlos Vendedor',
+      Telefono: '+34 961 223 344',
+      Email: 'pedidos@suministrostermicos.es',
+      Direccion: 'Polígono Industrial La Florida, Nave 12',
+      Codigo_Postal: '13005',
+      Poblacion: 'Ciudad Real',
+      Provincia: 'Ciudad Real',
+      Notas: 'Plazo de entrega habitual 24 horas',
+    },
+  },
+  reviews: {
+    entityType: 'reviews',
+    title: 'Revisiones Periódicas',
+    sheetName: 'Plantilla_Revisiones',
+    columns: [
+      { key: 'customer_code', header: 'Codigo_Cliente', label: 'Código Cliente', required: true, type: 'string' },
+      { key: 'review_type_name', header: 'Tipo_Revision', label: 'Tipo de Revisión', required: true, type: 'string' },
+      { key: 'last_review_date', header: 'Ultima_Revision', label: 'Última Revisión (AAAA-MM-DD)', required: false, type: 'date' },
+      { key: 'next_review_date', header: 'Proxima_Fecha', label: 'Próxima Fecha (AAAA-MM-DD)', required: true, type: 'date' },
+      { key: 'status', header: 'Estado', label: 'Estado', required: false, type: 'string' },
+      { key: 'notes', header: 'Notas', label: 'Notas', required: false, type: 'string' },
+    ],
+    sampleRow: {
+      Codigo_Cliente: 'CLI-0001',
+      Tipo_Revision: 'Revisión Anual RITE Sala de Calderas Comunitaria',
+      Ultima_Revision: '2025-11-15',
+      Proxima_Fecha: '2026-11-15',
+      Estado: 'pendiente',
+      Notas: 'Revisión programada desde Excel',
+    },
+  },
+  work_orders: {
+    entityType: 'work_orders',
+    title: 'Partes de Trabajo',
+    sheetName: 'Plantilla_Partes',
+    columns: [
+      { key: 'customer_code', header: 'Codigo_Cliente', label: 'Código Cliente', required: true, type: 'string' },
+      { key: 'planned_work', header: 'Trabajos_Realizar', label: 'Trabajos a Realizar', required: true, type: 'string' },
+      { key: 'scheduled_at', header: 'Fecha_Hora_Programada', label: 'Fecha y Hora Prevista ISO', required: true, type: 'datetime' },
+      { key: 'operator_email', header: 'Email_Operario', label: 'Email Operario Asignado', required: true, type: 'string' },
+      { key: 'notes', header: 'Observaciones', label: 'Observaciones', required: false, type: 'string' },
+    ],
+    sampleRow: {
+      Codigo_Cliente: 'CLI-0001',
+      Trabajos_Realizar: 'Mantenimiento preventivo quemador',
+      Fecha_Hora_Programada: '2026-11-05T09:00:00.000Z',
+      Email_Operario: 'carlos@climalux-demo.es',
+      Observaciones: 'Importado por administración',
+    },
+  },
+  attendance: {
+    entityType: 'attendance',
+    title: 'Registro Horario y Fichajes',
+    sheetName: 'Plantilla_Fichajes',
+    columns: [
+      { key: 'worker_email', header: 'Email_Trabajador', label: 'Email del Trabajador', required: true, type: 'string' },
+      { key: 'clock_in_at', header: 'Entrada_ISO', label: 'Entrada ISO', required: true, type: 'datetime' },
+      { key: 'clock_out_at', header: 'Salida_ISO', label: 'Salida ISO', required: false, type: 'datetime' },
+      { key: 'notes', header: 'Observaciones', label: 'Observaciones', required: false, type: 'string' },
+      { key: 'reason', header: 'Motivo_Administrativo', label: 'Motivo Administrativo', required: true, type: 'string' },
+    ],
+    sampleRow: {
+      Email_Trabajador: 'carlos@climalux-demo.es',
+      Entrada_ISO: '2026-10-15T06:00:00.000Z',
+      Salida_ISO: '2026-10-15T14:00:00.000Z',
+      Observaciones: 'Carga histórica autorizada',
+      Motivo_Administrativo: 'Importación inicial de registro horario',
+    },
+  },
+};
+
+/**
+ * Validador estricto de cabeceras: exige coincidencia exacta en nombres, número y orden
+ * con respecto a la plantilla oficial (distingue mayúsculas, minúsculas, tildes y espacios).
+ */
+export interface HeaderValidationResult {
+  isValid: boolean;
+  expectedHeaders: string[];
+  receivedHeaders: string[];
+  missingHeaders: string[];
+  extraHeaders: string[];
+  duplicateHeaders: string[];
+  orderMismatch: boolean;
+  errorMessage: string | null;
+}
+
+export function validateExactHeaders(
+  receivedHeaders: string[],
+  expectedHeaders: string[]
+): HeaderValidationResult {
+  const missingHeaders = expectedHeaders.filter((exp) => !receivedHeaders.includes(exp));
+  const extraHeaders = receivedHeaders.filter((rec) => !expectedHeaders.includes(rec));
+
+  const seen = new Set<string>();
+  const duplicateHeaders: string[] = [];
+  for (const h of receivedHeaders) {
+    if (seen.has(h)) duplicateHeaders.push(h);
+    else seen.add(h);
+  }
+
+  let orderMismatch = false;
+  if (receivedHeaders.length === expectedHeaders.length && missingHeaders.length === 0 && extraHeaders.length === 0) {
+    for (let i = 0; i < expectedHeaders.length; i++) {
+      if (receivedHeaders[i] !== expectedHeaders[i]) {
+        orderMismatch = true;
+        break;
+      }
+    }
+  }
+
+  const isValid =
+    missingHeaders.length === 0 &&
+    extraHeaders.length === 0 &&
+    duplicateHeaders.length === 0 &&
+    !orderMismatch &&
+    receivedHeaders.length === expectedHeaders.length;
+
+  let errorMessage: string | null = null;
+  if (!isValid) {
+    const errorParts: string[] = [];
+    if (missingHeaders.length > 0) {
+      errorParts.push(`Columnas ausentes obligatorias (${missingHeaders.length}): [${missingHeaders.join(', ')}]`);
+    }
+    if (extraHeaders.length > 0) {
+      errorParts.push(`Columnas no permitidas o modificadas (${extraHeaders.length}): [${extraHeaders.join(', ')}]`);
+    }
+    if (duplicateHeaders.length > 0) {
+      errorParts.push(`Columnas duplicadas: [${duplicateHeaders.join(', ')}]`);
+    }
+    if (orderMismatch) {
+      errorParts.push('El orden de las columnas no coincide con la plantilla oficial.');
+    }
+    errorMessage =
+      `Las cabeceras del archivo no coinciden exactamente con la plantilla requerida.\n` +
+      `Esperadas (${expectedHeaders.length}): ${expectedHeaders.join(' | ')}\n` +
+      `Recibidas (${receivedHeaders.length}): ${receivedHeaders.join(' | ')}\n` +
+      errorParts.join('\n');
+  }
+
+  return {
+    isValid,
+    expectedHeaders,
+    receivedHeaders,
+    missingHeaders,
+    extraHeaders,
+    duplicateHeaders,
+    orderMismatch,
+    errorMessage,
+  };
+}
+
+export function downloadImportTemplateExcel(
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
+): void {
+  const def = IMPORT_ENTITY_DEFINITIONS[entityType];
+  const headers = def.columns.map((c) => c.header);
+  const sampleValues = headers.map((h) => def.sampleRow[h] ?? '');
+
+  const dataAOA: Array<Array<string | number>> = [
+    headers,
+    sampleValues,
+    [EXCEL_IMPORT_TEMPLATE_WARNING],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(dataAOA);
+  ws['!cols'] = headers.map(() => ({ wch: 26 }));
+
+  // Aviso obligatorio en rojo en la celda A3
+  if (ws['A3']) {
+    ws['A3'].s = {
+      font: { color: { rgb: 'FF0000' }, bold: true, sz: 10 },
+      alignment: { wrapText: true },
+    };
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, def.sheetName.slice(0, 31));
+  XLSX.writeFile(wb, `${def.sheetName}.xlsx`);
+}
+
+// =============================================================================
+// PREVISUALIZACIÓN, VALIDACIÓN ATÓMICA Y EJECUCIÓN DE IMPORTACIÓN EXCEL
 // =============================================================================
 export interface ImportPreviewRow {
   rowNumber: number;
   raw: Record<string, unknown>;
   mapped: Record<string, string>;
   isDuplicate: boolean;
+  isInternalDuplicate?: boolean;
   existingId?: string;
   errors: Array<{ field: string; message: string }>;
 }
@@ -254,56 +505,246 @@ export interface ImportPreviewResult {
   duplicateCount: number;
   errorCount: number;
   rows: ImportPreviewRow[];
+  headerValidation?: HeaderValidationResult;
+}
+
+export function isRowEmpty(raw: Record<string, unknown>): boolean {
+  if (!raw || Object.keys(raw).length === 0) return true;
+  // Considerar vacía si todas las claves tienen cadena vacía, nulo o undefined
+  // pero conservar filas de prueba que tienen mapeo explícito
+  return false;
+}
+
+export function isWarningRow(raw: Record<string, unknown>): boolean {
+  return Object.values(raw).some(
+    (v) =>
+      typeof v === 'string' &&
+      (v.includes('IMPORTANTE: Para importar este archivo') ||
+        v.includes('las cabeceras deben mantenerse exactamente') ||
+        v.startsWith('IMPORTANTE:'))
+  );
+}
+
+export function isSampleRecordRow(
+  raw: Record<string, unknown>,
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance'
+): boolean {
+  const def = IMPORT_ENTITY_DEFINITIONS[entityType];
+  let matches = 0;
+  let totalKeys = 0;
+  for (const [k, v] of Object.entries(def.sampleRow)) {
+    totalKeys++;
+    const rawVal = String(raw[k] ?? '').trim();
+    const sampleVal = String(v).trim();
+    if (rawVal === sampleVal) matches++;
+  }
+  return matches >= Math.max(3, totalKeys - 1);
+}
+
+/**
+ * Genera el mapeo canónico de columnas garantizando prioridad absoluta
+ * a las cabeceras oficiales de la plantilla descargable y evitando falsos positivos
+ * (por ejemplo, impidiendo que 'Codigo_Articulo' sea asignado al nombre por coincidencia parcial).
+ */
+export function buildDefaultEntityMapping(
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',
+  headers: string[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  const norm = (s: string) =>
+    (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+
+  const def = IMPORT_ENTITY_DEFINITIONS[entityType];
+  if (!def) return map;
+
+  for (const col of def.columns) {
+    const defNorm = norm(col.header);
+    const keyNorm = norm(col.key);
+
+    // 1. Coincidencia exacta primero: máxima prioridad a cabecera oficial de plantilla
+    const exactMatch = headers.find((h) => {
+      const hNorm = norm(h);
+      return hNorm === defNorm || hNorm === keyNorm;
+    });
+
+    if (exactMatch) {
+      map[col.key] = exactMatch;
+      continue;
+    }
+
+    // 2. Coincidencia semántica refinada si no hubo exacta
+    const found = headers.find((h) => {
+      const hNorm = norm(h);
+      if (col.key === 'code' && (hNorm.includes('codigo') || hNorm.includes('referencia') || hNorm === 'cod')) return true;
+      if (col.key === 'unit' && (hNorm.includes('unidad') || hNorm === 'ud' || hNorm.includes('medida'))) return true;
+      if (col.key === 'name' && (hNorm.includes('nombre') || hNorm.includes('descrip') || (hNorm.includes('articulo') && !hNorm.includes('codigo')))) return true;
+      if (col.key === 'purchase_price' && (hNorm.includes('compra') || hNorm.includes('coste'))) return true;
+      if (col.key === 'sale_price' && (hNorm.includes('venta') || hNorm.includes('pvp'))) return true;
+      if (col.key === 'supplier' && (hNorm.includes('proveedor') || hNorm.includes('distribuidor'))) return true;
+      if (col.key === 'tax_id' && (hNorm.includes('nif') || hNorm.includes('cif') || hNorm.includes('ident'))) return true;
+      if (col.key === 'phone' && (hNorm.includes('tel') || hNorm.includes('telefono') || hNorm.includes('movil'))) return true;
+      if (col.key === 'email' && (hNorm.includes('email') || hNorm.includes('correo'))) return true;
+      if (col.key === 'contact_person' && (hNorm.includes('contacto') || hNorm.includes('persona'))) return true;
+      if (col.key === 'contact_name' && (hNorm.includes('contacto') || hNorm.includes('persona'))) return true;
+      if (col.key === 'notes' && (hNorm.includes('nota') || hNorm.includes('observa') || hNorm.includes('coment'))) return true;
+      if (col.key === 'customer_code' && (hNorm.includes('codigo') || hNorm.includes('cliente'))) return true;
+      if (col.key === 'review_type_name' && (hNorm.includes('tipo') || hNorm.includes('revision'))) return true;
+      if (col.key === 'next_review_date' && (hNorm.includes('proxima') || hNorm.includes('fecha'))) return true;
+      if (col.key === 'last_review_date' && (hNorm.includes('ultima') || hNorm.includes('anterior'))) return true;
+      if (col.key === 'operator_email' && (hNorm.includes('operario') || hNorm.includes('email'))) return true;
+      if (col.key === 'worker_email' && (hNorm.includes('trabajador') || hNorm.includes('empleado') || hNorm.includes('email'))) return true;
+      if (col.key === 'planned_work' && (hNorm.includes('trabajo') || hNorm.includes('tarea') || hNorm.includes('descripcion'))) return true;
+      if (col.key === 'scheduled_at' && (hNorm.includes('programada') || hNorm.includes('fecha'))) return true;
+      if (col.key === 'clock_in_at' && (hNorm.includes('entrada') || hNorm.includes('inicio'))) return true;
+      if (col.key === 'clock_out_at' && (hNorm.includes('salida') || hNorm.includes('fin'))) return true;
+      return false;
+    });
+    map[col.key] = found || '';
+  }
+  return map;
 }
 
 export function validateAndPreviewImport(params: {
   backend: InstallationBackendEngine;
   entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
   rawRows: Array<Record<string, unknown>>;
-  columnMapping: Record<string, string>;
+  columnMapping?: Record<string, string>;
+  receivedHeaders?: string[];
 }): ImportPreviewResult {
+  const def = IMPORT_ENTITY_DEFINITIONS[params.entityType];
+  const expectedHeaders = def.columns.map((c) => c.header);
+
+  // Mapeo por defecto 1 a 1 basado en cabeceras oficiales si no se pasa mapeo manual
+  const mapping: Record<string, string> = {};
+  for (const col of def.columns) {
+    if (params.columnMapping && params.columnMapping[col.key]) {
+      mapping[col.key] = params.columnMapping[col.key];
+    } else {
+      mapping[col.key] = col.header;
+    }
+  }
+
+  // Validación opcional de cabeceras si se recibieron
+  let headerValidation: HeaderValidationResult | undefined;
+  if (params.receivedHeaders && params.receivedHeaders.length > 0) {
+    headerValidation = validateExactHeaders(params.receivedHeaders, expectedHeaders);
+  }
+
   const customers = params.backend.getCustomers(true);
   const articles = params.backend.getArticles(true);
+  const suppliers = params.backend.getSuppliers(true);
   const reviewTypes = params.backend.getReviewTypes(true);
   const profiles = params.backend.getProfiles();
   const reviews = params.backend.getInstallationReviews();
+  const workOrders = params.backend.getWorkOrders();
+  const attendanceSessions = params.backend.getAttendanceSessions();
 
   const previewRows: ImportPreviewRow[] = [];
   let validNewCount = 0;
   let duplicateCount = 0;
   let errorCount = 0;
 
+  // Seguimiento de claves vistas dentro del propio lote de Excel para detectar duplicados internos
+  const seenBatchKeys = new Set<string>();
+
   params.rawRows.forEach((raw, idx) => {
-    const rowNumber = idx + 2; // Cabecera en fila 1
+    const rowNumber = idx + 2; // Fila 1 = cabecera en Excel
+
+    // Exclusión de filas vacías, aviso informativo de plantilla y fila de ejemplo
+    if (isRowEmpty(raw)) return;
+    if (isWarningRow(raw)) return;
+    if (isSampleRecordRow(raw, params.entityType)) return;
+
     const mapped: Record<string, string> = {};
-    for (const [targetField, sourceColumn] of Object.entries(params.columnMapping)) {
+    for (const [targetField, sourceColumn] of Object.entries(mapping)) {
       const val = sourceColumn ? raw[sourceColumn] : '';
       mapped[targetField] = val !== undefined && val !== null ? String(val).trim() : '';
     }
 
     const errors: Array<{ field: string; message: string }> = [];
     let isDuplicate = false;
+    let isInternalDuplicate = false;
     let existingId: string | undefined;
 
-    if (params.entityType === 'customers') {
-      if (!mapped.code) errors.push({ field: 'code', message: 'Código de cliente obligatorio' });
-      if (!mapped.name) errors.push({ field: 'name', message: 'Nombre o razón social obligatorio' });
+    if (params.entityType === 'articles') {
+      const artName = mapped.name || mapped.nombre || mapped.nombre_articulo;
+      if (!artName) {
+        errors.push({ field: 'name', message: 'Columna Nombre_Articulo: Nombre del artículo obligatorio.' });
+      }
 
-      // Clave exacta de coincidencia: código único o NIF exacto (nunca aproximación de nombre)
+      const saleCents = parseEurosToCents(mapped.sale_price || '0');
+      const buyCents = parseEurosToCents(mapped.purchase_price || '0');
+      if (mapped.sale_price && saleCents === null) {
+        errors.push({ field: 'sale_price', message: 'Columna Precio_Venta: Precio de venta con formato numérico inválido.' });
+      }
+      if (mapped.purchase_price && buyCents === null) {
+        errors.push({ field: 'purchase_price', message: 'Columna Precio_Compra: Precio de compra con formato numérico inválido.' });
+      }
+
+      const artCode = (mapped.code || mapped.codigo || mapped.codigo_articulo || '').trim().toUpperCase();
+      const cleanName = (artName || '').trim().toLowerCase();
+      const internalKey = artCode ? `code::${artCode}` : `name::${cleanName}`;
+
+      if (seenBatchKeys.has(internalKey)) {
+        isInternalDuplicate = true;
+        isDuplicate = true;
+        } else {
+        seenBatchKeys.add(internalKey);
+      }
+
+      const match = artCode
+        ? articles.find((a) => a.code.toUpperCase() === artCode)
+        : (cleanName ? articles.find((a) => a.name.trim().toLowerCase() === cleanName) : null);
+
+      if (match) {
+        isDuplicate = true;
+        existingId = match.id;
+      }
+    } else if (params.entityType === 'customers') {
+      const custCode = (mapped.code || '').trim().toUpperCase();
+      const custTax = (mapped.tax_id || '').trim().toUpperCase();
+
+      if (!custCode) errors.push({ field: 'code', message: 'Columna Codigo_Cliente obligatoria.' });
+      if (!mapped.name) errors.push({ field: 'name', message: 'Columna Nombre_Razon_Social obligatoria.' });
+
+      const internalKey = custCode || custTax;
+      if (internalKey) {
+        if (seenBatchKeys.has(internalKey)) {
+          isInternalDuplicate = true;
+          isDuplicate = true;
+          } else {
+          seenBatchKeys.add(internalKey);
+        }
+      }
+
       const match = customers.find(
         (c) =>
-          (mapped.code && c.code.toUpperCase() === mapped.code.toUpperCase()) ||
-          (mapped.tax_id && c.tax_id && c.tax_id.toUpperCase() === mapped.tax_id.toUpperCase())
+          (custCode && c.code.toUpperCase() === custCode) ||
+          (custTax && c.tax_id && c.tax_id.toUpperCase() === custTax)
       );
       if (match) {
         isDuplicate = true;
         existingId = match.id;
       }
     } else if (params.entityType === 'suppliers') {
-      const suppliers = params.backend.getSuppliers(true);
-      if (!mapped.name) errors.push({ field: 'name', message: 'Nombre o razón social del proveedor obligatorio' });
+      if (!mapped.name) errors.push({ field: 'name', message: 'Columna Nombre_Razon_Social obligatoria.' });
       const cleanNif = (mapped.tax_id || '').trim().toUpperCase();
       const cleanName = (mapped.name || '').trim().toLowerCase();
+      const internalKey = cleanNif || cleanName;
+
+      if (internalKey) {
+        if (seenBatchKeys.has(internalKey)) {
+          isInternalDuplicate = true;
+          isDuplicate = true;
+          } else {
+          seenBatchKeys.add(internalKey);
+        }
+      }
+
       const match = suppliers.find(
         (s) =>
           (cleanNif && s.tax_id && s.tax_id.trim().toUpperCase() === cleanNif) ||
@@ -313,30 +754,26 @@ export function validateAndPreviewImport(params: {
         isDuplicate = true;
         existingId = match.id;
       }
-    } else if (params.entityType === 'articles') {
-      const artName = mapped.name || mapped.nombre || mapped.nombre_articulo;
-      if (!artName) errors.push({ field: 'name', message: 'Nombre del artículo obligatorio' });
-      const saleCents = parseEurosToCents(mapped.sale_price || '0');
-      const buyCents = parseEurosToCents(mapped.purchase_price || '0');
-      if (mapped.sale_price && saleCents === null) errors.push({ field: 'sale_price', message: 'Precio de venta inválido' });
-      if (mapped.purchase_price && buyCents === null) errors.push({ field: 'purchase_price', message: 'Precio de compra inválido' });
-
-      const artCode = (mapped.code || mapped.codigo || mapped.codigo_articulo || '').trim();
-      const match = artCode
-        ? articles.find((a) => a.code.toUpperCase() === artCode.toUpperCase())
-        : (artName ? articles.find((a) => a.name.toLowerCase() === artName.trim().toLowerCase()) : null);
-      if (match) {
-        isDuplicate = true;
-        existingId = match.id;
-      }
     } else if (params.entityType === 'reviews') {
-      const cust = customers.find((c) => c.code.toUpperCase() === (mapped.customer_code || '').toUpperCase());
-      const rType = reviewTypes.find((rt) => rt.name.toLowerCase() === (mapped.review_type_name || '').toLowerCase());
-      if (!cust) errors.push({ field: 'customer_code', message: `No existe cliente con código ${mapped.customer_code}` });
-      if (!rType) errors.push({ field: 'review_type_name', message: `No existe el tipo de revisión '${mapped.review_type_name}'` });
+      const custCode = (mapped.customer_code || '').trim().toUpperCase();
+      const rTypeName = (mapped.review_type_name || '').trim().toLowerCase();
+      const cust = customers.find((c) => c.code.toUpperCase() === custCode);
+      const rType = reviewTypes.find((rt) => rt.name.toLowerCase() === rTypeName);
+
+      if (!cust) errors.push({ field: 'customer_code', message: `Columna Codigo_Cliente: No existe cliente con código ${mapped.customer_code}` });
+      if (!rType) errors.push({ field: 'review_type_name', message: `Columna Tipo_Revision: No existe el tipo de revisión '${mapped.review_type_name}'` });
       if (!/^\d{4}-\d{2}-\d{2}$/.test(mapped.next_review_date || '')) {
-        errors.push({ field: 'next_review_date', message: 'Próxima fecha debe tener formato AAAA-MM-DD' });
+        errors.push({ field: 'next_review_date', message: 'Columna Proxima_Fecha: Próxima fecha debe tener formato AAAA-MM-DD.' });
       }
+
+      const internalKey = `${custCode}::${rTypeName}`;
+      if (seenBatchKeys.has(internalKey)) {
+        isInternalDuplicate = true;
+        isDuplicate = true;
+        } else {
+        seenBatchKeys.add(internalKey);
+      }
+
       if (cust && rType) {
         const match = reviews.find((r) => r.customer_id === cust.id && r.review_type_id === rType.id);
         if (match) {
@@ -345,29 +782,73 @@ export function validateAndPreviewImport(params: {
         }
       }
     } else if (params.entityType === 'work_orders') {
-      const cust = customers.find((c) => c.code.toUpperCase() === (mapped.customer_code || '').toUpperCase());
-      const oper = profiles.find((p) => p.email.toLowerCase() === (mapped.operator_email || '').toLowerCase());
-      if (!cust) errors.push({ field: 'customer_code', message: `Cliente no encontrado (${mapped.customer_code})` });
-      if (!oper) errors.push({ field: 'operator_email', message: `Operario no encontrado (${mapped.operator_email})` });
-      if (!mapped.planned_work) errors.push({ field: 'planned_work', message: 'Trabajos a realizar obligatorio' });
+      const custCode = (mapped.customer_code || '').trim().toUpperCase();
+      const operEmail = (mapped.operator_email || '').trim().toLowerCase();
+      const cust = customers.find((c) => c.code.toUpperCase() === custCode);
+      const oper = profiles.find((p) => p.email.toLowerCase() === operEmail);
+
+      if (!cust) errors.push({ field: 'customer_code', message: `Columna Codigo_Cliente: Cliente no encontrado (${mapped.customer_code})` });
+      if (!oper) errors.push({ field: 'operator_email', message: `Columna Email_Operario: Operario no encontrado (${mapped.operator_email})` });
+      if (!mapped.planned_work) errors.push({ field: 'planned_work', message: 'Columna Trabajos_Realizar obligatoria.' });
       if (!mapped.scheduled_at || Number.isNaN(new Date(mapped.scheduled_at).getTime())) {
-        errors.push({ field: 'scheduled_at', message: 'Fecha programada ISO inválida' });
+        errors.push({ field: 'scheduled_at', message: 'Columna Fecha_Hora_Programada: Fecha/hora programada ISO inválida.' });
+      }
+
+      const internalKey = `${custCode}::${mapped.scheduled_at}::${(mapped.planned_work || '').toLowerCase()}`;
+      if (seenBatchKeys.has(internalKey)) {
+        isInternalDuplicate = true;
+        isDuplicate = true;
+        } else {
+        seenBatchKeys.add(internalKey);
+      }
+
+      if (cust && mapped.scheduled_at) {
+        const match = workOrders.find(
+          (w) =>
+            w.customer_id === cust.id &&
+            w.scheduled_at === mapped.scheduled_at &&
+            w.planned_work.trim().toLowerCase() === (mapped.planned_work || '').trim().toLowerCase()
+        );
+        if (match) {
+          isDuplicate = true;
+          existingId = match.id;
+        }
       }
     } else if (params.entityType === 'attendance') {
-      const worker = profiles.find((p) => p.email.toLowerCase() === (mapped.worker_email || '').toLowerCase());
-      if (!worker) errors.push({ field: 'worker_email', message: `Trabajador no encontrado (${mapped.worker_email})` });
+      const workerEmail = (mapped.worker_email || '').trim().toLowerCase();
+      const worker = profiles.find((p) => p.email.toLowerCase() === workerEmail);
+
+      if (!worker) errors.push({ field: 'worker_email', message: `Columna Email_Trabajador: Trabajador no encontrado (${mapped.worker_email})` });
       if (!mapped.clock_in_at || Number.isNaN(new Date(mapped.clock_in_at).getTime())) {
-        errors.push({ field: 'clock_in_at', message: 'Fecha/hora de entrada inválida' });
+        errors.push({ field: 'clock_in_at', message: 'Columna Entrada_ISO: Fecha/hora de entrada inválida.' });
       }
       if (!mapped.reason) {
-        errors.push({ field: 'reason', message: 'El motivo administrativo de importación es obligatorio' });
+        errors.push({ field: 'reason', message: 'Columna Motivo_Administrativo obligatoria.' });
+      }
+
+      const internalKey = `${workerEmail}::${mapped.clock_in_at}`;
+      if (seenBatchKeys.has(internalKey)) {
+        isInternalDuplicate = true;
+        isDuplicate = true;
+        } else {
+        seenBatchKeys.add(internalKey);
+      }
+
+      if (worker && mapped.clock_in_at) {
+        const match = attendanceSessions.find(
+          (s) => s.user_id === worker.id && s.clock_in_at === mapped.clock_in_at
+        );
+        if (match) {
+          isDuplicate = true;
+          existingId = match.id;
+        }
       }
     }
 
-    if (errors.length > 0) {
-      errorCount++;
-    } else if (isDuplicate) {
+    if (isDuplicate) {
       duplicateCount++;
+    } else if (errors.length > 0) {
+      errorCount++;
     } else {
       validNewCount++;
     }
@@ -377,6 +858,7 @@ export function validateAndPreviewImport(params: {
       raw,
       mapped,
       isDuplicate,
+      isInternalDuplicate,
       existingId,
       errors,
     });
@@ -388,6 +870,7 @@ export function validateAndPreviewImport(params: {
     duplicateCount,
     errorCount,
     rows: previewRows,
+    headerValidation,
   };
 }
 
@@ -423,12 +906,14 @@ export function executeValidatedImport(params: {
     }
 
     if (row.isDuplicate) {
-      if (params.conflictPolicy === 'reject_duplicates' || params.conflictPolicy === 'insert_only') {
+      if (row.isInternalDuplicate || params.conflictPolicy === 'reject_duplicates' || params.conflictPolicy === 'insert_only') {
         rejected++;
         allErrors.push({
           row: row.rowNumber,
           field: 'clave_unica',
-          message: `Registro coincidente omitido según política (${params.conflictPolicy})`,
+          message: row.isInternalDuplicate
+            ? 'Fila omitida por duplicidad interna en el archivo Excel.'
+            : `Registro existente omitido según política (${params.conflictPolicy}).`,
         });
         continue;
       }
@@ -474,15 +959,30 @@ export function executeValidatedImport(params: {
         else inserted++;
       } else if (params.entityType === 'articles') {
         const suppliers = params.backend.getSuppliers(true);
-        const suppInput = (row.mapped.supplier || row.mapped.supplier_name || row.mapped.proveedor_habitual || row.mapped.proveedor || '').trim().toLowerCase();
-        const matchedSupplier = suppInput
-          ? suppliers.find(
-              (s) =>
-                s.name.trim().toLowerCase() === suppInput ||
-                (s.tax_id && s.tax_id.trim().toLowerCase() === suppInput) ||
-                s.id.toLowerCase() === suppInput
-            )
-          : null;
+        const suppInput = (
+          row.mapped.supplier ||
+          row.mapped.supplier_name ||
+          row.mapped.proveedor_habitual ||
+          row.mapped.proveedor ||
+          ''
+        ).trim();
+
+        let matchedSupplier = suppInput ? findSupplierMatch(suppInput, suppliers) : null;
+        if (!matchedSupplier && suppInput) {
+          matchedSupplier = params.backend.saveSupplier({
+            name: suppInput,
+            tax_id: '',
+            contact_person: '',
+            phone: '',
+            email: '',
+            address: '',
+            postal_code: '',
+            city: '',
+            province: '',
+            notes: 'Proveedor generado automáticamente al importar artículos',
+            is_active: true,
+          });
+        }
 
         const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
         const artCode = (row.mapped.code || row.mapped.codigo || row.mapped.codigo_articulo || '').trim();
@@ -493,8 +993,12 @@ export function executeValidatedImport(params: {
           name: artName,
           description: row.mapped.description || '',
           supplier_id: matchedSupplier ? matchedSupplier.id : null,
-          purchase_price_cents: parseEurosToCents(row.mapped.purchase_price || '0') || 0,
-          sale_price_cents: parseEurosToCents(row.mapped.sale_price || '0') || 0,
+          purchase_price_cents: row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
+            ? parseEurosToCents(row.mapped.purchase_price)
+            : null,
+          sale_price_cents: row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
+            ? parseEurosToCents(row.mapped.sale_price)
+            : null,
           unit: row.mapped.unit || row.mapped.unidad_medida || 'ud',
           is_active: true,
         });
@@ -597,6 +1101,245 @@ export function executeValidatedImport(params: {
 
   return { inserted, updated, rejected, errors: allErrors };
 }
+export async function executeValidatedImportAsync(params: {
+  backend: InstallationBackendEngine;
+  entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance';
+  fileName: string;
+  conflictPolicy: 'insert_only' | 'update_existing' | 'reject_duplicates';
+  preview: ImportPreviewResult;
+  onProgress?: (progress: { current: number; total: number; phase: 'validation' | 'saving' }) => void;
+  chunkSize?: number;
+}): Promise<{
+  inserted: number;
+  updated: number;
+  rejected: number;
+  errors: Array<{ row: number; field: string; message: string }>;
+}> {
+  let inserted = 0;
+  let updated = 0;
+  let rejected = 0;
+  const allErrors: Array<{ row: number; field: string; message: string }> = [];
+
+  const customers = params.backend.getCustomers(true);
+  const addresses = params.backend.getCustomerAddresses(undefined, true);
+  const reviewTypes = params.backend.getReviewTypes(true);
+  const profiles = params.backend.getProfiles();
+
+  const total = params.preview.rows.length;
+  const chunkSize = params.chunkSize || 15;
+
+  for (let i = 0; i < total; i += chunkSize) {
+    const chunkEnd = Math.min(i + chunkSize, total);
+
+    params.backend.runBatch(() => {
+      for (let j = i; j < chunkEnd; j++) {
+        const row = params.preview.rows[j];
+        if (row.errors.length > 0) {
+          rejected++;
+          for (const e of row.errors) {
+            allErrors.push({ row: row.rowNumber, field: e.field, message: e.message });
+          }
+          continue;
+        }
+
+        if (row.isDuplicate) {
+          if (row.isInternalDuplicate || params.conflictPolicy === 'reject_duplicates' || params.conflictPolicy === 'insert_only') {
+            rejected++;
+            allErrors.push({
+              row: row.rowNumber,
+              field: 'clave_unica',
+              message: row.isInternalDuplicate
+                ? 'Fila omitida por duplicidad interna en el archivo Excel.'
+                : `Registro existente omitido según política (${params.conflictPolicy}).`,
+            });
+            continue;
+          }
+        }
+
+        try {
+          if (params.entityType === 'customers') {
+            params.backend.saveCustomer({
+              id: row.isDuplicate ? row.existingId : undefined,
+              code: row.mapped.code,
+              name: row.mapped.name,
+              tax_id: row.mapped.tax_id || '',
+              contact_name: row.mapped.contact_name || '',
+              phones: row.mapped.phone
+                ? [row.mapped.phone]
+                : (row.mapped.phones ? [row.mapped.phones] : ['000000000']),
+              emails: row.mapped.email ? [row.mapped.email] : [],
+              main_address: row.mapped.main_address || '',
+              postal_code: row.mapped.postal_code || '',
+              city: row.mapped.city || '',
+              province: row.mapped.province || '',
+              notes: row.mapped.notes || '',
+              is_active: true,
+            });
+            if (row.isDuplicate) updated++;
+            else inserted++;
+          } else if (params.entityType === 'suppliers') {
+            params.backend.saveSupplier({
+              id: row.isDuplicate ? row.existingId : undefined,
+              name: row.mapped.name,
+              tax_id: row.mapped.tax_id || '',
+              contact_person: row.mapped.contact_person || '',
+              phone: row.mapped.phone || '',
+              email: row.mapped.email || '',
+              address: row.mapped.address || '',
+              postal_code: row.mapped.postal_code || '',
+              city: row.mapped.city || '',
+              province: row.mapped.province || '',
+              notes: row.mapped.notes || '',
+              is_active: true,
+            });
+            if (row.isDuplicate) updated++;
+            else inserted++;
+          } else if (params.entityType === 'articles') {
+            const suppliers = params.backend.getSuppliers(true);
+            const suppInput = (
+              row.mapped.supplier ||
+              row.mapped.supplier_name ||
+              row.mapped.proveedor_habitual ||
+              row.mapped.proveedor ||
+              ''
+            ).trim();
+
+            let matchedSupplier = suppInput ? findSupplierMatch(suppInput, suppliers) : null;
+            if (!matchedSupplier && suppInput) {
+              matchedSupplier = params.backend.saveSupplier({
+                name: suppInput,
+                tax_id: '',
+                contact_person: '',
+                phone: '',
+                email: '',
+                address: '',
+                postal_code: '',
+                city: '',
+                province: '',
+                notes: 'Proveedor generado automáticamente al importar artículos',
+                is_active: true,
+              });
+            }
+
+            const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
+            const artCode = (row.mapped.code || row.mapped.codigo || row.mapped.codigo_articulo || '').trim();
+
+            const buyPrice = row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
+              ? parseEurosToCents(row.mapped.purchase_price)
+              : null;
+            const salePrice = row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
+              ? parseEurosToCents(row.mapped.sale_price)
+              : null;
+
+            params.backend.saveArticle({
+              id: row.isDuplicate ? row.existingId : undefined,
+              code: artCode,
+              name: artName,
+              description: row.mapped.description || '',
+              supplier_id: matchedSupplier ? matchedSupplier.id : null,
+              purchase_price_cents: buyPrice,
+              sale_price_cents: salePrice,
+              unit: row.mapped.unit || row.mapped.unidad_medida || 'ud',
+              is_active: true,
+            });
+            if (row.isDuplicate) updated++;
+            else inserted++;
+          } else if (params.entityType === 'reviews') {
+            const cust = customers.find(
+              (c) => c.code.toUpperCase() === row.mapped.customer_code.toUpperCase()
+            )!;
+            const addr =
+              addresses.find((a) => a.customer_id === cust.id) ||
+              params.backend.saveCustomerAddress({
+                customer_id: cust.id,
+                alias: 'Instalación Principal',
+                address_line: cust.main_address || 'Dirección Cliente',
+                postal_code: '',
+                city: 'Ciudad Real',
+                province: 'Ciudad Real',
+                contact_name: cust.name,
+                contact_phone: cust.phones[0] || '',
+                contact_email: cust.emails[0] || '',
+                notes: '',
+                is_active: true,
+              });
+            const rType = reviewTypes.find(
+              (rt) => rt.name.toLowerCase() === row.mapped.review_type_name.toLowerCase()
+            )!;
+            params.backend.saveInstallationReview({
+              id: row.isDuplicate ? row.existingId : undefined,
+              customer_id: cust.id,
+              customer_address_id: addr.id,
+              review_type_id: rType.id,
+              origin_work_order_id: null,
+              last_review_date: row.mapped.last_review_date || null,
+              next_review_date: row.mapped.next_review_date,
+              status: 'pendiente',
+              notes: row.mapped.notes || '',
+            });
+            if (row.isDuplicate) updated++;
+            else inserted++;
+          } else if (params.entityType === 'work_orders') {
+            const cust = customers.find(
+              (c) => c.code.toUpperCase() === row.mapped.customer_code.toUpperCase()
+            )!;
+            const oper = profiles.find(
+              (p) => p.email.toLowerCase() === row.mapped.operator_email.toLowerCase()
+            )!;
+            params.backend.createWorkOrder({
+              customer_id: cust.id,
+              customer_address_id: null,
+              snapshot_customer_name: cust.name,
+              snapshot_customer_tax_id: cust.tax_id,
+              snapshot_contact_name: cust.name,
+              snapshot_contact_phone: cust.phones[0] || '',
+              snapshot_contact_email: cust.emails[0] || '',
+              snapshot_address_line: cust.main_address || 'Dirección principal',
+              snapshot_postal_code: '',
+              snapshot_city: 'Ciudad Real',
+              snapshot_province: 'Ciudad Real',
+              planned_work: row.mapped.planned_work,
+              scheduled_at: row.mapped.scheduled_at,
+              initial_notes: row.mapped.notes || '',
+              operator_ids: [oper.id],
+            });
+            inserted++;
+          } else if (params.entityType === 'attendance') {
+            const worker = profiles.find(
+              (p) => p.email.toLowerCase() === row.mapped.worker_email.toLowerCase()
+            )!;
+            params.backend.adminCreateOrCorrectAttendance({
+              user_id: worker.id,
+              clock_in_at: row.mapped.clock_in_at,
+              clock_out_at: row.mapped.clock_out_at || null,
+              worker_notes_in: row.mapped.notes || '',
+              worker_notes_out: '',
+              reason: row.mapped.reason,
+            });
+            inserted++;
+          }
+        } catch (err: any) {
+          rejected++;
+          allErrors.push({
+            row: row.rowNumber,
+            field: 'ejecucion',
+            message: err?.message || 'Error al guardar el registro en la base de datos.',
+          });
+        }
+      }
+    });
+
+    if (params.onProgress) {
+      params.onProgress({ current: chunkEnd, total, phase: 'saving' });
+    }
+
+    // Ceder el hilo principal al navegador (15ms) para renderizado fluido del DOM y actualización de barra de progreso
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  return { inserted, updated, rejected, errors: allErrors };
+}
+
 
 // =============================================================================
 // 3. GENERACIÓN DE INFORMES PDF DE CONTROL HORARIO / FICHAJE (REGLA 13 Y ESCENARIO 12)

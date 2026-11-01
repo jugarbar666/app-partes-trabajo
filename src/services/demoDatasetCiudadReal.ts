@@ -1597,7 +1597,7 @@ export function populateCiudadRealDemoData(state: DatabaseState): DatabaseState 
         article_name_snapshot: artSample.name,
         unit_snapshot: artSample.unit,
         quantity: 1,
-        unit_price_cents: artSample.sale_price_cents,
+        unit_price_cents: artSample.sale_price_cents ?? 0,
         notes: `Material empleado según orden ${item.cau}`,
         created_by: item.operatorIds[0],
         created_at: item.scheduled_at,

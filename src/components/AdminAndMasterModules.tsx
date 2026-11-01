@@ -59,11 +59,15 @@ import {
   sanitizeTimezone,
 } from '../utils/formatters';
 import {
+  buildDefaultEntityMapping,
   downloadImportTemplateExcel,
   executeValidatedImport,
+  executeValidatedImportAsync,
   exportRowsToExcel,
   exportRowsToPDF,
+  IMPORT_ENTITY_DEFINITIONS,
   validateAndPreviewImport,
+  validateExactHeaders,
 } from '../utils/exportImportUtils';
 import { isInstalledDesktopApp } from '../config/branchConfig';
 import { ImportExportModule } from './ImportExportModule';
@@ -299,11 +303,22 @@ export const MasterDataAndUsersModule: React.FC<{
         return;
       }
       const ws = wb.Sheets[firstSheet];
-      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-      if (jsonRaw.length === 0) {
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+      if (grid.length === 0) {
         notifyError('La hoja Excel está vacía.');
         return;
       }
+
+      // Validación estricta de cabeceras idénticas según plantilla oficial
+      const headers = (grid[0] || []).map((h) => String(h || '').trim());
+      const expectedHeaders = IMPORT_ENTITY_DEFINITIONS.articles.columns.map((c) => c.header);
+      const headerVal = validateExactHeaders(headers, expectedHeaders);
+      if (!headerVal.isValid) {
+        notifyError(headerVal.errorMessage || 'Las cabeceras del archivo no coinciden con la plantilla oficial.');
+        return;
+      }
+
+      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
       const json = jsonRaw.map((row) => {
         const clean: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(row)) {
@@ -312,21 +327,16 @@ export const MasterDataAndUsersModule: React.FC<{
         }
         return clean;
       });
-      const headers = Object.keys(json[0]);
-      const mapping: Record<string, string> = {
-        code: headers.find((h) => /codigo|referencia|cod/i.test(h)) || '',
-        unit: headers.find((h) => /unidad|medida|ud/i.test(h)) || '',
-        name: headers.find((h) => /nombre|articulo|descrip/i.test(h)) || headers[0] || 'name',
-        purchase_price: headers.find((h) => /compra|coste/i.test(h)) || '',
-        sale_price: headers.find((h) => /venta|pvp/i.test(h)) || '',
-        supplier: headers.find((h) => /proveedor|distribuidor/i.test(h)) || '',
-      };
+
+      // Mapeo seguro y exacto
+      const mapping = buildDefaultEntityMapping('articles', headers);
 
       const preview = validateAndPreviewImport({
         backend,
         entityType: 'articles',
         rawRows: json,
         columnMapping: mapping,
+        receivedHeaders: headers,
       });
 
       requestSaveConfirmation({
@@ -340,13 +350,22 @@ export const MasterDataAndUsersModule: React.FC<{
           },
           { label: 'Filas con errores (se omitirán)', value: String(preview.errorCount) },
         ],
-        onConfirm: () => {
-          const res = executeValidatedImport({
+        onConfirm: async (helpers) => {
+          const res = await executeValidatedImportAsync({
             backend,
             entityType: 'articles',
             fileName: file.name,
             conflictPolicy: 'update_existing',
             preview,
+            onProgress: (p) => {
+              if (helpers?.updateProgress) {
+                helpers.updateProgress({
+                  current: p.current,
+                  total: p.total,
+                  message: `Guardando artículos (${p.current} de ${p.total})...`,
+                });
+              }
+            },
           });
           notifySuccessGreen(
             `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
@@ -369,8 +388,8 @@ export const MasterDataAndUsersModule: React.FC<{
         { key: 'code', header: 'Código Artículo' },
         { key: 'unit', header: 'Unidad de Medida' },
         { key: 'name', header: 'Nombre del Artículo' },
-        { key: 'purchase_price', header: 'Precio de Compra (€)' },
-        { key: 'sale_price', header: 'Precio de Venta (€)' },
+        { key: 'purchase_price', header: 'Precio de Compra (€) (opcional)' },
+        { key: 'sale_price', header: 'Precio de Venta (€) (opcional)' },
         { key: 'supplier_name', header: 'Proveedor Habitual' },
         { key: 'active', header: 'Estado' },
       ],
@@ -401,12 +420,23 @@ export const MasterDataAndUsersModule: React.FC<{
         return;
       }
       const ws = wb.Sheets[firstSheet];
-      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-      if (jsonRaw.length === 0) {
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+      if (grid.length === 0) {
         notifyError('La hoja Excel está vacía.');
         return;
       }
+
+      // Validación estricta de cabeceras idénticas según plantilla oficial
+      const headers = (grid[0] || []).map((h) => String(h || '').trim());
+      const expectedHeaders = IMPORT_ENTITY_DEFINITIONS.suppliers.columns.map((c) => c.header);
+      const headerVal = validateExactHeaders(headers, expectedHeaders);
+      if (!headerVal.isValid) {
+        notifyError(headerVal.errorMessage || 'Las cabeceras del archivo no coinciden con la plantilla oficial.');
+        return;
+      }
+
       // Protección contra Prototype Pollution y Formula Injection (OWASP)
+      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
       const json = jsonRaw.map((row) => {
         const clean: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(row)) {
@@ -415,24 +445,16 @@ export const MasterDataAndUsersModule: React.FC<{
         }
         return clean;
       });
-      const headers = Object.keys(json[0]);
-      const mapping: Record<string, string> = {
-        name:
-          headers.find((h) => /nombre|razon|proveedor/i.test(h)) ||
-          headers[0] ||
-          'name',
-        tax_id: headers.find((h) => /nif|cif|ident/i.test(h)) || '',
-        phone: headers.find((h) => /tel|telefono|movil|celular/i.test(h)) || '',
-        email: headers.find((h) => /email|correo/i.test(h)) || '',
-        contact_person: headers.find((h) => /contacto|persona/i.test(h)) || '',
-        notes: headers.find((h) => /nota|observa|coment/i.test(h)) || '',
-      };
+
+      // Mapeo seguro y exacto
+      const mapping = buildDefaultEntityMapping('suppliers', headers);
 
       const preview = validateAndPreviewImport({
         backend,
         entityType: 'suppliers',
         rawRows: json,
         columnMapping: mapping,
+        receivedHeaders: headers,
       });
 
       requestSaveConfirmation({
@@ -446,13 +468,22 @@ export const MasterDataAndUsersModule: React.FC<{
           },
           { label: 'Filas con errores (se omitirán)', value: String(preview.errorCount) },
         ],
-        onConfirm: () => {
-          const res = executeValidatedImport({
+        onConfirm: async (helpers) => {
+          const res = await executeValidatedImportAsync({
             backend,
             entityType: 'suppliers',
             fileName: file.name,
             conflictPolicy: 'update_existing',
             preview,
+            onProgress: (p) => {
+              if (helpers?.updateProgress) {
+                helpers.updateProgress({
+                  current: p.current,
+                  total: p.total,
+                  message: `Guardando proveedores (${p.current} de ${p.total})...`,
+                });
+              }
+            },
           });
           notifySuccessGreen(
             `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
@@ -1469,7 +1500,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     onClick={() => {
                       backend.saveArticle({
                         ...a,
-                        purchase_price_cents: a.purchase_price_cents ?? 0,
+                        purchase_price_cents: a.purchase_price_cents ?? null,
                         is_active: !a.is_active,
                       });
                       refresh();

@@ -13,10 +13,14 @@ import { InstallationBackendEngine } from '../services/backendEngine';
 import {
   downloadImportTemplateExcel,
   executeValidatedImport,
+  executeValidatedImportAsync,
   exportRowsToExcel,
   exportRowsToPDF,
   ImportPreviewResult,
   validateAndPreviewImport,
+  IMPORT_ENTITY_DEFINITIONS,
+  validateExactHeaders,
+  HeaderValidationResult,
 } from '../utils/exportImportUtils';
 import { ScreenHeaderBar, useUIConfirmation } from './CommonUI';
 import { formatCentsToEUR, formatDateTimeES } from '../utils/formatters';
@@ -102,6 +106,10 @@ export const ImportExportModule: React.FC<{
     'insert_only' | 'update_existing' | 'reject_duplicates'
   >('reject_duplicates');
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
+  const [headerError, setHeaderError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showImportConfirmModal, setShowImportConfirmModal] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; phase: string } | null>(null);
   const [lastExecutionResult, setLastExecutionResult] = useState<{
     inserted: number;
     updated: number;
@@ -121,18 +129,29 @@ export const ImportExportModule: React.FC<{
       const defNorm = norm(f.defaultHeader);
       const keyNorm = norm(f.key);
 
+      // 1. Coincidencia exacta primero: máxima prioridad al nombre de la plantilla oficial o clave técnica
+      const exactMatch = headers.find((h) => {
+        const hNorm = norm(h);
+        return hNorm === defNorm || hNorm === keyNorm;
+      });
+
+      if (exactMatch) {
+        map[f.key] = exactMatch;
+        continue;
+      }
+
+      // 2. Coincidencia semántica refinada si no hubo exacta (evitando que 'articulo' en 'codigo_articulo' pise 'name')
       const found = headers.find((h) => {
         const hNorm = norm(h);
-        if (hNorm === defNorm || hNorm === keyNorm) return true;
         if (f.key === 'code' && (hNorm.includes('codigo') || hNorm.includes('referencia') || hNorm === 'cod')) return true;
-        if (f.key === 'unit' && (hNorm.includes('unidad') || hNorm === 'ud')) return true;
-        if (f.key === 'name' && (hNorm.includes('nombre') || hNorm.includes('articulo') || hNorm.includes('descrip'))) return true;
+        if (f.key === 'unit' && (hNorm.includes('unidad') || hNorm === 'ud' || hNorm.includes('medida'))) return true;
+        if (f.key === 'name' && (hNorm.includes('nombre') || hNorm.includes('descrip') || (hNorm.includes('articulo') && !hNorm.includes('codigo')))) return true;
         if (f.key === 'purchase_price' && (hNorm.includes('compra') || hNorm.includes('coste'))) return true;
         if (f.key === 'sale_price' && (hNorm.includes('venta') || hNorm.includes('pvp'))) return true;
         if (f.key === 'supplier' && (hNorm.includes('proveedor') || hNorm.includes('distribuidor'))) return true;
         return false;
       });
-      map[f.key] = found || headers[0] || '';
+      map[f.key] = found || '';
     }
     return map;
   };
@@ -140,6 +159,25 @@ export const ImportExportModule: React.FC<{
   const loadSheetRows = (wb: XLSX.WorkBook, sheet: string, type: typeof entityType) => {
     const ws = wb.Sheets[sheet];
     if (!ws) return;
+
+    // 1. Obtener cabeceras reales de la fila 1 de la hoja
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+    const rawHeaderRow = (grid[0] || []) as unknown[];
+    const headers = rawHeaderRow.map((c) => String(c ?? '').trim()).filter(Boolean);
+    setDetectedHeaders(headers);
+
+    // 2. Validación estricta: cabeceras deben coincidir exactamente en nombres, cantidad y orden
+    const expectedHeaders = IMPORT_ENTITY_DEFINITIONS[type].columns.map((c) => c.header);
+    const headerVal = validateExactHeaders(headers, expectedHeaders);
+    if (!headerVal.isValid) {
+      setHeaderError(headerVal.errorMessage);
+      setPreview(null);
+      setRawRows([]);
+      return;
+    }
+    setHeaderError(null);
+
+    // 3. Lectura de filas de datos
     const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
     // Protección estricta contra Prototype Pollution y Formula Injection (OWASP)
     const sanitizedJson = json.map((row) => {
@@ -151,8 +189,6 @@ export const ImportExportModule: React.FC<{
       return clean;
     });
     setRawRows(sanitizedJson);
-    const headers = sanitizedJson.length > 0 ? Object.keys(sanitizedJson[0]) : [];
-    setDetectedHeaders(headers);
     const defaultMap = initDefaultMapping(type, headers);
     setColumnMapping(defaultMap);
     const prev = validateAndPreviewImport({
@@ -160,6 +196,7 @@ export const ImportExportModule: React.FC<{
       entityType: type,
       rawRows: sanitizedJson,
       columnMapping: defaultMap,
+      receivedHeaders: headers,
     });
     setPreview(prev);
   };
@@ -175,7 +212,40 @@ export const ImportExportModule: React.FC<{
       setSheetNames(wb.SheetNames);
       const firstSheet = wb.SheetNames[0] || '';
       setSelectedSheet(firstSheet);
-      loadSheetRows(wb, firstSheet, entityType);
+
+      // Auto-detección inteligente del tipo de entidad según nombre de hoja o columnas
+      let detectedType = entityType;
+      const ws = wb.Sheets[firstSheet];
+      if (ws) {
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+        const hdrs = json.length > 0
+          ? Object.keys(json[0]).map((s) =>
+              s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            )
+          : [];
+        const sheetNorm = firstSheet
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+
+        if (sheetNorm.includes('articulo') || hdrs.includes('codigoarticulo') || hdrs.includes('precioventa')) {
+          detectedType = 'articles';
+        } else if (sheetNorm.includes('proveedor') || (hdrs.includes('proveedor') && !hdrs.includes('articulo'))) {
+          detectedType = 'suppliers';
+        } else if (sheetNorm.includes('cliente') || hdrs.includes('codigocliente')) {
+          detectedType = 'customers';
+        } else if (sheetNorm.includes('revision') || hdrs.includes('tiporevision')) {
+          detectedType = 'reviews';
+        } else if (sheetNorm.includes('parte') || hdrs.includes('trabajosrealizar')) {
+          detectedType = 'work_orders';
+        } else if (sheetNorm.includes('fichaje') || hdrs.includes('motivoadministrativo')) {
+          detectedType = 'attendance';
+        }
+      }
+
+      setEntityType(detectedType);
+      loadSheetRows(wb, firstSheet, detectedType);
       setLastExecutionResult(null);
     } catch (err: any) {
       notifyError(err?.message || 'No se pudo leer el archivo Excel.');
@@ -304,13 +374,22 @@ export const ImportExportModule: React.FC<{
         { label: 'Registros coincidentes', value: String(preview.duplicateCount) },
         { label: 'Filas con errores (se rechazarán)', value: String(preview.errorCount) },
       ],
-      onConfirm: () => {
-        const res = executeValidatedImport({
+      onConfirm: async (helpers) => {
+        const res = await executeValidatedImportAsync({
           backend,
           entityType,
           fileName: fileName || 'importacion.xlsx',
           conflictPolicy,
           preview,
+          onProgress: (p) => {
+            if (helpers?.updateProgress) {
+              helpers.updateProgress({
+                current: p.current,
+                total: p.total,
+                message: `Guardando registros (${p.current} de ${p.total})...`,
+              });
+            }
+          },
         });
         setLastExecutionResult(res);
         onRefresh();
@@ -828,7 +907,21 @@ export const ImportExportModule: React.FC<{
               onChange={(e) => {
                 const next = e.target.value as typeof entityType;
                 setEntityType(next);
-                setPreview(null);
+                if (workbookRef && selectedSheet) {
+                  loadSheetRows(workbookRef, selectedSheet, next);
+                } else if (rawRows.length > 0 && detectedHeaders.length > 0) {
+                  const defaultMap = initDefaultMapping(next, detectedHeaders);
+                  setColumnMapping(defaultMap);
+                  const prev = validateAndPreviewImport({
+                    backend,
+                    entityType: next,
+                    rawRows,
+                    columnMapping: defaultMap,
+                  });
+                  setPreview(prev);
+                } else {
+                  setPreview(null);
+                }
               }}
               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
             >
@@ -927,6 +1020,24 @@ export const ImportExportModule: React.FC<{
                   </select>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {headerError && (
+          <div
+            className="p-4 bg-red-50 border-2 border-red-400 rounded-xl space-y-2 text-xs text-red-900"
+            data-testid="alert-header-validation-error"
+          >
+            <div className="flex items-center gap-2 font-black text-red-800 text-sm">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+              <span>Cabeceras del archivo no válidas — Importación bloqueada</span>
+            </div>
+            <p className="whitespace-pre-line font-mono text-[11px] leading-relaxed bg-white/70 p-3 rounded-lg border border-red-200">
+              {headerError}
+            </p>
+            <div className="text-[11px] text-red-700">
+              Para importar este archivo, las cabeceras deben mantenerse exactamente como aparecen en la plantilla oficial descargable, respetando sus nombres y su orden.
             </div>
           </div>
         )}

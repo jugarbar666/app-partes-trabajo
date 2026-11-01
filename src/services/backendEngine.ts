@@ -34,7 +34,9 @@ import {
   calculateReviewNoticeSchedule,
   combineLocalDateAndTimeToIso,
   computeWorkOrderContentHash,
+  roundToTwoDecimals,
   formatPhoneWithPrefix34,
+  formatDateES,
   formatTimeES,
   formatTimeWithSecondsES,
   getCurrentLocalDate,
@@ -378,7 +380,42 @@ export class InstallationBackendEngine {
     };
   }
 
+  private isBatching = false;
+  private pendingPersist = false;
+
+  public runBatch<T>(action: () => T): T {
+    const wasBatching = this.isBatching;
+    this.isBatching = true;
+    try {
+      return action();
+    } finally {
+      this.isBatching = wasBatching;
+      if (!this.isBatching && this.pendingPersist) {
+        this.pendingPersist = false;
+        this.persist();
+      }
+    }
+  }
+
+  public async runBatchAsync<T>(action: () => Promise<T>): Promise<T> {
+    const wasBatching = this.isBatching;
+    this.isBatching = true;
+    try {
+      return await action();
+    } finally {
+      this.isBatching = wasBatching;
+      if (!this.isBatching && this.pendingPersist) {
+        this.pendingPersist = false;
+        this.persist();
+      }
+    }
+  }
+
   private persist(): void {
+    if (this.isBatching) {
+      this.pendingPersist = true;
+      return;
+    }
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
@@ -1466,14 +1503,19 @@ export class InstallationBackendEngine {
   }
 
   public saveArticle(
-    data: Omit<Article, 'id' | 'created_at' | 'updated_at'> & { id?: string; purchase_price_cents: number }
+    data: Omit<Article, 'id' | 'created_at' | 'updated_at'> & {
+      id?: string;
+      purchase_price_cents?: number | null;
+      sale_price_cents?: number | null;
+    }
   ): Article {
     this.assertOnline();
     const admin = this.requireAdmin();
     let code = data.code ? data.code.trim().toUpperCase() : '';
-    if (!data.name.trim()) {
+    if (!data.name || !data.name.trim()) {
       throw new ValidationError('El nombre del artículo es obligatorio.');
     }
+    const cleanName = data.name.trim();
     if (!code) {
       const nextNum = this.state.articles.length + 1;
       code = `MAT-${String(nextNum).padStart(3, '0')}`;
@@ -1490,13 +1532,40 @@ export class InstallationBackendEngine {
       throw new ValidationError(`Ya existe otro artículo con el código único ${code}.`);
     }
 
+    const purchase_price_cents =
+      data.purchase_price_cents !== undefined && data.purchase_price_cents !== null && Number.isFinite(data.purchase_price_cents)
+        ? Math.round(data.purchase_price_cents)
+        : null;
+
+    const sale_price_cents =
+      data.sale_price_cents !== undefined && data.sale_price_cents !== null && Number.isFinite(data.sale_price_cents)
+        ? Math.round(data.sale_price_cents)
+        : null;
+
     const now = new Date().toISOString();
+    const cleanPayload = {
+      ...data,
+      name: cleanName,
+      code,
+      description: (data.description || '').trim(),
+      supplier_id: data.supplier_id || null,
+      unit: (data.unit || 'ud').trim(),
+      purchase_price_cents,
+      sale_price_cents,
+      is_active: data.is_active !== undefined ? !!data.is_active : true,
+    };
+
     if (data.id) {
       const idx = this.state.articles.findIndex((a) => a.id === data.id);
       if (idx === -1) throw new ValidationError('Artículo no encontrado.');
       const prev = this.state.articles[idx];
-      const updated: Article = { ...prev, ...data, code, id: prev.id, updated_at: now };
+      const updated: Article = { ...prev, ...cleanPayload, code, id: prev.id, updated_at: now };
       this.state.articles[idx] = updated;
+      if (Array.isArray((this.state as any).deleted_article_ids)) {
+        (this.state as any).deleted_article_ids = (this.state as any).deleted_article_ids.filter(
+          (id: string) => id !== updated.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'article', updated.id, 'MODIFICAR_ARTÍCULO', {
         before: prev,
         after: updated,
@@ -1505,13 +1574,18 @@ export class InstallationBackendEngine {
       return { ...updated };
     } else {
       const created: Article = {
-        ...data,
+        ...cleanPayload,
         code,
         id: genId('art'),
         created_at: now,
         updated_at: now,
       };
       this.state.articles.push(created);
+      if (Array.isArray((this.state as any).deleted_article_ids)) {
+        (this.state as any).deleted_article_ids = (this.state as any).deleted_article_ids.filter(
+          (id: string) => id !== created.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'article', created.id, 'ALTA_ARTÍCULO', { created });
       this.persist();
       return { ...created };
@@ -1669,11 +1743,19 @@ export class InstallationBackendEngine {
     const targetDate = parseDateRobust(scheduledAt);
     if (!targetDate) return [];
 
+    const companyTz = sanitizeTimezone(this.state.company_settings?.timezone || 'Europe/Madrid');
+    const targetDateStr = formatDateES(targetDate, companyTz);
+    const targetTimeStr = formatTimeES(targetDate, companyTz);
+
     const conflicts: OperatorScheduleConflict[] = [];
     const activeWorkOrders = this.state.work_orders.filter(
       (w) =>
         w.deleted_at === null &&
         w.status !== 'cerrado' &&
+        w.status !== 'terminado' &&
+        !w.is_unscheduled &&
+        w.scheduled_at &&
+        w.scheduled_at.trim() !== '' &&
         (!excludeWorkOrderId || w.id !== excludeWorkOrderId)
     );
 
@@ -1686,24 +1768,19 @@ export class InstallationBackendEngine {
         const woDate = parseDateRobust(wo.scheduled_at);
         if (!woDate) continue;
 
-        // Comprobar si coincide en fecha y hora (mismo día y diferencia menor a 60 minutos)
-        const isSameDay =
-          targetDate.getFullYear() === woDate.getFullYear() &&
-          targetDate.getMonth() === woDate.getMonth() &&
-          targetDate.getDate() === woDate.getDate();
+        const woDateStr = formatDateES(woDate, companyTz);
+        const woTimeStr = formatTimeES(woDate, companyTz);
 
-        if (isSameDay) {
-          const diffMinutes = Math.abs(targetDate.getTime() - woDate.getTime()) / (60 * 1000);
-          if (diffMinutes < 60) {
-            conflicts.push({
-              operator_id: opId,
-              operator_name: opName,
-              work_order_id: wo.id,
-              work_order_code: wo.code,
-              customer_name: wo.snapshot_customer_name || 'Cliente',
-              scheduled_at: wo.scheduled_at,
-            });
-          }
+        // Comprobar si coincide en fecha y hora exacta en la misma zona horaria oficial
+        if (targetDateStr === woDateStr && targetTimeStr === woTimeStr) {
+          conflicts.push({
+            operator_id: opId,
+            operator_name: opName,
+            work_order_id: wo.id,
+            work_order_code: wo.code,
+            customer_name: wo.snapshot_customer_name || 'Cliente',
+            scheduled_at: wo.scheduled_at,
+          });
         }
       }
     }
@@ -2044,43 +2121,40 @@ export class InstallationBackendEngine {
         if (!parsed || isNaN(parsed.getTime()) || !hasTime) {
           throw new ValidationError('Indique la fecha y la hora de ejecución.');
         }
+        wo.scheduled_at = parsed.toISOString();
         const targetOpIds = patch.operator_ids !== undefined
           ? patch.operator_ids
           : this.state.work_order_assignments
               .filter((a) => a.work_order_id === workOrderId && a.is_active)
               .map((a) => a.operator_id);
-        if (targetOpIds.length === 0) {
-          throw new ValidationError('Seleccione un operario para programar el parte.');
+        if (targetOpIds.length > 0) {
+          this.validateScheduledTimeWithinOperatorSchedules(parsed.toISOString(), targetOpIds);
+          wo.is_unscheduled = false;
         }
-        this.validateScheduledTimeWithinOperatorSchedules(parsed.toISOString(), targetOpIds);
-        wo.scheduled_at = parsed.toISOString();
+      }
+    } else if (patch.operator_ids !== undefined) {
+      const targetOpIds = patch.operator_ids;
+      if (wo.scheduled_at && wo.scheduled_at.trim() !== '' && targetOpIds.length > 0) {
+        this.validateScheduledTimeWithinOperatorSchedules(wo.scheduled_at, targetOpIds);
         wo.is_unscheduled = false;
       }
-    } else if (patch.operator_ids !== undefined && !wo.is_unscheduled && wo.scheduled_at) {
-      if (patch.operator_ids.length === 0) {
-        throw new ValidationError('Seleccione un operario para programar el parte.');
-      }
-      this.validateScheduledTimeWithinOperatorSchedules(wo.scheduled_at, patch.operator_ids);
     }
 
     if (patch.operator_ids) {
       const nextSet = new Set(patch.operator_ids);
-      for (const asg of this.state.work_order_assignments.filter((a) => a.work_order_id === workOrderId)) {
-        if (asg.is_active && !nextSet.has(asg.operator_id)) {
-          asg.is_active = false;
-          asg.unassigned_at = now;
-          asg.unassigned_by = admin.id;
-        } else if (!asg.is_active && nextSet.has(asg.operator_id)) {
-          asg.is_active = true;
-          asg.unassigned_at = null;
-          asg.unassigned_by = null;
-        }
-      }
+      // Eliminar de forma persistente y limpia las asignaciones previas no seleccionadas
+      this.state.work_order_assignments = this.state.work_order_assignments.filter(
+        (a) => a.work_order_id !== workOrderId || nextSet.has(a.operator_id)
+      );
       for (const opId of nextSet) {
-        const exists = this.state.work_order_assignments.some(
+        const existing = this.state.work_order_assignments.find(
           (a) => a.work_order_id === workOrderId && a.operator_id === opId
         );
-        if (!exists) {
+        if (existing) {
+          existing.is_active = true;
+          existing.unassigned_at = null;
+          existing.unassigned_by = null;
+        } else {
           this.state.work_order_assignments.push({
             id: genId('asg'),
             work_order_id: workOrderId,
@@ -2093,6 +2167,12 @@ export class InstallationBackendEngine {
           });
         }
       }
+    }
+    const hasActiveAssignments = this.state.work_order_assignments.some(
+      (a) => a.work_order_id === workOrderId && a.is_active
+    );
+    if (wo.scheduled_at && wo.scheduled_at.trim() !== '' && hasActiveAssignments) {
+      wo.is_unscheduled = false;
     }
 
     wo.version += 1;
@@ -2189,6 +2269,9 @@ export class InstallationBackendEngine {
     const newScheduledIso = parsed.toISOString();
     wo.scheduled_at = newScheduledIso;
     wo.updated_at = new Date().toISOString();
+    if (activeOpIds.length > 0) {
+      wo.is_unscheduled = false;
+    }
 
     // Si el parte está vinculado a un vencimiento de revisión pendiente, actualizar fecha sugerida
     if (wo.origin_review_occurrence_id) {
@@ -2540,8 +2623,8 @@ export class InstallationBackendEngine {
       article_id: params.article_id,
       article_name_snapshot: params.article_name_snapshot.trim(),
       unit_snapshot: params.unit_snapshot || 'ud',
-      quantity: params.quantity,
-      unit_price_cents: params.unit_price_cents,
+      quantity: roundToTwoDecimals(params.quantity),
+      unit_price_cents: Math.round(params.unit_price_cents),
       notes: params.notes.trim(),
       created_by: user.id,
       created_at: now,
@@ -2576,7 +2659,7 @@ export class InstallationBackendEngine {
 
     const updated: WorkMaterial = {
       ...current,
-      quantity: patch.quantity,
+      quantity: roundToTwoDecimals(patch.quantity),
       notes: patch.notes.trim(),
       updated_at: new Date().toISOString(),
     };
@@ -3913,7 +3996,7 @@ export class InstallationBackendEngine {
       id: genId('shop'),
       article_id: article.id,
       supplier_id: article.supplier_id,
-      purchase_price_cents: article.purchase_price_cents ?? 0,
+      purchase_price_cents: article.purchase_price_cents ?? null,
       sale_price_cents: article.sale_price_cents,
       quantity: user.role === 'admin' && params.quantity && params.quantity > 0 ? params.quantity : null,
       status:

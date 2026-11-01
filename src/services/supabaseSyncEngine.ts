@@ -65,14 +65,7 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     customer_addresses: mergeById(local.customer_addresses || [], remote.customer_addresses || [], 'created_at'),
     suppliers: mergeById(local.suppliers || [], remote.suppliers || [], 'updated_at'),
     articles: (() => {
-      const isDemo = (a: any) =>
-        !a ||
-        !a.id ||
-        a.id.startsWith('art-roma-') ||
-        a.id.startsWith('art-1') ||
-        a.id.startsWith('art-2') ||
-        a.id.startsWith('art-3') ||
-        (typeof a.code === 'string' && a.code.startsWith('ART-0') && a.code.length <= 7);
+      const isDemo = (a: any) => !a || !a.id || a.id.startsWith('art-roma-') || /^art-[0-9]{1,3}$/.test(a.id);
 
       const deletedArticleIds = new Set<string>([
         ...((local as any)?.deleted_article_ids || []),
@@ -140,12 +133,7 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     result.profiles = (result.profiles || []).filter((p) => allowedOfficialUserIds.has(p.id));
 
     // Descartar permanentemente artículos de demostración anteriores para Fontanería Roma
-    const isDemoArticleId = (id?: string | null) =>
-      !id ||
-      id.startsWith('art-roma-') ||
-      id.startsWith('art-1') ||
-      id.startsWith('art-2') ||
-      id.startsWith('art-3');
+    const isDemoArticleId = (id?: string | null) => !id || id.startsWith('art-roma-') || /^art-[0-9]{1,3}$/.test(id);
 
     result.articles = (result.articles || []).filter(
       (a) =>
@@ -166,14 +154,7 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     );
 
     // Descartar tipos de revisiones y revisiones ficticias de prueba anteriores para Fontanería Roma
-    const isDemoReviewId = (id?: string | null) =>
-      !id ||
-      id.startsWith('rt-roma-') ||
-      id.startsWith('rev-roma-') ||
-      id.startsWith('occ-roma-') ||
-      id.startsWith('rt-1') ||
-      id.startsWith('rev-1') ||
-      id.startsWith('occ-1');
+    const isDemoReviewId = (id?: string | null) => !id || id.startsWith('rt-roma-') || id.startsWith('rev-roma-') || id.startsWith('occ-roma-') || /^rt-[0-9]{1,3}$/.test(id) || /^rev-[0-9]{1,3}$/.test(id) || /^occ-[0-9]{1,3}$/.test(id);
 
     result.review_types = (result.review_types || []).filter((rt) => !isDemoReviewId(rt.id));
     result.installation_reviews = (result.installation_reviews || []).filter((rev) => !isDemoReviewId(rev.id));

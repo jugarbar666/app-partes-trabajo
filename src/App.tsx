@@ -2429,67 +2429,7 @@ const MainApplicationContent: React.FC = () => {
                 </div>
               </div>
             )}
-            {/* Indicador de Sincronización en Tiempo Real con Supabase */}
-            <button
-              type="button"
-              onClick={() => {
-                supabaseSyncEngine.forceSync();
-                notifySuccessGreen('Comprobando y sincronizando datos con Supabase en tiempo real...');
-              }}
-              title={
-                syncState.status === 'connected'
-                  ? '🟢 Base de datos sincronizada en tiempo real con Supabase (Todos los dispositivos conectados)'
-                  : syncState.status === 'syncing'
-                  ? '🔄 Sincronizando con Supabase...'
-                  : syncState.status === 'offline'
-                  ? '🟡 Modo sin conexión (Los cambios se guardan localmente y se subirán al conectar)'
-                  : '⚠️ Estado de conexión Supabase. Pulsa para forzar sincronización'
-              }
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                syncState.status === 'connected'
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                  : syncState.status === 'syncing'
-                  ? 'bg-blue-50 border-blue-300 text-blue-800 animate-pulse'
-                  : syncState.status === 'offline'
-                  ? 'bg-amber-50 border-amber-300 text-amber-800'
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {syncState.status === 'connected' && (
-                <>
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span className="hidden sm:inline">Supabase en directo</span>
-                  <span className="sm:hidden">En vivo</span>
-                </>
-              )}
-              {syncState.status === 'syncing' && (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
-                  <span>Sincronizando...</span>
-                </>
-              )}
-              {syncState.status === 'offline' && (
-                <>
-                  <WifiOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Sin Red (Offline)</span>
-                </>
-              )}
-              {syncState.status === 'error' && (
-                <>
-                  <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                  <span>Reintentar Sync</span>
-                </>
-              )}
-              {syncState.status === 'disabled' && (
-                <>
-                  <Wifi className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span>Modo Local</span>
-                </>
-              )}
-            </button>
+
 
             {/* Botón Simulación Red Online/Offline */}
             <button
