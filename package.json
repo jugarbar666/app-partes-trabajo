@@ -6,11 +6,11 @@
   "description": "Aplicación web responsive y PWA de gestión de partes de trabajo, revisiones periódicas, lista de compra y control horario (Single-tenant por instalación con React + TypeScript + Vite + Supabase + Netlify)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && tsc -p tsconfig.functions.json && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b && tsc -p tsconfig.functions.json"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
