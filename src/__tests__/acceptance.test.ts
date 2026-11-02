@@ -3582,4 +3582,156 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(activeAssignments[0].operator_id).toBe(operario.id);
   });
 
+  it('Corrección definitiva de reasignación de operarios: sustitución, eliminación, adición, selección vacía y no acumulación tras sincronización y recarga', () => {
+    const backend = new InstallationBackendEngine('test-reassign-operators-fix', true, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+
+    const profiles = backend.getProfiles();
+    const opAna = profiles.find((p) => p.email.includes('raul') || p.role === 'operario')!;
+    const opLuis = profiles.find((p) => p.email.includes('marcos') || (p.role === 'operario' && p.id !== opAna.id))!;
+    const opMarta = profiles.find((p) => p.email.includes('admin') && p.id !== 'usr-jc-admin') || profiles[1];
+
+    const cust = backend.saveCustomer({
+      code: 'CLI-REASSIGN-01',
+      name: 'Cliente Reasignaciones',
+      phones: ['600112233'],
+      tax_id: 'B12345678',
+      contact_name: 'Contacto Test',
+      main_address: 'Calle Mayor 10',
+      postal_code: '13002',
+      city: 'Ciudad Real',
+      province: 'Ciudad Real',
+      notes: '',
+      emails: [],
+      is_active: true,
+    });
+
+    // 1. Crear parte con Ana y Luis asignados
+    const wo = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: null,
+      snapshot_customer_name: cust.name,
+      snapshot_customer_tax_id: cust.tax_id,
+      snapshot_contact_name: cust.name,
+      snapshot_contact_phone: '600112233',
+      snapshot_contact_email: 'test@ejemplo.com',
+      snapshot_address_line: 'Calle Mayor 10',
+      snapshot_postal_code: '13002',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Revisión y cambio de tubería',
+      scheduled_at: '2026-11-25T09:00:00.000Z',
+      is_unscheduled: false,
+      initial_notes: '',
+      operator_ids: [opAna.id, opLuis.id],
+    });
+
+    let asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(2);
+    expect(asgs.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
+
+    // 2. CASO EJEMPLO DEL USUARIO: Desmarcar a Ana y Luis y seleccionar ÚNICAMENTE a Marta
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [opMarta.id],
+    });
+
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(1);
+    expect(asgs[0].operator_id).toBe(opMarta.id);
+
+    // 3. Simular sincronización y recarga (mergeDatabaseStates entre local y remote con versión previa)
+    // Este paso antes resucitaba a Ana y Luis acumulando operarios
+    const localSnapshot = backend.exportFullSnapshot();
+    // Simular que el servidor remoto tenía las asignaciones antiguas de Ana y Luis
+    const simulatedOldRemoteState = JSON.parse(JSON.stringify(localSnapshot));
+    simulatedOldRemoteState.work_orders = simulatedOldRemoteState.work_orders.map((w: any) =>
+      w.id === wo.id ? { ...w, updated_at: '2026-10-01T00:00:00.000Z' } : w
+    );
+    simulatedOldRemoteState.work_order_assignments.push(
+      {
+        id: 'asg-old-ana',
+        work_order_id: wo.id,
+        operator_id: opAna.id,
+        is_active: true,
+        assigned_at: '2026-10-01T00:00:00.000Z',
+        assigned_by: 'usr-jc-admin',
+        unassigned_at: null,
+        unassigned_by: null,
+      },
+      {
+        id: 'asg-old-luis',
+        work_order_id: wo.id,
+        operator_id: opLuis.id,
+        is_active: true,
+        assigned_at: '2026-10-01T00:00:00.000Z',
+        assigned_by: 'usr-jc-admin',
+        unassigned_at: null,
+        unassigned_by: null,
+      }
+    );
+
+    const merged = mergeDatabaseStates(localSnapshot, simulatedOldRemoteState);
+    backend.applyRemoteSyncState(merged);
+
+    // Confirmar que tras sincronizar, ÚNICAMENTE Marta permanece asignada (NO se acumulan Ana ni Luis)
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(1);
+    expect(asgs[0].operator_id).toBe(opMarta.id);
+
+    // 4. AÑADIR un operario sin duplicar los existentes (Marta + Ana)
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [opMarta.id, opAna.id],
+    });
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(2);
+    expect(asgs.map((a) => a.operator_id).sort()).toEqual([opMarta.id, opAna.id].sort());
+
+    // 5. QUITAR uno y mantener los demás (quitar a Marta, mantener a Ana)
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [opAna.id],
+    });
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(1);
+    expect(asgs[0].operator_id).toBe(opAna.id);
+
+    // 6. GUARDAR SIN CAMBIAR la selección
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [opAna.id],
+    });
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(1);
+    expect(asgs[0].operator_id).toBe(opAna.id);
+
+    // 7. GESTIONAR SELECCIÓN VACÍA: desasignar todos los operarios
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [],
+    });
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(0);
+    const woEmpty = backend.getWorkOrders({ includeArchived: true }).find((w) => w.id === wo.id)!;
+    expect(woEmpty.is_unscheduled).toBe(true); // Se marca sin asignar correctamente
+
+    // 8. Reasignar en parte sin fecha (is_unscheduled: true)
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      operator_ids: [opLuis.id],
+    });
+    asgs = backend.getWorkOrderAssignments(wo.id);
+    expect(asgs).toHaveLength(1);
+    expect(asgs[0].operator_id).toBe(opLuis.id);
+
+    // 9. Comprobar que los operarios retirados no ven el parte en su lista
+    backend.login(opAna.email, 'anromago678*');
+    const anaWos = backend.getWorkOrders();
+    expect(anaWos.some((w) => w.id === wo.id)).toBe(false);
+
+    // Operario asignado (Luis) sí lo ve si está programado
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      scheduled_at: '2026-11-26T11:00:00.000Z',
+      operator_ids: [opLuis.id],
+    });
+    backend.login(opLuis.email, 'anromago678*');
+    const luisWos = backend.getWorkOrders();
+    expect(luisWos.some((w) => w.id === wo.id)).toBe(true);
+  });
 });

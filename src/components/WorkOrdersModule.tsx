@@ -3428,10 +3428,6 @@ const WorkOrderDetailLoadedView: React.FC<{
                 type="button"
                 data-testid="btn-save-reassign-operators"
                 onClick={() => {
-                  if (selectedOpIdsForReassign.length === 0) {
-                    notifyError('Debes seleccionar al menos un operario.');
-                    return;
-                  }
                   setShowReassignModal(false);
                   const selectedNames = selectedOpIdsForReassign
                     .map((id) => getUserName(id))
@@ -3446,7 +3442,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                     changes: [
                       {
                         label: 'Nuevos operarios asignados',
-                        value: selectedNames,
+                        value: selectedNames || 'Sin operarios asignados (se retiran todos los técnicos)',
                       },
                     ],
                     onConfirm: () => {
@@ -3455,7 +3451,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                           operator_ids: selectedOpIdsForReassign,
                         });
                         notifySuccessGreen(
-                          `Parte ${wo.code} reasignado con éxito a: ${selectedNames}`
+                          selectedOpIdsForReassign.length > 0
+                            ? `Parte ${wo.code} reasignado con éxito a: ${selectedNames}`
+                            : `Parte ${wo.code}: operarios retirados correctamente (sin asignar).`
                         );
                         refreshLocal();
                         onRefresh?.();

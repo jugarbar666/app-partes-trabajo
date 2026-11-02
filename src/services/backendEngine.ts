@@ -2141,12 +2141,28 @@ export class InstallationBackendEngine {
       }
     }
 
-    if (patch.operator_ids) {
+    if (patch.operator_ids !== undefined) {
       const nextSet = new Set(patch.operator_ids);
-      // Eliminar de forma persistente y limpia las asignaciones previas no seleccionadas
+
+      if (!Array.isArray((this.state as any).deleted_work_order_assignment_ids)) {
+        (this.state as any).deleted_work_order_assignment_ids = [];
+      }
+
+      // 1. Recoger las asignaciones que se retiran de este parte y registrarlas en tombstones
+      for (const a of this.state.work_order_assignments) {
+        if (a.work_order_id === workOrderId && !nextSet.has(a.operator_id)) {
+          if (!(this.state as any).deleted_work_order_assignment_ids.includes(a.id)) {
+            (this.state as any).deleted_work_order_assignment_ids.push(a.id);
+          }
+        }
+      }
+
+      // 2. Eliminar de forma persistente y limpia las asignaciones previas no seleccionadas
       this.state.work_order_assignments = this.state.work_order_assignments.filter(
         (a) => a.work_order_id !== workOrderId || nextSet.has(a.operator_id)
       );
+
+      // 3. Activar o crear las seleccionadas
       for (const opId of nextSet) {
         const existing = this.state.work_order_assignments.find(
           (a) => a.work_order_id === workOrderId && a.operator_id === opId
@@ -2155,6 +2171,11 @@ export class InstallationBackendEngine {
           existing.is_active = true;
           existing.unassigned_at = null;
           existing.unassigned_by = null;
+          existing.assigned_at = now;
+          existing.assigned_by = admin.id;
+          (this.state as any).deleted_work_order_assignment_ids = (
+            (this.state as any).deleted_work_order_assignment_ids || []
+          ).filter((id: string) => id !== existing.id);
         } else {
           this.state.work_order_assignments.push({
             id: genId('asg'),
@@ -2168,11 +2189,28 @@ export class InstallationBackendEngine {
           });
         }
       }
+
+      // 4. Blindaje contra duplicados: máximo 1 asignación por (work_order_id, operator_id)
+      const seenOps = new Set<string>();
+      this.state.work_order_assignments = this.state.work_order_assignments.filter((a) => {
+        if (a.work_order_id !== workOrderId) return true;
+        if (seenOps.has(a.operator_id)) {
+          if (!(this.state as any).deleted_work_order_assignment_ids.includes(a.id)) {
+            (this.state as any).deleted_work_order_assignment_ids.push(a.id);
+          }
+          return false;
+        }
+        seenOps.add(a.operator_id);
+        return true;
+      });
     }
+
     const hasActiveAssignments = this.state.work_order_assignments.some(
       (a) => a.work_order_id === workOrderId && a.is_active
     );
-    if (wo.scheduled_at && wo.scheduled_at.trim() !== '' && hasActiveAssignments) {
+    if (!hasActiveAssignments) {
+      wo.is_unscheduled = true;
+    } else if (wo.scheduled_at && wo.scheduled_at.trim() !== '') {
       wo.is_unscheduled = false;
     }
 

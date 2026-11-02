@@ -13,6 +13,7 @@
 
 import { supabaseClient, isRemoteSupabaseConfigured } from './supabaseClient';
 import { DatabaseState } from './seedData';
+import { WorkOrderAssignment } from '../types/domain';
 import { InstallationBackendEngine } from './backendEngine';
 
 export type SyncEngineStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'disabled';
@@ -77,7 +78,7 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     })(),
     work_orders: mergeById(local.work_orders || [], remote.work_orders || [], 'updated_at'),
     work_order_admin: mergeByKey(local.work_order_admin || [], remote.work_order_admin || [], 'work_order_id'),
-    work_order_assignments: mergeById(local.work_order_assignments || [], remote.work_order_assignments || [], 'assigned_at'),
+    work_order_assignments: mergeWorkOrderAssignments(local, remote),
     work_entries: mergeById(local.work_entries || [], remote.work_entries || [], 'created_at'),
     work_sessions: mergeById(local.work_sessions || [], remote.work_sessions || [], 'started_at'),
     work_materials: mergeById(local.work_materials || [], remote.work_materials || [], 'created_at'),
@@ -116,6 +117,13 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     ...((remote as any)?.deleted_article_ids || []),
   ])).filter((id) => !activeArticleIds.has(id));
   (result as any).deleted_article_ids = allDeletedArticles;
+
+  const activeAssignmentIds = new Set((result.work_order_assignments || []).map((a) => a.id));
+  const allDeletedAssignments = Array.from(new Set<string>([
+    ...((local as any)?.deleted_work_order_assignment_ids || []),
+    ...((remote as any)?.deleted_work_order_assignment_ids || []),
+  ])).filter((id) => !activeAssignmentIds.has(id));
+  (result as any).deleted_work_order_assignment_ids = allDeletedAssignments;
 
   if (
     !result.installationId ||
@@ -172,6 +180,70 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
         }
         return wo;
       });
+    }
+  }
+
+  return result;
+}
+
+function mergeWorkOrderAssignments(local: DatabaseState, remote: DatabaseState): WorkOrderAssignment[] {
+  const allDeletedAssignmentIds = new Set<string>([
+    ...((local as any)?.deleted_work_order_assignment_ids || []),
+    ...((remote as any)?.deleted_work_order_assignment_ids || []),
+  ]);
+
+  const localWoMap = new Map<string, number>();
+  for (const w of local.work_orders || []) {
+    localWoMap.set(w.id, new Date(w.updated_at || 0).getTime());
+  }
+  const remoteWoMap = new Map<string, number>();
+  for (const w of remote.work_orders || []) {
+    remoteWoMap.set(w.id, new Date(w.updated_at || 0).getTime());
+  }
+
+  const allWoIds = new Set<string>();
+  for (const a of local.work_order_assignments || []) {
+    if (!allDeletedAssignmentIds.has(a.id)) allWoIds.add(a.work_order_id);
+  }
+  for (const a of remote.work_order_assignments || []) {
+    if (!allDeletedAssignmentIds.has(a.id)) allWoIds.add(a.work_order_id);
+  }
+
+  const result: WorkOrderAssignment[] = [];
+
+  for (const woId of allWoIds) {
+    const localTime = localWoMap.get(woId) || 0;
+    const remoteTime = remoteWoMap.get(woId) || 0;
+
+    const localAsgs = (local.work_order_assignments || []).filter(
+      (a) => a.work_order_id === woId && !allDeletedAssignmentIds.has(a.id)
+    );
+    const remoteAsgs = (remote.work_order_assignments || []).filter(
+      (a) => a.work_order_id === woId && !allDeletedAssignmentIds.has(a.id)
+    );
+
+    let chosen: WorkOrderAssignment[];
+    if (localTime > remoteTime) {
+      chosen = localAsgs;
+    } else if (remoteTime > localTime) {
+      chosen = remoteAsgs;
+    } else {
+      const map = new Map<string, WorkOrderAssignment>();
+      for (const a of localAsgs) map.set(a.id, a);
+      for (const a of remoteAsgs) {
+        if (!map.has(a.id)) map.set(a.id, a);
+      }
+      chosen = Array.from(map.values());
+    }
+
+    const seenOps = new Set<string>();
+    for (const a of chosen) {
+      if (!seenOps.has(a.operator_id)) {
+        seenOps.add(a.operator_id);
+        result.push(a);
+      } else {
+        allDeletedAssignmentIds.add(a.id);
+      }
     }
   }
 
