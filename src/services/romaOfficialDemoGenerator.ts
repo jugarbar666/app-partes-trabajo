@@ -1418,9 +1418,7 @@ export function populateRomaOfficialDemoData(state: DatabaseState, includeDemoCa
       : (state.articles || []).filter(
           (a) =>
             !a.id?.startsWith('art-roma-') &&
-            !a.id?.startsWith('art-1') &&
-            !a.id?.startsWith('art-2') &&
-            !a.id?.startsWith('art-3')
+            !/^art-[0-9]{1,3}$/.test(a.id || '')
         ),
     review_types: includeDemoCatalog
       ? review_types

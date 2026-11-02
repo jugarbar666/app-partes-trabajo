@@ -1121,17 +1121,21 @@ export async function executeValidatedImportAsync(params: {
   const allErrors: Array<{ row: number; field: string; message: string }> = [];
 
   const customers = params.backend.getCustomers(true);
+  const suppliers = params.backend.getSuppliers(true);
   const addresses = params.backend.getCustomerAddresses(undefined, true);
   const reviewTypes = params.backend.getReviewTypes(true);
   const profiles = params.backend.getProfiles();
 
   const total = params.preview.rows.length;
-  const chunkSize = params.chunkSize || 15;
+  const chunkSize = params.chunkSize || 25;
 
-  for (let i = 0; i < total; i += chunkSize) {
-    const chunkEnd = Math.min(i + chunkSize, total);
+  const wasBatching = (params.backend as any).isBatching;
+  (params.backend as any).isBatching = true;
 
-    params.backend.runBatch(() => {
+  try {
+    for (let i = 0; i < total; i += chunkSize) {
+      const chunkEnd = Math.min(i + chunkSize, total);
+
       for (let j = i; j < chunkEnd; j++) {
         const row = params.preview.rows[j];
         if (row.errors.length > 0) {
@@ -1178,7 +1182,7 @@ export async function executeValidatedImportAsync(params: {
             if (row.isDuplicate) updated++;
             else inserted++;
           } else if (params.entityType === 'suppliers') {
-            params.backend.saveSupplier({
+            const savedSupp = params.backend.saveSupplier({
               id: row.isDuplicate ? row.existingId : undefined,
               name: row.mapped.name,
               tax_id: row.mapped.tax_id || '',
@@ -1192,10 +1196,10 @@ export async function executeValidatedImportAsync(params: {
               notes: row.mapped.notes || '',
               is_active: true,
             });
+            suppliers.push(savedSupp);
             if (row.isDuplicate) updated++;
             else inserted++;
           } else if (params.entityType === 'articles') {
-            const suppliers = params.backend.getSuppliers(true);
             const suppInput = (
               row.mapped.supplier ||
               row.mapped.supplier_name ||
@@ -1219,6 +1223,7 @@ export async function executeValidatedImportAsync(params: {
                 notes: 'Proveedor generado automáticamente al importar artículos',
                 is_active: true,
               });
+              suppliers.push(matchedSupplier);
             }
 
             const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
@@ -1327,14 +1332,24 @@ export async function executeValidatedImportAsync(params: {
           });
         }
       }
-    });
 
-    if (params.onProgress) {
-      params.onProgress({ current: chunkEnd, total, phase: 'saving' });
+      if (params.onProgress) {
+        params.onProgress({ current: chunkEnd, total, phase: 'saving' });
+      }
+
+      // Ceder el hilo principal al navegador (10ms) para renderizado fluido del DOM y actualización de barra de progreso
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
-
-    // Ceder el hilo principal al navegador (15ms) para renderizado fluido del DOM y actualización de barra de progreso
-    await new Promise((resolve) => setTimeout(resolve, 15));
+  } finally {
+    (params.backend as any).isBatching = wasBatching;
+    if (!(params.backend as any).isBatching) {
+      (params.backend as any).pendingPersist = false;
+      try {
+        (params.backend as any).persist();
+      } catch (err) {
+        console.error('Error persisting batch import:', err);
+      }
+    }
   }
 
   return { inserted, updated, rejected, errors: allErrors };

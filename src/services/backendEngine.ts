@@ -152,10 +152,12 @@ export class InstallationBackendEngine {
           effectiveMode === 'demo'
             ? createDemoSeedState(installationId)
             : populateRomaOfficialDemoData(createCleanDatabaseState(installationId));
+        this.syncOfficialRomaUsers();
+        this.purgeProductionSeedData();
+      } else {
+        this.syncOfficialRomaUsers();
       }
 
-      this.syncOfficialRomaUsers();
-      this.purgeProductionSeedData();
       if (this.state && this.state.passwords) {
         this.state.passwords['jugarbar@gmail.com'] = 'anromago678*';
       }
@@ -172,18 +174,19 @@ export class InstallationBackendEngine {
   }
 
   public purgeProductionSeedData(): void {
+    if ((this.state as any)?._romaProductionCleanConfirmedV1) {
+      return;
+    }
+
     const isDemoOrOldArticle = (a: any) =>
       !a ||
       !a.id ||
       a.id.startsWith('art-roma-') ||
-      a.id.startsWith('art-1') ||
-      a.id.startsWith('art-2') ||
-      a.id.startsWith('art-3') ||
+      /^art-[0-9]{1,3}$/.test(a.id) ||
       (typeof a.code === 'string' && (/^ART-0[0-9]{2}$/i.test(a.code) || a.code.startsWith('ART-0')));
 
     // El usuario confirmó vaciar artículos demo, revisiones y cesta de compra para importar artículos reales en producción
     this.state.articles = (this.state.articles || []).filter((a) => !isDemoOrOldArticle(a));
-    this.state.review_types = [];
     this.state.installation_reviews = [];
     this.state.review_occurrences = [];
     this.state.shopping_requests = (this.state.shopping_requests || []).filter(
@@ -219,9 +222,7 @@ export class InstallationBackendEngine {
       !a ||
       !a.id ||
       a.id.startsWith('art-roma-') ||
-      a.id.startsWith('art-1') ||
-      a.id.startsWith('art-2') ||
-      a.id.startsWith('art-3') ||
+      /^art-[0-9]{1,3}$/.test(a.id) ||
       (typeof a.code === 'string' && a.code.startsWith('ART-0') && a.code.length <= 7);
 
     this.state.articles = (this.state.articles || []).filter((a) => !isDemo(a));
@@ -4831,4 +4832,4 @@ export class InstallationBackendEngine {
 
 const defaultSlug = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_INSTALLATION_SLUG) || 'fontaneria-roma';
 export const defaultBackend = new InstallationBackendEngine(defaultSlug, true, 'clean');
-defaultBackend.purgeProductionSeedData();
+

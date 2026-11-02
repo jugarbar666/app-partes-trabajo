@@ -110,10 +110,11 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
   ]));
   (result as any).deleted_shopping_request_ids = allDeletedShopping;
 
+  const activeArticleIds = new Set((result.articles || []).map((a) => a.id));
   const allDeletedArticles = Array.from(new Set<string>([
     ...((local as any)?.deleted_article_ids || []),
     ...((remote as any)?.deleted_article_ids || []),
-  ]));
+  ])).filter((id) => !activeArticleIds.has(id));
   (result as any).deleted_article_ids = allDeletedArticles;
 
   if (

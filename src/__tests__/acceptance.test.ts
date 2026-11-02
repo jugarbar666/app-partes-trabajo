@@ -3482,4 +3482,104 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(supp0258!.name).toMatch(/Conducciones y Saneamientos CLM/i);
   });
 
+  it('Blindaje definitivo de persistencia de artículos reales: IDs con timestamp (art-1...) NUNCA son purgados en recarga ni inicialización', () => {
+    const backend = new InstallationBackendEngine('test-article-persistence', true, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+
+    // 1. Alta manual de artículo (su ID tendrá prefijo art-1... por Date.now() en año 2026)
+    const created = backend.saveArticle({
+      code: 'TEST-MAT-999',
+      name: 'Válvula de bola real persistente',
+      description: 'Artículo para verificar que no se elimina en recargas',
+      supplier_id: null,
+      unit: 'ud',
+      purchase_price_cents: 350,
+      sale_price_cents: 720,
+      is_active: true,
+    });
+
+    expect(created.id).toMatch(/^art-1/); // Confirma que empieza por art-1 debido al timestamp actual
+    expect(backend.getArticles(true).length).toBe(1);
+
+    // 2. Simular purga o recarga en cliente (lo que antes destruía los artículos)
+    backend.purgeProductionSeedData();
+    backend.purgeOfficialRomaArticles();
+
+    // 3. Verificar que el artículo SIGUE EXISTIENDO
+    const articlesAfterPurge = backend.getArticles(true);
+    expect(articlesAfterPurge.length).toBe(1);
+    expect(articlesAfterPurge[0].id).toBe(created.id);
+    expect(articlesAfterPurge[0].name).toBe('Válvula de bola real persistente');
+
+    // 4. Simular recarga completa instanciando un nuevo backend con los datos de localStorage
+    const reloadedBackend = new InstallationBackendEngine('test-article-persistence', true, 'clean');
+    reloadedBackend.login('jugarbar@gmail.com', 'anromago678*');
+    const articlesAfterReload = reloadedBackend.getArticles(true);
+    expect(articlesAfterReload.length).toBe(1);
+    expect(articlesAfterReload[0].id).toBe(created.id);
+
+    // 5. Verificar disponibilidad en el catálogo para selección / cesta de compra
+    const catalogArticles = reloadedBackend.getArticles(false);
+    expect(catalogArticles.some((a) => a.id === created.id)).toBe(true);
+  });
+
+  it('Programación de partes en móvil/escritorio por administrador actualiza fecha, hora y operarios sin fallar', () => {
+    const backend = new InstallationBackendEngine('test-mobile-reschedule', true, 'clean');
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+
+    // Crear cliente
+    const cust = backend.saveCustomer({
+      code: 'CLI-SCHED-01',
+      name: 'Cliente Cita Programada',
+      phones: ['600000000'],
+      tax_id: '',
+      contact_name: 'Cliente Cita',
+      main_address: 'Calle Real 1',
+      postal_code: '13001',
+      city: 'Ciudad Real',
+      province: 'Ciudad Real',
+      notes: '',
+      emails: [],
+      is_active: true,
+    });
+
+    // Crear parte pendiente de programar
+    const operario = backend.getProfiles().find((p) => p.role === 'operario' && p.is_active)!;
+    const wo = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: null,
+      snapshot_customer_name: cust.name,
+      snapshot_customer_tax_id: cust.tax_id,
+      snapshot_contact_name: cust.name,
+      snapshot_contact_phone: '600000000',
+      snapshot_contact_email: 'cita@ejemplo.com',
+      snapshot_address_line: 'Calle Real 1',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Instalación termo eléctrico',
+      scheduled_at: undefined,
+      is_unscheduled: true,
+      initial_notes: '',
+      operator_ids: [],
+    });
+
+    expect(wo.is_unscheduled).toBe(true);
+
+    // Administrador programa el parte asignando operario y fecha/hora
+    const targetDateIso = '2026-11-20T10:00:00.000Z';
+    const updated = backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      scheduled_at: targetDateIso,
+      operator_ids: [operario.id],
+    });
+
+    expect(updated.is_unscheduled).toBe(false);
+    expect(updated.is_unscheduled).toBe(false);
+    expect(updated.scheduled_at).toBe(targetDateIso);
+
+    const activeAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(activeAssignments.length).toBe(1);
+    expect(activeAssignments[0].operator_id).toBe(operario.id);
+  });
+
 });

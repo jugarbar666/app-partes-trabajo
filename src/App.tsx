@@ -425,7 +425,6 @@ const MainApplicationContent: React.FC = () => {
   const [syncState, setSyncState] = useState<SyncEngineState>(() => supabaseSyncEngine.getState());
 
   useEffect(() => {
-    backend.purgeProductionSeedData();
     const unsubBackend = backend.subscribe(() => {
       setTick((t) => t + 1);
     });

@@ -115,6 +115,8 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
     if (!saveModal) return;
     setIsProcessing(true);
     setProgressInfo(null);
+    // Ceder el hilo principal para permitir que el navegador pinte el estado de procesamiento (ocultar botón Aceptar)
+    await new Promise((resolve) => setTimeout(resolve, 50));
     try {
       await saveModal.onConfirm({
         updateProgress: (info) => {

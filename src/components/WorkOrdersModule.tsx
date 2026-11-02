@@ -1704,9 +1704,18 @@ const WorkOrderDetailLoadedView: React.FC<{
                     type="button"
                     data-testid="btn-reschedule-wo"
                     onClick={() => {
-                    setRescheduleOpIds(assignments.filter((a) => a.is_active).map((a) => a.operator_id));
-                    setShowRescheduleModal(true);
-                  }}
+                      const activeOps = assignments.filter((a) => a.is_active).map((a) => a.operator_id);
+                      setRescheduleOpIds(activeOps.length > 0 ? activeOps : (currentUser.role === 'operario' ? [currentUser.id] : []));
+                      if (wo && wo.scheduled_at && !isNaN(new Date(wo.scheduled_at).getTime())) {
+                        const d = new Date(wo.scheduled_at);
+                        setRescheduleDateStr(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+                      } else {
+                        const nextHour = new Date(Date.now() + 3600 * 1000);
+                        setRescheduleDateStr(new Date(nextHour.getTime() - nextHour.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+                      }
+                      setRescheduleReason('');
+                      setShowRescheduleModal(true);
+                    }}
                     className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 border border-white/35 text-xs font-bold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                     title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora' : 'Reprogramar fecha y hora'}
                   >
@@ -3958,7 +3967,7 @@ const WorkOrderDetailLoadedView: React.FC<{
       {showRescheduleModal && (
         <div
           data-testid="modal-reschedule-work-order"
-          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
         >
           <form
             onSubmit={(e) => {
@@ -3974,7 +3983,11 @@ const WorkOrderDetailLoadedView: React.FC<{
                 return;
               }
               if (targetDate.getTime() < Date.now() - 60 * 1000) {
-                notifyError('No se puede reprogramar un parte con fecha u hora anterior a la actual.');
+                notifyError('No se puede programar o reprogramar un parte con fecha u hora anterior a la actual.');
+                return;
+              }
+              if (isAdmin && isWorkOrderUnscheduled(wo) && rescheduleOpIds.length === 0) {
+                notifyError('Selecciona al menos un operario para programar el parte.');
                 return;
               }
               const isoTarget = rescheduleDateStr.includes('Z')
@@ -3995,122 +4008,129 @@ const WorkOrderDetailLoadedView: React.FC<{
                     reason: rescheduleReason.trim() || undefined,
                   });
                 }
-                notifySuccessGreen(`Parte ${wo.code} programado con éxito.`);
+                notifySuccessGreen(
+                  isWorkOrderUnscheduled(wo)
+                    ? `Parte ${wo.code} programado con éxito.`
+                    : `Parte ${wo.code} reprogramado con éxito.`
+                );
                 setShowRescheduleModal(false);
                 refreshLocal();
+                onRefresh?.();
               } catch (err: any) {
                 notifyError(err?.message || 'Error al reprogramar el parte.');
               } finally {
                 setIsSubmittingReschedule(false);
               }
             }}
-            className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 text-xs flex flex-col justify-between my-auto"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-hidden shadow-2xl border border-slate-200 text-xs flex flex-col my-auto"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 shrink-0">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-blue-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
                   {isWorkOrderUnscheduled(wo) ? 'Programar Fecha, Hora y Operarios' : 'Reprogramar Fecha y Hora Prevista'}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowRescheduleModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-base font-bold p-1 rounded-lg hover:bg-slate-200/50 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-slate-600">
-              Tanto administradores como operarios pueden reprogramar la cita prevista del parte {wo.code} en cualquier momento.
-            </p>
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain mobile-scroll-container">
+              <p className="text-slate-600">
+                Tanto administradores como operarios pueden programar o reprogramar la cita prevista del parte {wo.code} en cualquier momento.
+              </p>
 
-            {rescheduleConflicts.length > 0 && (
-              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-900 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Aviso de solapamiento horario en la cita prevista:</span>
-                </div>
-                {rescheduleConflicts.map((c, i) => (
-                  <p key={i} className="pl-5 text-amber-800">
-                    El operario <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
-                    <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
+              {rescheduleConflicts.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-900 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Aviso de solapamiento horario en la cita prevista:</span>
+                  </div>
+                  {rescheduleConflicts.map((c, i) => (
+                    <p key={i} className="pl-5 text-amber-800">
+                      El operario <strong>{c.operator_name}</strong> ya tiene asignado el parte{' '}
+                      <strong>{c.work_order_code}</strong> a esa misma hora ({formatDateES(c.scheduled_at)} {formatTimeES(c.scheduled_at)} h - {c.customer_name}).
+                    </p>
+                  ))}
+                  <p className="pl-5 text-[11px] text-amber-700 italic">
+                    Este aviso es informativo. Puedes guardar la programación si deseas asignar ambos partes al operario.
                   </p>
-                ))}
-                <p className="pl-5 text-[11px] text-amber-700 italic">
-                  Este aviso es informativo. Puedes guardar la programación si deseas asignar ambos partes al operario.
-                </p>
-              </div>
-            )}
+                </div>
+              )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Fecha y hora prevista de ejecución *
-              </label>
-              <input
-                type="datetime-local"
-                data-testid="input-reschedule-datetime"
-                required
-                value={rescheduleDateStr}
-                onChange={(e) => setRescheduleDateStr(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium"
-              />
-            </div>
-
-            {isAdmin && (
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700">
-                    Operarios asignados a este parte
-                  </label>
-                  <span className="text-[11px] text-slate-500 font-medium">{rescheduleOpIds.length} seleccionado(s)</span>
-                </div>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50">
-                  {activeOperators.map((op) => {
-                    const isChecked = rescheduleOpIds.includes(op.id);
-                    return (
-                      <label
-                        key={op.id}
-                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white text-xs cursor-pointer select-none"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) setRescheduleOpIds([...rescheduleOpIds, op.id]);
-                            else setRescheduleOpIds(rescheduleOpIds.filter((id) => id !== op.id));
-                          }}
-                          className="rounded text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="font-medium text-slate-800">{op.full_name}</span>
-                        <span className="text-[10px] text-slate-400 capitalize">({op.role})</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Fecha y hora prevista de ejecución *
+                </label>
+                <input
+                  type="datetime-local"
+                  data-testid="input-reschedule-datetime"
+                  required
+                  value={rescheduleDateStr}
+                  onChange={(e) => setRescheduleDateStr(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
               </div>
-            )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Motivo del cambio (opcional)
-              </label>
-              <input
-                type="text"
-                data-testid="input-reschedule-reason"
-                value={rescheduleReason}
-                onChange={(e) => setRescheduleReason(e.target.value)}
-                placeholder="Ej. Solicitud del cliente, retraso en obra previa..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-              />
+              {isAdmin && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Operarios asignados a este parte
+                    </label>
+                    <span className="text-[11px] text-slate-500 font-medium">{rescheduleOpIds.length} seleccionado(s)</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50">
+                    {activeOperators.map((op) => {
+                      const isChecked = rescheduleOpIds.includes(op.id);
+                      return (
+                        <label
+                          key={op.id}
+                          className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white text-xs cursor-pointer select-none transition"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setRescheduleOpIds([...rescheduleOpIds, op.id]);
+                              else setRescheduleOpIds(rescheduleOpIds.filter((id) => id !== op.id));
+                            }}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                          />
+                          <span className="font-semibold text-slate-800">{op.full_name}</span>
+                          <span className="text-[10px] text-slate-400 capitalize">({op.role})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Motivo del cambio (opcional)
+                </label>
+                <input
+                  type="text"
+                  data-testid="input-reschedule-reason"
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  placeholder="Ej. Solicitud del cliente, retraso en obra previa..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <div className="flex justify-end gap-2.5 p-4 sm:p-5 border-t border-slate-200 bg-slate-50 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowRescheduleModal(false)}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-medium cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer transition"
               >
                 Cancelar
               </button>
@@ -4118,7 +4138,7 @@ const WorkOrderDetailLoadedView: React.FC<{
                 type="submit"
                 disabled={isSubmittingReschedule}
                 data-testid="btn-submit-reschedule"
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer transition"
               >
                 {isSubmittingReschedule
                   ? 'Guardando...'
