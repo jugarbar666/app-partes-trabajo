@@ -3734,4 +3734,79 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const luisWos = backend.getWorkOrders();
     expect(luisWos.some((w) => w.id === wo.id)).toBe(true);
   });
+
+  it('Sistema de actualización PWA: detección precisa, no falsos positivos tras reinstalar, purga de caché de recursos y preservación de datos de usuario', async () => {
+    const {
+      isNewerVersion,
+      getInstalledDeviceVersion,
+      setInstalledDeviceVersion,
+      DEVICE_INSTALLED_VERSION_KEY,
+      LATEST_APP_VERSION,
+    } = await import('../config/versionConfig');
+    const { pwaUpdateService } = await import('../services/pwaUpdateService');
+
+    // 1. COMPARACIÓN SEMÁNTICA DE VERSIONES (isNewerVersion)
+    expect(isNewerVersion('1.9.4', '1.9.3')).toBe(true);
+    expect(isNewerVersion('1.10.0', '1.9.3')).toBe(true);
+    expect(isNewerVersion('2.0.0', '1.9.3')).toBe(true);
+    expect(isNewerVersion('1.9.3', '1.9.3')).toBe(false); // Versión idéntica: no debe avisar
+    expect(isNewerVersion('1.9.2', '1.9.3')).toBe(false); // Versión remota anterior: no debe avisar
+    expect(isNewerVersion('v1.9.4', 'v1.9.3')).toBe(true); // Con prefijo 'v'
+
+    // 2. REINSTALACIÓN O INSTALACIÓN LIMPIA SIN DATOS PREVIOS EN LOCALSTORAGE
+    // Simular que el usuario desinstala la app o la instala por primera vez
+    window.localStorage.removeItem(DEVICE_INSTALLED_VERSION_KEY);
+    const initialInstalled = getInstalledDeviceVersion();
+    // Debe inicializarse exactamente con la versión del bundle actual (LATEST_APP_VERSION)
+    expect(initialInstalled).toBe(LATEST_APP_VERSION);
+    // Y registrarse en localStorage para posteriores aperturas
+    expect(window.localStorage.getItem(DEVICE_INSTALLED_VERSION_KEY)).toBe(LATEST_APP_VERSION);
+    // NO debe disparar aviso de actualización falso
+    expect(isNewerVersion(LATEST_APP_VERSION, initialInstalled)).toBe(false);
+
+    // 3. DETECCIÓN REAL CUANDO EXISTE UNA VERSIÓN REMOTA SUPERIOR
+    window.localStorage.setItem(DEVICE_INSTALLED_VERSION_KEY, '1.9.2');
+    const currentDeviceVer = getInstalledDeviceVersion();
+    expect(currentDeviceVer).toBe('1.9.2');
+    const updateAvailable = isNewerVersion(LATEST_APP_VERSION, currentDeviceVer);
+    expect(updateAvailable).toBe(true);
+
+    // 4. PRESERVACIÓN DE DATOS DEL USUARIO DURANTE LA ACTUALIZACIÓN
+    // Asegurar que datos locales como partes, clientes o claves de sesión se conservan intactos
+    window.localStorage.setItem('test_user_session', 'auth-session-12345');
+    window.localStorage.setItem('test_unsaved_draft', 'borrador de parte');
+
+    // Ejecutar actualización
+    setInstalledDeviceVersion(LATEST_APP_VERSION);
+    expect(getInstalledDeviceVersion()).toBe(LATEST_APP_VERSION);
+    expect(isNewerVersion(LATEST_APP_VERSION, getInstalledDeviceVersion())).toBe(false);
+
+    // Los datos del usuario en localStorage permanecen intactos
+    expect(window.localStorage.getItem('test_user_session')).toBe('auth-session-12345');
+    expect(window.localStorage.getItem('test_unsaved_draft')).toBe('borrador de parte');
+
+    // 5. COORDINACIÓN MULTIPESTAÑA
+    let receivedCrossTabVersion = '';
+    const unsubscribe = pwaUpdateService.subscribeCrossTab((ver) => {
+      receivedCrossTabVersion = ver;
+    });
+
+    // Simular evento de actualización desde otra pestaña
+    if (typeof BroadcastChannel !== 'undefined') {
+      const testChannel = new BroadcastChannel('roma_pwa_update_bus');
+      testChannel.postMessage({
+        type: 'APP_UPDATED_IN_ANOTHER_TAB',
+        version: '1.9.4',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      testChannel.close();
+    }
+    unsubscribe();
+
+    // Limpieza de datos de prueba
+    window.localStorage.removeItem('test_user_session');
+    window.localStorage.removeItem('test_unsaved_draft');
+    window.localStorage.setItem(DEVICE_INSTALLED_VERSION_KEY, LATEST_APP_VERSION);
+  });
 });

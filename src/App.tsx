@@ -83,9 +83,11 @@ import { isMobilePreviewEnabled, isDemoUserSwitchEnabled, isInstalledDesktopApp,
 import {
   fetchRemoteLatestVersion,
   getInstalledDeviceVersion,
+  isNewerVersion,
   LATEST_APP_VERSION,
   setInstalledDeviceVersion,
 } from './config/versionConfig';
+import { pwaUpdateService, UpdatePhase } from './services/pwaUpdateService';
 
 type ActiveRoute =
   | 'dashboard'
@@ -813,7 +815,49 @@ const MainApplicationContent: React.FC = () => {
     getInstalledDeviceVersion()
   );
   const [latestVersion, setLatestVersion] = useState<string>(LATEST_APP_VERSION);
-  const hasNewVersionAvailable = installedVersion !== latestVersion;
+  const hasNewVersionAvailable = isNewerVersion(latestVersion, installedVersion);
+
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle');
+  const [updateMessage, setUpdateMessage] = useState<string>('');
+  const [updateError, setUpdateError] = useState<string>('');
+  const [crossTabNotice, setCrossTabNotice] = useState<string | null>(null);
+
+  // Aviso de actualización completada tras reinicio
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const justUpdated = window.sessionStorage.getItem('roma_app_just_updated_version');
+        if (justUpdated) {
+          window.sessionStorage.removeItem('roma_app_just_updated_version');
+          notifySuccessGreen(`Aplicación actualizada con éxito a la versión v${justUpdated}.`);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  // Suscripción al servicio de actualización de PWA y coordinación multipestaña
+  useEffect(() => {
+    const unsubUpdate = pwaUpdateService.subscribe((state) => {
+      setUpdatePhase(state.phase);
+      setUpdateMessage(state.message);
+      if (state.error) {
+        setUpdateError(state.error);
+      }
+    });
+
+    const unsubCrossTab = pwaUpdateService.subscribeCrossTab((ver) => {
+      setCrossTabNotice(
+        `Se ha actualizado la aplicación a la versión v${ver} desde otra ventana. Guarda tus cambios y recarga la página para utilizar la nueva versión.`
+      );
+    });
+
+    return () => {
+      unsubUpdate();
+      unsubCrossTab();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -840,21 +884,24 @@ const MainApplicationContent: React.FC = () => {
     };
   }, []);
 
-  const handleUpdateInstalledVersion = () => {
-    setInstalledDeviceVersion(latestVersion);
-    setInstalledVersionState(latestVersion);
-    if (typeof window !== 'undefined' && 'caches' in window) {
-      try {
-        window.caches.keys().then((names) => {
-          names.forEach((name) => window.caches.delete(name));
-        });
-      } catch {
-        // ignore cache clear errors
+  const handleUpdateInstalledVersion = async () => {
+    setUpdateError('');
+    if (typeof document !== 'undefined') {
+      const modalOpen = document.querySelector('[role="dialog"], .fixed.inset-0');
+      if (modalOpen) {
+        const confirmReload = window.confirm(
+          'Tienes una ventana o formulario abierto. ¿Deseas aplicar la actualización y recargar la aplicación ahora?'
+        );
+        if (!confirmReload) {
+          return;
+        }
       }
     }
-    notifySuccessGreen(
-      `Aplicación actualizada correctamente en este dispositivo a la última versión (v${latestVersion}).`
-    );
+
+    setInstalledDeviceVersion(latestVersion);
+    setInstalledVersionState(latestVersion);
+
+    await pwaUpdateService.executeAppUpdate(latestVersion);
   };
 
   const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
@@ -2489,18 +2536,45 @@ const MainApplicationContent: React.FC = () => {
           </div>
         )}
 
+        {/* Aviso de actualización completada en otra ventana abierta */}
+        {crossTabNotice && (
+          <div className="px-4 lg:px-6 xl:px-8 pt-4">
+            <div className="bg-blue-600 text-white rounded-2xl px-4 py-3 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs sm:text-sm font-bold flex items-center gap-2">
+                <span>🔄</span>
+                <span>{crossTabNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.reload();
+                }}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-blue-900 font-extrabold text-xs shrink-0 cursor-pointer shadow-sm"
+              >
+                Recargar ahora
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Ventanita de aviso con fondo amarillo cuando hay una nueva versión disponible */}
         {hasNewVersionAvailable && (
           <div className="px-4 lg:px-6 xl:px-8 pt-4">
             <div
               data-testid="new-version-yellow-window"
-              onClick={handleUpdateInstalledVersion}
+              onClick={() => {
+                if (updatePhase === 'idle' || updatePhase === 'error') {
+                  handleUpdateInstalledVersion();
+                }
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  handleUpdateInstalledVersion();
+                  if (updatePhase === 'idle' || updatePhase === 'error') {
+                    handleUpdateInstalledVersion();
+                  }
                 }
               }}
               className="bg-yellow-300 hover:bg-yellow-400 border-2 border-yellow-600 text-slate-950 rounded-2xl px-4 py-3 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition"
@@ -2516,19 +2590,49 @@ const MainApplicationContent: React.FC = () => {
                   <div className="text-xs font-medium text-slate-900 mt-0.5">
                     Versión instalada en este dispositivo: <strong>v{installedVersion}</strong>. Pulsa sobre esta ventana para que la versión instalada en el dispositivo se actualice a la última versión existente.
                   </div>
+                  {updateMessage && updatePhase !== 'idle' && (
+                    <div className="text-xs font-bold text-blue-900 mt-1 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{updateMessage}</span>
+                    </div>
+                  )}
+                  {updateError && (
+                    <div className="text-xs font-bold text-red-700 mt-1">
+                      ⚠️ {updateError}
+                    </div>
+                  )}
                 </div>
               </div>
               <button
                 type="button"
                 data-testid="btn-update-to-latest-version"
+                disabled={updatePhase !== 'idle' && updatePhase !== 'error'}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleUpdateInstalledVersion();
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-yellow-300 font-extrabold text-xs shrink-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                className={`px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-yellow-300 font-extrabold text-xs shrink-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition ${
+                  updatePhase !== 'idle' && updatePhase !== 'error' ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Pulsar para actualizar a v{latestVersion}</span>
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    updatePhase !== 'idle' && updatePhase !== 'error' ? 'animate-spin' : ''
+                  }`}
+                />
+                <span>
+                  {updatePhase === 'checking'
+                    ? 'Comprobando...'
+                    : updatePhase === 'downloading'
+                    ? 'Descargando...'
+                    : updatePhase === 'applying'
+                    ? 'Aplicando...'
+                    : updatePhase === 'reloading'
+                    ? 'Reiniciando...'
+                    : updateError
+                    ? `Reintentar actualizar a v${latestVersion}`
+                    : `Pulsar para actualizar a v${latestVersion}`}
+                </span>
               </button>
             </div>
           </div>
