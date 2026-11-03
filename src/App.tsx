@@ -4216,7 +4216,7 @@ const MainApplicationContent: React.FC = () => {
           data-testid="modal-install-app-help"
           className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs overflow-y-auto overscroll-contain mobile-scroll-container"
         >
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-xs my-auto max-h-[92vh] flex flex-col overflow-y-auto overscroll-contain mobile-scroll-container">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-xs my-auto max-h-[92vh] flex flex-col overflow-y-auto overscroll-contain mobile-scroll-container">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Download className="w-5 h-5 text-emerald-600" />
@@ -4234,7 +4234,7 @@ const MainApplicationContent: React.FC = () => {
             </div>
 
             <p className="text-slate-600">
-              Instala la aplicación para acceder de forma rápida y directa desde tu pantalla de inicio como una app nativa:
+              Instala la aplicación para acceder de forma rápida y directa como una aplicación nativa en tu pantalla o escritorio:
             </p>
 
             <div className="space-y-3">
@@ -4259,6 +4259,34 @@ const MainApplicationContent: React.FC = () => {
                 </div>
               )}
 
+              {/* Sección Escritorio / Ordenador PC y Mac */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <span>💻</span>
+                  <span>En Ordenador / Escritorio (Google Chrome o Microsoft Edge):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>💻 Instalar en este Ordenador (PC o Mac)</span>
+                </button>
+                <ul className="list-disc pl-5 space-y-1 text-[11px] text-slate-600 pt-1">
+                  <li>
+                    <strong>Opción directa (Barra de direcciones):</strong> Haz clic en el icono de instalación (<strong>pantalla con flecha</strong> o símbolo <strong>[+]</strong>) situado en la parte derecha de la barra de direcciones del navegador.
+                  </li>
+                  <li>
+                    <strong>O desde el menú de 3 puntos (⋮ o ...):</strong> Arriba a la derecha, pulsa en <strong>"Instalar Gestión Partes de Trabajo..."</strong> (en Chrome) o <strong>"Aplicaciones &gt; Instalar este sitio como una aplicación"</strong> (en Edge).
+                  </li>
+                  <li>
+                    La aplicación funcionará en su propia ventana independiente y creará un acceso directo en tu Escritorio y en el menú de Inicio.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Sección Móvil Android */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-slate-800">
                   <span>🤖</span>
@@ -4278,6 +4306,7 @@ const MainApplicationContent: React.FC = () => {
                 </ol>
               </div>
 
+              {/* Sección Móvil iPhone / iPad */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-slate-800">
                   <span>🍎</span>
@@ -4309,6 +4338,11 @@ const MainApplicationContent: React.FC = () => {
                   <li>Toca el botón <strong>Compartir</strong> (icono con flecha arriba).</li>
                   <li>Baja y pulsa <strong>"Añadir a la pantalla de inicio ⊞"</strong>.</li>
                 </ol>
+              </div>
+
+              {/* Aclaración diferenciadora entre Instalación y Actualización */}
+              <div className="p-2.5 bg-amber-50/60 border border-amber-200/80 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                <strong>💡 Diferencia entre Instalación y Actualización:</strong> La instalación se realiza una única vez para crear el acceso directo nativo en tu dispositivo o escritorio. Las futuras actualizaciones se descargan automáticamente por red sin reinstalar; el aviso de actualizar solo se mostrará cuando exista una versión nueva confirmada en el servidor.
               </div>
             </div>
 
