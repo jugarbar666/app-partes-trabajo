@@ -1,5 +1,5 @@
 {
-  "version": "1.9.5",
-  "releasedAt": "2026-11-03T16:50:00.000Z",
-  "notes": "Visualización de proveedor en listado de artículos, corrección de parser de precios compra/venta, optimización y desahogo de carga de copias de seguridad en base central para sincronización inmediata multiplataforma"
+  "version": "1.9.6",
+  "releasedAt": "2026-11-03T17:45:00.000Z",
+  "notes": "Corrección de oscilación y reversión de partes pendientes de programar: blindaje de resolución de conflictos de asignación y fecha en sincronización en tiempo real, guardado inmediato en Supabase y persistencia robusta"
 }

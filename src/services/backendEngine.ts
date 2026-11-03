@@ -2209,13 +2209,16 @@ export class InstallationBackendEngine {
     const hasActiveAssignments = this.state.work_order_assignments.some(
       (a) => a.work_order_id === workOrderId && a.is_active
     );
-    if (!hasActiveAssignments) {
+    if (patch.is_unscheduled === true || !wo.scheduled_at || wo.scheduled_at.trim() === '') {
       wo.is_unscheduled = true;
-    } else if (wo.scheduled_at && wo.scheduled_at.trim() !== '') {
+      wo.scheduled_at = '';
+    } else if (patch.operator_ids !== undefined && patch.operator_ids.length === 0) {
+      wo.is_unscheduled = true;
+    } else {
       wo.is_unscheduled = false;
     }
 
-    wo.version += 1;
+    wo.version = (wo.version || 0) + 1;
     wo.updated_at = now;
     this.recomputeHashAndCheckSignatureValidity(workOrderId, 'Cambio en planificación del parte');
     this.recordAudit(admin, 'partes', 'work_order', workOrderId, 'MODIFICAR_PLANIFICACIÓN_O_ASIGNACIÓN', patch);
@@ -2308,6 +2311,7 @@ export class InstallationBackendEngine {
     const prevScheduled = wo.scheduled_at;
     const newScheduledIso = parsed.toISOString();
     wo.scheduled_at = newScheduledIso;
+    wo.version = (wo.version || 0) + 1;
     wo.updated_at = new Date().toISOString();
     if (activeOpIds.length > 0) {
       wo.is_unscheduled = false;

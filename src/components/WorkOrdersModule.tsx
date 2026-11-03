@@ -26,6 +26,7 @@ import {
   CalendarX,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { supabaseSyncEngine } from '../services/supabaseSyncEngine';
 import { ScheduleDateTimeModal } from './ScheduleDateTimeModal';
 import {
   DateTimePickerField,
@@ -469,6 +470,9 @@ export const WorkOrderCreateModal: React.FC<{
           operator_ids: selectedOperatorIds,
           origin_review_occurrence_id: originReviewOccurrenceId || null,
           total_amount_cents: parsedCents,
+        });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[CreateWO] push error:', e);
         });
         onCreated(createdWo.id);
       },
@@ -3109,6 +3113,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                     initial_notes: editInitialNotes.trim(),
                     operator_ids: editOperatorIds,
                   });
+                  supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                    console.warn('[EditServiceData] push error:', e);
+                  });
                   notifySuccessGreen('Datos del servicio y operarios actualizados correctamente.');
                   refreshLocal();
                 },
@@ -3437,6 +3444,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                       try {
                         backend.updateWorkOrderPlanningAndAssignments(wo.id, {
                           operator_ids: selectedOpIdsForReassign,
+                        });
+                        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                          console.warn('[ReassignOps] push error:', e);
                         });
                         notifySuccessGreen(
                           selectedOpIdsForReassign.length > 0

@@ -233,12 +233,16 @@ function mergeWorkOrderAssignments(local: DatabaseState, remote: DatabaseState):
   ]);
 
   const localWoMap = new Map<string, number>();
+  const localWoVerMap = new Map<string, number>();
   for (const w of local.work_orders || []) {
     localWoMap.set(w.id, new Date(w.updated_at || 0).getTime());
+    localWoVerMap.set(w.id, typeof w.version === 'number' ? w.version : 0);
   }
   const remoteWoMap = new Map<string, number>();
+  const remoteWoVerMap = new Map<string, number>();
   for (const w of remote.work_orders || []) {
     remoteWoMap.set(w.id, new Date(w.updated_at || 0).getTime());
+    remoteWoVerMap.set(w.id, typeof w.version === 'number' ? w.version : 0);
   }
 
   const allWoIds = new Set<string>();
@@ -252,6 +256,8 @@ function mergeWorkOrderAssignments(local: DatabaseState, remote: DatabaseState):
   const result: WorkOrderAssignment[] = [];
 
   for (const woId of allWoIds) {
+    const localVer = localWoVerMap.get(woId) ?? 0;
+    const remoteVer = remoteWoVerMap.get(woId) ?? 0;
     const localTime = localWoMap.get(woId) || 0;
     const remoteTime = remoteWoMap.get(woId) || 0;
 
@@ -263,17 +269,27 @@ function mergeWorkOrderAssignments(local: DatabaseState, remote: DatabaseState):
     );
 
     let chosen: WorkOrderAssignment[];
-    if (localTime > remoteTime) {
+    if (localVer > remoteVer) {
+      chosen = localAsgs;
+    } else if (remoteVer > localVer) {
+      chosen = remoteAsgs;
+    } else if (localTime > remoteTime) {
       chosen = localAsgs;
     } else if (remoteTime > localTime) {
       chosen = remoteAsgs;
     } else {
-      const map = new Map<string, WorkOrderAssignment>();
-      for (const a of localAsgs) map.set(a.id, a);
-      for (const a of remoteAsgs) {
-        if (!map.has(a.id)) map.set(a.id, a);
+      if (localAsgs.length > 0 && remoteAsgs.length === 0) {
+        chosen = localAsgs;
+      } else if (remoteAsgs.length > 0 && localAsgs.length === 0) {
+        chosen = remoteAsgs;
+      } else {
+        const map = new Map<string, WorkOrderAssignment>();
+        for (const a of localAsgs) map.set(a.id, a);
+        for (const a of remoteAsgs) {
+          if (!map.has(a.id)) map.set(a.id, a);
+        }
+        chosen = Array.from(map.values());
       }
-      chosen = Array.from(map.values());
     }
 
     const seenOps = new Set<string>();
@@ -310,10 +326,25 @@ function mergeById<T extends { id?: string; [key: string]: any }>(
     if (!existing) {
       map.set(key, item);
     } else {
-      const timeLocal = existing[timestampField] ? new Date(existing[timestampField]).getTime() : 0;
-      const timeRemote = item[timestampField] ? new Date(item[timestampField]).getTime() : 0;
-      if (timeRemote >= timeLocal) {
-        map.set(key, { ...existing, ...item });
+      const verLocal = typeof existing.version === 'number' ? existing.version : -1;
+      const verRemote = typeof item.version === 'number' ? item.version : -1;
+
+      if (verLocal !== -1 && verRemote !== -1) {
+        if (verRemote > verLocal) {
+          map.set(key, { ...existing, ...item });
+        } else if (verRemote === verLocal) {
+          const timeLocal = existing[timestampField] ? new Date(existing[timestampField]).getTime() : 0;
+          const timeRemote = item[timestampField] ? new Date(item[timestampField]).getTime() : 0;
+          if (timeRemote > timeLocal) {
+            map.set(key, { ...existing, ...item });
+          }
+        }
+      } else {
+        const timeLocal = existing[timestampField] ? new Date(existing[timestampField]).getTime() : 0;
+        const timeRemote = item[timestampField] ? new Date(item[timestampField]).getTime() : 0;
+        if (timeRemote > timeLocal) {
+          map.set(key, { ...existing, ...item });
+        }
       }
     }
   }

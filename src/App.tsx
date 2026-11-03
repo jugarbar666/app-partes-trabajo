@@ -4522,6 +4522,9 @@ const MainApplicationContent: React.FC = () => {
                             operator_ids: reassignWoModal.selectedOperatorIds,
                           }
                         );
+                        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                          console.warn('[QuickReassign] Error sincronizando con Supabase:', e);
+                        });
                         notifySuccessGreen(
                           `Parte ${reassignWoModal.code} reasignado con éxito a: ${selectedNames}`
                         );

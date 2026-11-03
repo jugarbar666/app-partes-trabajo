@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { RefreshCw, X, AlertTriangle } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import { isWorkOrderUnscheduled, formatDateES, formatTimeES } from '../utils/formatters';
+import { supabaseSyncEngine } from '../services/supabaseSyncEngine';
 
 export interface ScheduleDateTimeModalProps {
   isOpen: boolean;
@@ -273,6 +274,9 @@ export const ScheduleDateTimeModal: React.FC<ScheduleDateTimeModalProps> = ({
           ? `Parte ${workOrder.code} programado con éxito.`
           : `Parte ${workOrder.code} reprogramado con éxito.`
       );
+      supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+        console.warn('[ScheduleDateTimeModal] Error sincronizando con Supabase:', e);
+      });
       onSaved(isoTarget);
       onClose();
     } catch (err: any) {
@@ -292,6 +296,9 @@ export const ScheduleDateTimeModal: React.FC<ScheduleDateTimeModalProps> = ({
         is_unscheduled: true,
       });
       notifySuccess(`Parte ${workOrder.code} marcado como pendiente de programar.`);
+      supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+        console.warn('[ScheduleDateTimeModal] Error sincronizando con Supabase:', e);
+      });
       onSaved('');
       onClose();
     } catch (err: any) {
