@@ -3855,21 +3855,25 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       })
     );
 
-    // Debe mostrar "Programar Cita"
-    expect(htmlProgramar).toContain('Programar Cita');
+    // Debe mostrar "Establecer fecha y hora"
+    expect(htmlProgramar).toContain('Establecer fecha y hora');
     expect(htmlProgramar).toContain(wo.code);
-    // Debe incluir selector de día y hora
-    expect(htmlProgramar).toContain('1. Seleccionar Día');
-    expect(htmlProgramar).toContain('2. Seleccionar Hora');
-    // Debe incluir los botones Guardar Programación y Cancelar
-    expect(htmlProgramar).toContain('Guardar Programación');
+    // Debe incluir columnas de rueda para día, mes, año, hora y minuto
+    expect(htmlProgramar).toContain('wheel-column-day');
+    expect(htmlProgramar).toContain('wheel-column-month');
+    expect(htmlProgramar).toContain('wheel-column-year');
+    expect(htmlProgramar).toContain('wheel-column-hour');
+    expect(htmlProgramar).toContain('wheel-column-minute');
+    // Debe incluir los botones Establecer, Cancelar y Borrar
+    expect(htmlProgramar).toContain('Establecer');
     expect(htmlProgramar).toContain('Cancelar');
+    expect(htmlProgramar).toContain('Borrar');
     // NO debe incluir el checklist o selector de operarios (se eliminó según requisito)
     expect(htmlProgramar).not.toContain('Operarios asignados a este parte');
     expect(htmlProgramar).not.toContain('type="checkbox"');
     // Confirma visualmente que los técnicos asignados se conservan intactos
     expect(htmlProgramar).toContain('Técnicos asignados:');
-    expect(htmlProgramar).toContain('(se conservan sin cambios)');
+    expect(htmlProgramar).toContain('(se conservan)');
 
     // 3. Ejecutar programación mediante el backend simulando el guardado del modal
     const targetIso = '2026-11-28T14:00:00.000Z';
@@ -3883,7 +3887,7 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     expect(afterScheduleAssignments).toHaveLength(2);
     expect(afterScheduleAssignments.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
 
-    // 4. Renderizar el modal en modo "Reprogramar Cita"
+    // 4. Renderizar el modal en modo reprogramación
     const scheduledWo = backend.getWorkOrders({ includeArchived: true }).find((w) => w.id === wo.id)!;
     const htmlReprogramar = renderToString(
       React.createElement(ScheduleDateTimeModal, {
@@ -3897,9 +3901,10 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
       })
     );
 
-    expect(htmlReprogramar).toContain('Reprogramar Cita');
-    expect(htmlReprogramar).toContain('Guardar Reprogramación');
-    expect(htmlReprogramar).toContain('Cita actual:');
+    expect(htmlReprogramar).toContain('Establecer fecha y hora');
+    expect(htmlReprogramar).toContain('Establecer');
+    expect(htmlReprogramar).toContain('Cancelar');
+    expect(htmlReprogramar).toContain('Borrar');
 
     // 5. Reprogramación por operario asignado: conserva también intactas las asignaciones
     backend.login(opAna.email, 'anromago678*');
