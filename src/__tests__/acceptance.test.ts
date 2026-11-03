@@ -3809,4 +3809,108 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     window.localStorage.removeItem('test_unsaved_draft');
     window.localStorage.setItem(DEVICE_INSTALLED_VERSION_KEY, LATEST_APP_VERSION);
   });
+
+  it('Ventana unificada de programación y reprogramación: incluye únicamente Día y Hora, elimina selección de operarios y preserva asignaciones intactas', async () => {
+    const React = await import('react');
+    const { renderToString } = await import('react-dom/server');
+    const { ScheduleDateTimeModal } = await import('../components/ScheduleDateTimeModal');
+
+    // 1. Crear un parte no programado con 2 operarios asignados (Luis y Ana)
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+    const users = backend.getProfiles();
+    const opAna = users.find((u) => u.email === 'ana@fontaneria-roma.es') || users[1];
+    const opLuis = users.find((u) => u.email === 'luis@fontaneria-roma.es') || users[2];
+
+    const wo = backend.createWorkOrder({
+      customer_id: 'cust-roma-1',
+      customer_address_id: 'addr-roma-1',
+      snapshot_customer_name: 'Comunidad Cita Test',
+      snapshot_customer_tax_id: 'B12345678',
+      snapshot_contact_name: 'Contacto Test',
+      snapshot_contact_phone: '600123456',
+      snapshot_contact_email: 'test@roma.es',
+      snapshot_address_line: 'Calle Roma 12',
+      snapshot_postal_code: '13001',
+      snapshot_city: 'Ciudad Real',
+      snapshot_province: 'Ciudad Real',
+      planned_work: 'Revisión técnica de calderas',
+      initial_notes: 'Sin notas iniciales',
+      operator_ids: [opAna.id, opLuis.id],
+    });
+
+    const initialAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(initialAssignments).toHaveLength(2);
+    expect(initialAssignments.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
+
+    // 2. Renderizar el modal en modo "Programar Cita" (is_unscheduled: true)
+    const htmlProgramar = renderToString(
+      React.createElement(ScheduleDateTimeModal, {
+        isOpen: true,
+        onClose: () => {},
+        workOrder: wo,
+        backend: backend,
+        onSaved: () => {},
+        notifySuccess: () => {},
+        notifyError: () => {},
+      })
+    );
+
+    // Debe mostrar "Programar Cita"
+    expect(htmlProgramar).toContain('Programar Cita');
+    expect(htmlProgramar).toContain(wo.code);
+    // Debe incluir selector de día y hora
+    expect(htmlProgramar).toContain('1. Seleccionar Día');
+    expect(htmlProgramar).toContain('2. Seleccionar Hora');
+    // Debe incluir los botones Guardar Programación y Cancelar
+    expect(htmlProgramar).toContain('Guardar Programación');
+    expect(htmlProgramar).toContain('Cancelar');
+    // NO debe incluir el checklist o selector de operarios (se eliminó según requisito)
+    expect(htmlProgramar).not.toContain('Operarios asignados a este parte');
+    expect(htmlProgramar).not.toContain('type="checkbox"');
+    // Confirma visualmente que los técnicos asignados se conservan intactos
+    expect(htmlProgramar).toContain('Técnicos asignados:');
+    expect(htmlProgramar).toContain('(se conservan sin cambios)');
+
+    // 3. Ejecutar programación mediante el backend simulando el guardado del modal
+    const targetIso = '2026-11-28T14:00:00.000Z';
+    backend.updateWorkOrderPlanningAndAssignments(wo.id, {
+      scheduled_at: targetIso,
+      is_unscheduled: false,
+    });
+
+    // Las asignaciones de operarios deben permanecer exactamente iguales (sin perder a ninguno ni duplicar)
+    const afterScheduleAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(afterScheduleAssignments).toHaveLength(2);
+    expect(afterScheduleAssignments.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
+
+    // 4. Renderizar el modal en modo "Reprogramar Cita"
+    const scheduledWo = backend.getWorkOrders({ includeArchived: true }).find((w) => w.id === wo.id)!;
+    const htmlReprogramar = renderToString(
+      React.createElement(ScheduleDateTimeModal, {
+        isOpen: true,
+        onClose: () => {},
+        workOrder: scheduledWo,
+        backend: backend,
+        onSaved: () => {},
+        notifySuccess: () => {},
+        notifyError: () => {},
+      })
+    );
+
+    expect(htmlReprogramar).toContain('Reprogramar Cita');
+    expect(htmlReprogramar).toContain('Guardar Reprogramación');
+    expect(htmlReprogramar).toContain('Cita actual:');
+
+    // 5. Reprogramación por operario asignado: conserva también intactas las asignaciones
+    backend.login(opAna.email, 'anromago678*');
+    const rescheduledByOp = backend.rescheduleWorkOrder({
+      work_order_id: wo.id,
+      scheduled_at: '2026-11-29T16:00:00.000Z',
+    });
+    expect(rescheduledByOp.scheduled_at).toBe('2026-11-29T16:00:00.000Z');
+
+    const finalAssignments = backend.getWorkOrderAssignments(wo.id);
+    expect(finalAssignments).toHaveLength(2);
+    expect(finalAssignments.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
+  });
 });

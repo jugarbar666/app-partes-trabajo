@@ -54,6 +54,7 @@ import {
   WorkOrderStatusBadge,
 } from './components/CommonUI';
 import { WorkOrderCreateModal, WorkOrderDetailView } from './components/WorkOrdersModule';
+import { ScheduleDateTimeModal } from './components/ScheduleDateTimeModal';
 import {
   AttendanceAndReportsModule,
   ReviewsAndNotificationsModule,
@@ -4348,185 +4349,31 @@ const MainApplicationContent: React.FC = () => {
         </div>
       )}
 
-      {/* Modal global de reprogramación de fecha y hora prevista (Admin y Operarios) */}
+      {/* Modal global unificado de programación / reprogramación de fecha y hora prevista (Admin y Operarios) */}
       {rescheduleWoModal.open && (
-        <div
-          data-testid="modal-reschedule-quick"
-          className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain mobile-scroll-container"
-        >
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!isAdmin) {
-                notifyError('Solo un administrador puede programar o modificar la programación de un parte.');
-                return;
-              }
-              if (!rescheduleDatetimeInput) {
-                notifyError('Indique la fecha y la hora de ejecución.');
-                return;
-              }
-              const targetDate = new Date(rescheduleDatetimeInput);
-              if (isNaN(targetDate.getTime())) {
-                notifyError('Indique la fecha y la hora de ejecución.');
-                return;
-              }
-              if (targetDate.getTime() < Date.now() - 60 * 1000) {
-                notifyError('No se puede reprogramar un parte con fecha u hora anterior a la actual.');
-                return;
-              }
-              const isoTarget = rescheduleDatetimeInput.includes('Z')
-                ? rescheduleDatetimeInput
-                : new Date(rescheduleDatetimeInput).toISOString();
-
-              const activeOpIds = backend
-                .getWorkOrderAssignments(rescheduleWoModal.workOrderId)
-                .filter((a) => a.is_active)
-                .map((a) => a.operator_id);
-
-              if (activeOpIds.length === 0) {
-                notifyError('Seleccione un operario para programar el parte.');
-                return;
-              }
-
-              let reschedWarnings: string[] = [];
-              try {
-                backend.validateScheduledTimeWithinOperatorSchedules(rescheduleDatetimeInput, activeOpIds);
-
-                const conflicts = backend.findOperatorScheduleConflicts(
-                  rescheduleDatetimeInput,
-                  activeOpIds,
-                  rescheduleWoModal.workOrderId
-                );
-                reschedWarnings = conflicts.map(
-                  (c) =>
-                    `El operario ${c.operator_name} ya tiene asignado el parte ${c.work_order_code} a esa misma hora (${formatDateES(c.scheduled_at, tz)} ${formatTimeES(c.scheduled_at, tz)} h - ${c.customer_name}).`
-                );
-              } catch (err: any) {
-                notifyError(err?.message || 'La hora prevista está fuera del horario laboral.');
-                return;
-              }
-
-              requestSaveConfirmation({
-                title: 'Confirmar Programación de Fecha y Hora Prevista',
-                warnings: reschedWarnings.length > 0 ? reschedWarnings : undefined,
-                changes: [
-                  { label: 'Parte de trabajo', value: rescheduleWoModal.code },
-                  {
-                    label: 'Fecha/hora anterior',
-                    value: rescheduleWoModal.currentScheduledAt
-                      ? `${formatDateES(rescheduleWoModal.currentScheduledAt, tz)} ${formatTimeES(rescheduleWoModal.currentScheduledAt, tz)} h`
-                      : 'Pendiente de programar',
-                  },
-                  {
-                    label: 'Nueva fecha/hora prevista',
-                    value: `${formatDateES(isoTarget, tz)} ${formatTimeES(isoTarget, tz)} h`,
-                  },
-                  ...(rescheduleReasonInput.trim()
-                    ? [{ label: 'Motivo', value: rescheduleReasonInput.trim() }]
-                    : []),
-                ],
-                onConfirm: () => {
-                  try {
-                    backend.rescheduleWorkOrder({
-                      work_order_id: rescheduleWoModal.workOrderId,
-                      scheduled_at: isoTarget,
-                      reason: rescheduleReasonInput.trim() || undefined,
-                    });
-                    notifySuccessGreen(`Parte ${rescheduleWoModal.code} reprogramado con éxito.`);
-                    setRescheduleWoModal({
-                      open: false,
-                      workOrderId: '',
-                      code: '',
-                      currentScheduledAt: '',
-                    });
-                    refresh();
-                  } catch (err: any) {
-                    notifyError(err?.message || 'Error al reprogramar el parte.');
-                  }
-                },
-              });
-            }}
-            className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-xs"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-blue-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">
-                  Reprogramar Fecha y Hora Prevista
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setRescheduleWoModal({
-                    open: false,
-                    workOrderId: '',
-                    code: '',
-                    currentScheduledAt: '',
-                  })
-                }
-                className="text-slate-400 hover:text-slate-600 text-base font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-slate-600">
-              Tanto administradores como operarios pueden reprogramar la fecha y hora prevista del parte{' '}
-              <strong>{rescheduleWoModal.code}</strong> en cualquier momento.
-            </p>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nueva fecha y hora prevista *
-              </label>
-              <DateTimePickerField
-                value={rescheduleDatetimeInput}
-                onChange={setRescheduleDatetimeInput}
-                required
-                testId="input-quick-reschedule-datetime"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Motivo del cambio (opcional)
-              </label>
-              <input
-                type="text"
-                data-testid="input-quick-reschedule-reason"
-                value={rescheduleReasonInput}
-                onChange={(e) => setRescheduleReasonInput(e.target.value)}
-                placeholder="Ej. Solicitud del cliente, retraso en obra previa..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() =>
-                  setRescheduleWoModal({
-                    open: false,
-                    workOrderId: '',
-                    code: '',
-                    currentScheduledAt: '',
-                  })
-                }
-                className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-medium cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                data-testid="btn-submit-quick-reschedule"
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
-              >
-                Guardar Reprogramación
-              </button>
-            </div>
-          </form>
-        </div>
+        <ScheduleDateTimeModal
+          isOpen={rescheduleWoModal.open}
+          onClose={() =>
+            setRescheduleWoModal({
+              open: false,
+              workOrderId: '',
+              code: '',
+              currentScheduledAt: '',
+            })
+          }
+          workOrder={{
+            id: rescheduleWoModal.workOrderId,
+            code: rescheduleWoModal.code,
+            scheduled_at: rescheduleWoModal.currentScheduledAt,
+          }}
+          backend={backend}
+          onSaved={(_newIso) => {
+            refresh();
+          }}
+          notifySuccess={notifySuccessGreen}
+          notifyError={notifyError}
+          timezone={tz}
+        />
       )}
 
       {/* Modal global de reasignación de operarios (Solo Administrador) */}
