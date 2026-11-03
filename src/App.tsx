@@ -2400,20 +2400,6 @@ const MainApplicationContent: React.FC = () => {
               <span>Versión:</span>
               <strong className="text-blue-700">v{installedVersion}</strong>
             </span>
-
-            {!isAppInstalled && (
-              <button
-                type="button"
-                data-testid="header-btn-install-app"
-                onClick={handleInstallApp}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0 animate-pulse"
-                title="Instalar aplicación en este dispositivo"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Instalar Aplicación</span>
-                <span className="sm:hidden">Instalar</span>
-              </button>
-            )}
           </div>
 
           {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
