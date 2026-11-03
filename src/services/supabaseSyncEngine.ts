@@ -54,10 +54,26 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
 
   const result: DatabaseState = {
     installationId: local.installationId || remote.installationId,
-    company_settings:
-      new Date(local.company_settings?.updated_at || 0) >= new Date(remote.company_settings?.updated_at || 0)
-        ? local.company_settings
-        : remote.company_settings,
+    company_settings: (() => {
+      if (!local.company_settings && !remote.company_settings) return undefined as any;
+      if (!local.company_settings) return remote.company_settings;
+      if (!remote.company_settings) return local.company_settings;
+
+      const localUserMod = Boolean((local.company_settings as any)?._user_modified);
+      const remoteUserMod = Boolean((remote.company_settings as any)?._user_modified);
+
+      if (remoteUserMod && !localUserMod) {
+        return remote.company_settings;
+      }
+      if (localUserMod && !remoteUserMod) {
+        return local.company_settings;
+      }
+
+      const localTime = new Date(local.company_settings?.updated_at || 0).getTime();
+      const remoteTime = new Date(remote.company_settings?.updated_at || 0).getTime();
+
+      return remoteTime >= localTime ? remote.company_settings : local.company_settings;
+    })(),
     profiles: mergeById(local.profiles, remote.profiles, 'updated_at'),
     passwords: { ...(remote.passwords || {}), ...(local.passwords || {}) },
     invitations: mergeById(local.invitations || [], remote.invitations || [], 'created_at'),
@@ -582,7 +598,7 @@ export class SupabaseRealtimeSyncService {
       console.error('[SupabaseSync] Error al guardar en Supabase:', err);
       this.updateState({
         status: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error',
-        errorMessage: err?.message || 'Error guardando en Supabase',
+        errorMessage: err?.message || 'Error guardando en la base de datos central',
       });
     } finally {
       this.isPushing = false;

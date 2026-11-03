@@ -3917,5 +3917,103 @@ describe('Validación de los 21 Escenarios de Aceptación (Sección 20 del Promp
     const finalAssignments = backend.getWorkOrderAssignments(wo.id);
     expect(finalAssignments).toHaveLength(2);
     expect(finalAssignments.map((a) => a.operator_id).sort()).toEqual([opAna.id, opLuis.id].sort());
+  }, 20000);
+  it('Correcciones: Eliminación de invalidación de firmas, sincronización de empresa entre dispositivos y eliminación de avisos Supabase', async () => {
+    // 1. ELIMINAR EL CONTROL Y MENSAJE DE FIRMAS INVÁLIDAS
+    backend.login('jugarbar@gmail.com', 'anromago678*');
+    const cust = backend.getCustomers(true)[0];
+    const addr = backend.getCustomerAddresses(cust.id, true)[0];
+    const wo = backend.createWorkOrder({
+      customer_id: cust.id,
+      customer_address_id: addr.id,
+      planned_work: 'Reparación caldera comunitaria con firma',
+      initial_notes: 'Sin notas',
+    } as any);
+
+    // Registrar firma manuscrita del cliente
+    const sig = backend.saveWorkSignature({
+      work_order_id: wo.id,
+      signer_name: 'Felipe Gómez',
+      signer_dni: '12345678A',
+      data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    });
+    expect(sig.is_valid).toBe(true);
+
+    // Modificar el parte: reprogramar, añadir trabajo y añadir material
+    backend.rescheduleWorkOrder({
+      work_order_id: wo.id,
+      scheduled_at: '2026-11-20T11:00:00.000Z',
+    });
+    backend.addWorkEntry(wo.id, 'Sustitución de válvula termostática', '');
+    backend.addWorkMaterial({
+      work_order_id: wo.id,
+      article_name_snapshot: 'Válvula termostática 1/2 pulgada',
+      quantity: 1,
+      unit_snapshot: 'ud',
+      unit_price_cents: 3500,
+      notes: '',
+      article_id: null,
+    });
+
+    // Las firmas NO se invalidan por ningún cambio posterior
+    const signaturesAfterChanges = backend.getWorkSignatures(wo.id);
+    expect(signaturesAfterChanges).toHaveLength(1);
+    expect(signaturesAfterChanges[0].is_valid).toBe(true);
+    expect(signaturesAfterChanges[0].invalidated_at).toBeNull();
+    expect(signaturesAfterChanges[0].invalidated_reason).toBeNull();
+
+    // 2. SINCRONIZACIÓN DE DATOS DE LA EMPRESA ENTRE DISPOSITIVOS
+    const devA = new InstallationBackendEngine('test-sync-company-a', false, 'clean');
+    devA.login('admin@climalux-demo.es', 'Admin1234!');
+    devA.updateCompanySettings({
+      company_name: 'Fontanería Roma Central S.L.',
+      tax_id: 'B12345678',
+      contact_phone: '+34 926 999 888',
+      contact_email: 'central@fontaneriaroma.es',
+      address: 'Avenida de la Constitución 45',
+      city: 'Ciudad Real',
+      province: 'Ciudad Real',
+      postal_code: '13005',
+    });
+
+    const snapshotA = devA.exportFullSnapshot();
+    expect(snapshotA.company_settings.company_name).toBe('Fontanería Roma Central S.L.');
+
+    // Dispositivo B arranca limpio o con estado previo
+    const devB = new InstallationBackendEngine('test-sync-company-b', false, 'clean');
+    const snapshotB = devB.exportFullSnapshot();
+
+    // Fusión de sincronización
+    const mergedState = mergeDatabaseStates(snapshotB, snapshotA);
+    expect(mergedState.company_settings.company_name).toBe('Fontanería Roma Central S.L.');
+    expect(mergedState.company_settings.tax_id).toBe('B12345678');
+    expect(mergedState.company_settings.contact_email).toBe('central@fontaneriaroma.es');
+
+    // Aplicar en dispositivo B y verificar persistencia tras recarga
+    devB.applyRemoteSyncState(mergedState);
+    const reloadedSettingsB = devB.getCompanySettings();
+    expect(reloadedSettingsB.company_name).toBe('Fontanería Roma Central S.L.');
+    expect(reloadedSettingsB.contact_phone).toBe('+34 926 999 888');
+
+    // 3. AUSENCIA DE MENSAJES Y TEXTOS DE SUPABASE EN LA INTERFAZ
+    devB.login('admin@climalux-demo.es', 'Admin1234!');
+    const React = await import('react');
+    const { renderToString } = await import('react-dom/server');
+    const { AdminSystemModule } = await import('../components/AdminAndMasterModules');
+    const { UIConfirmationProvider } = await import('../components/CommonUI');
+    const htmlAdmin = renderToString(
+      React.createElement(
+        UIConfirmationProvider,
+        null,
+        React.createElement(AdminSystemModule, {
+          backend: devB,
+          initialSection: 'backups',
+          onBack: () => {},
+          onRefresh: () => {},
+        })
+      )
+    );
+    expect(htmlAdmin).not.toContain('Supabase en directo');
+    expect(htmlAdmin).not.toContain('Supabase Cloud');
   });
 });

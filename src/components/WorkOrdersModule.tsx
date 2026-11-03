@@ -1589,7 +1589,7 @@ const WorkOrderDetailLoadedView: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  const validSignature = signatures.find((s) => s.is_valid) || null;
+  const validSignature = signatures.length > 0 ? signatures[0] : null;
 
   return (
     <div ref={topDetailRef} className="space-y-5" data-testid="work-order-detail-top-container">
@@ -2353,7 +2353,7 @@ const WorkOrderDetailLoadedView: React.FC<{
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-emerald-900 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Firma vigente para el contenido actual
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Firma de conformidad del cliente
                 </span>
                 <span className="text-[11px] text-emerald-700">
                   {formatDateTimeES(validSignature.signed_at)}
@@ -2373,20 +2373,7 @@ const WorkOrderDetailLoadedView: React.FC<{
             </div>
           ) : (
             <div className="text-xs text-slate-500 p-3 rounded-xl border border-dashed border-slate-200">
-              No hay firma vigente en este momento. Pulsa «+ Firmar en Pantalla» para abrir el recuadro de firma del cliente.
-            </div>
-          )}
-
-          {signatures.filter((s) => !s.is_valid).length > 0 && (
-            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-1">
-              <div className="font-bold">Evidencias de firmas históricas invalidadas:</div>
-              {signatures
-                .filter((s) => !s.is_valid)
-                .map((s) => (
-                  <div key={s.id}>
-                    • {s.signer_name} ({formatDateTimeES(s.signed_at)}) — {s.invalidated_reason}
-                  </div>
-                ))}
+              No hay firma registrada en este momento. Pulsa «+ Firmar en Pantalla» para abrir el recuadro de firma del cliente.
             </div>
           )}
         </div>

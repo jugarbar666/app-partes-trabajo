@@ -99,7 +99,7 @@ export const MasterDataAndUsersModule: React.FC<{
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const currentUser = backend.getCurrentUser();
-  const company = backend.getCompanySettings();
+  const company = useMemo(() => backend.getCompanySettings(), [backend, tick]);
   const tz = company.timezone || 'Europe/Madrid';
   const customers = useMemo(() => backend.getCustomers(true), [backend, tick]);
   const addresses = useMemo(() => backend.getCustomerAddresses(undefined, true), [backend, tick]);
@@ -4005,7 +4005,7 @@ export const AdminSystemModule: React.FC<{
 
     const handleDownloadBackupSnapshot = async () => {
     try {
-      notifySuccessGreen('Consultando y descargando la última copia de seguridad oficial de la nube (Supabase)...');
+      notifySuccessGreen('Consultando y descargando la última copia de seguridad oficial de la nube...');
       let snapshot: any;
       try {
         snapshot = await supabaseSyncEngine.fetchCloudSnapshot();
@@ -4387,7 +4387,7 @@ export const AdminSystemModule: React.FC<{
           <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1 text-xs">
               <h3 className="text-sm font-bold text-slate-900">
-                Copias de Seguridad de la Base de Datos Central en la Nube (Supabase Cloud)
+                Copias de Seguridad de la Base de Datos Central en la Nube
               </h3>
               <p className="text-slate-600">
                 Alcance integral: Base de Datos PostgreSQL + Archivos Privados de Storage (fotografías y firmas) + Metadatos de Identidades Auth.
@@ -4762,8 +4762,9 @@ export const AdminSystemModule: React.FC<{
                 { label: 'Servidor SMTP saliente', value: compSmtpHost ? `${compSmtpHost}:${compSmtpPort} (${compSmtpEncryption})` : 'No configurado' },
                 { label: 'Servidor correo entrante', value: compIncomingHost ? `${compIncomingProtocol.toUpperCase()} ${compIncomingHost}:${compIncomingPort}` : 'No configurado' },
               ],
-              onConfirm: () => {
-                backend.updateCompanySettings({
+              onConfirm: async () => {
+                try {
+                  backend.updateCompanySettings({
                   company_name: compName,
                   tax_id: compTaxId,
                   contact_phone: compPhone,
@@ -4791,7 +4792,16 @@ export const AdminSystemModule: React.FC<{
                   incoming_mail_user: compIncomingUser.trim(),
                   incoming_mail_password: compIncomingPassword,
                 });
-                refresh();
+                  try {
+                    await supabaseSyncEngine.pushStateToSupabase();
+                  } catch (syncErr) {
+                    console.warn('Error sincronizando datos de empresa con la nube:', syncErr);
+                  }
+                  notifySuccessGreen('Datos de la empresa y configuración guardados con éxito.');
+                  refresh();
+                } catch (err: any) {
+                  notifyError(err?.message || 'Error al guardar la configuración de empresa.');
+                }
               },
             });
           }}
@@ -5364,7 +5374,7 @@ export const AdminSystemModule: React.FC<{
           </div>
 
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
-            <strong>Seguridad de secretos:</strong> Las claves del proveedor de correo transaccional (`EMAIL_API_KEY`) y de servicio (`SUPABASE_SERVICE_ROLE_KEY`) se almacenan exclusivamente en variables privadas de servidor / Supabase Vault y nunca son campos públicos de configuración.
+            <strong>Seguridad de secretos:</strong> Las claves del proveedor de correo transaccional (`EMAIL_API_KEY`) y de servicio (`SUPABASE_SERVICE_ROLE_KEY`) se almacenan exclusivamente en variables privadas del servidor seguro y nunca son campos públicos de configuración.
           </div>
 
           <div className="flex justify-end">

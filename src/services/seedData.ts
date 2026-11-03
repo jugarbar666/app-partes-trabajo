@@ -1104,7 +1104,7 @@ export function createDemoSeedState(installationId = 'instalaciones-climalux-dem
  * y da de alta exclusivamente los 4 usuarios oficiales de Fontanería Roma con sus DNIs, roles y contraseñas.
  */
 export function createCleanDatabaseState(installationId = 'instalaciones-climalux-demo'): DatabaseState {
-  const nowIso = new Date().toISOString();
+  const nowIso = '2026-10-01T08:00:00.000Z';
 
   const profiles: UserProfile[] = [
     {

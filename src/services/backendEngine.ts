@@ -715,7 +715,8 @@ export class InstallationBackendEngine {
         : sanitizeTimezone(this.state.company_settings.timezone),
       id: 1,
       updated_at: new Date().toISOString(),
-    };
+      _user_modified: true,
+    } as any;
     this.recordAudit(admin, 'configuracion', 'company_settings', '1', 'MODIFICAR_CONFIGURACIÓN', {
       before: prev,
       after: this.state.company_settings,
@@ -2362,16 +2363,6 @@ export class InstallationBackendEngine {
 
     if (wo.content_hash !== newHash) {
       wo.content_hash = newHash;
-      // Invalidar firmas vigentes anteriores cuyos contenidos hayan cambiado materialmente
-      for (const sig of this.state.work_signatures.filter(
-        (s) => s.work_order_id === workOrderId && s.is_valid
-      )) {
-        if (sig.signed_content_hash !== newHash) {
-          sig.is_valid = false;
-          sig.invalidated_at = new Date().toISOString();
-          sig.invalidated_reason = `Contenido modificado tras la firma (${reason}). Requiere nueva firma.`;
-        }
-      }
     }
   }
 
@@ -2459,7 +2450,7 @@ export class InstallationBackendEngine {
       id: genId('we'),
       work_order_id: workOrderId,
       description: description.trim(),
-      observations: observations.trim(),
+      observations: (observations || '').trim(),
       created_by: user.id, // Forzado en servidor
       created_at: now,
       updated_at: now,
@@ -2564,7 +2555,7 @@ export class InstallationBackendEngine {
       operator_id: user.id,
       started_at: params.started_at,
       ended_at: params.ended_at,
-      notes: params.notes.trim(),
+      notes: (params.notes || '').trim(),
       created_by: user.id,
       created_at: now,
       updated_at: now,
@@ -2664,7 +2655,7 @@ export class InstallationBackendEngine {
       unit_snapshot: params.unit_snapshot || 'ud',
       quantity: roundToTwoDecimals(params.quantity),
       unit_price_cents: Math.round(params.unit_price_cents),
-      notes: params.notes.trim(),
+      notes: (params.notes || '').trim(),
       created_by: user.id,
       created_at: now,
       updated_at: now,
@@ -3407,7 +3398,12 @@ export class InstallationBackendEngine {
     this.getWorkOrderById(workOrderId);
     return this.state.work_signatures
       .filter((s) => s.work_order_id === workOrderId)
-      .map((s) => ({ ...s }));
+      .map((s) => ({
+        ...s,
+        is_valid: true,
+        invalidated_at: null,
+        invalidated_reason: null,
+      }));
   }
 
   public saveWorkSignature(params: {
@@ -3423,14 +3419,14 @@ export class InstallationBackendEngine {
       throw new ValidationError('Nombre del firmante y trazo de la firma son obligatorios.');
     }
 
-    // Si había una firma anterior válida, marcarla como reemplazada en el historial
     const now = new Date().toISOString();
+    // Conservar todas las firmas sin invalidarlas
     for (const prev of this.state.work_signatures.filter(
-      (s) => s.work_order_id === params.work_order_id && s.is_valid
+      (s) => s.work_order_id === params.work_order_id
     )) {
-      prev.is_valid = false;
-      prev.invalidated_at = now;
-      prev.invalidated_reason = 'Reemplazada por una nueva firma del cliente';
+      prev.is_valid = true;
+      prev.invalidated_at = null;
+      prev.invalidated_reason = null;
     }
 
     const entries = this.state.work_entries.filter((e) => e.work_order_id === params.work_order_id);

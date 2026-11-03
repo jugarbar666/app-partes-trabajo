@@ -1661,7 +1661,7 @@ export function generateWorkOrderDetailPDF(params: {
     nextY += 8;
   }
 
-  if (params.signature && params.signature.is_valid) {
+  if (params.signature) {
     doc.setFont('helvetica', 'bold');
     doc.text(
       `Firma manuscrita de conformidad del cliente: ${params.signature.signer_name} (${params.signature.signer_dni || '—'})`,
