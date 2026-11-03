@@ -1,7 +1,7 @@
 {
   "name": "gestion-partes-trabajo",
   "private": true,
-  "version": "1.9.3",
+  "version": "1.9.4",
   "type": "module",
   "description": "Aplicación web responsive y PWA de gestión de partes de trabajo, revisiones periódicas, lista de compra y control horario (Single-tenant por instalación con React + TypeScript + Vite + Supabase + Netlify)",
   "scripts": {
