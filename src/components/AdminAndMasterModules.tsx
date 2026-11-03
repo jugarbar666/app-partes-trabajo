@@ -367,6 +367,18 @@ export const MasterDataAndUsersModule: React.FC<{
               }
             },
           });
+          if (helpers?.updateProgress) {
+            helpers.updateProgress({
+              current: preview.totalRows,
+              total: preview.totalRows,
+              message: 'Sincronizando catálogo con todos los dispositivos...',
+            });
+          }
+          try {
+            await supabaseSyncEngine.pushStateToSupabase();
+          } catch (syncErr) {
+            console.warn('Error sincronizando artículos con la base central:', syncErr);
+          }
           notifySuccessGreen(
             `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
           );
@@ -1472,6 +1484,11 @@ export const MasterDataAndUsersModule: React.FC<{
                   <div className="text-slate-600">
                     Compra: <strong>{formatCentsToEUR(a.purchase_price_cents)}</strong> · Venta:{' '}
                     <strong>{formatCentsToEUR(a.sale_price_cents)}</strong>
+                    <span className="mx-2 text-slate-400">·</span>
+                    Proveedor:{' '}
+                    <strong className="text-slate-800">
+                      {suppliers.find((s) => s.id === a.supplier_id)?.name || 'Sin proveedor habitual'}
+                    </strong>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1484,8 +1501,16 @@ export const MasterDataAndUsersModule: React.FC<{
                       setArtName(a.name);
                       setArtDesc(a.description || '');
                       setArtSupplierId(a.supplier_id || '');
-                      setArtBuyPrice(((a.purchase_price_cents || 0) / 100).toFixed(2).replace('.', ','));
-                      setArtSalePrice(((a.sale_price_cents || 0) / 100).toFixed(2).replace('.', ','));
+                      setArtBuyPrice(
+                        a.purchase_price_cents !== null && a.purchase_price_cents !== undefined
+                          ? (a.purchase_price_cents / 100).toFixed(2).replace('.', ',')
+                          : ''
+                      );
+                      setArtSalePrice(
+                        a.sale_price_cents !== null && a.sale_price_cents !== undefined
+                          ? (a.sale_price_cents / 100).toFixed(2).replace('.', ',')
+                          : ''
+                      );
                       setArtUnit(a.unit || 'ud');
                       setShowCreateModal(true);
                     }}
@@ -2532,10 +2557,14 @@ export const MasterDataAndUsersModule: React.FC<{
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const buyCents = parseEurosToCents(artBuyPrice);
-                  const saleCents = parseEurosToCents(artSalePrice);
-                  if (buyCents === null || saleCents === null) {
-                    notifyError('Precios de compra y venta inválidos.');
+                  const buyCents = artBuyPrice.trim() !== '' ? parseEurosToCents(artBuyPrice) : null;
+                  const saleCents = artSalePrice.trim() !== '' ? parseEurosToCents(artSalePrice) : null;
+                  if (artBuyPrice.trim() !== '' && buyCents === null) {
+                    notifyError('Precio de compra con formato inválido.');
+                    return;
+                  }
+                  if (artSalePrice.trim() !== '' && saleCents === null) {
+                    notifyError('Precio de venta con formato inválido.');
                     return;
                   }
                   setShowCreateModal(false);
@@ -2549,7 +2578,7 @@ export const MasterDataAndUsersModule: React.FC<{
                       { label: 'Precio Venta', value: formatCentsToEUR(saleCents) },
                       { label: 'Unidad de medida', value: artUnit },
                     ],
-                    onConfirm: () => {
+                    onConfirm: async () => {
                       const existing = editingId ? articles.find((a) => a.id === editingId) : null;
                       backend.saveArticle({
                         ...(editingId ? { id: editingId } : {}),
@@ -2562,6 +2591,11 @@ export const MasterDataAndUsersModule: React.FC<{
                         unit: artUnit,
                         is_active: existing ? existing.is_active : true,
                       });
+                      try {
+                        await supabaseSyncEngine.pushStateToSupabase();
+                      } catch (err) {
+                        console.warn('Error sincronizando artículo:', err);
+                      }
                       notifySuccessGreen(
                         isEdit ? 'Artículo modificado correctamente.' : 'Artículo creado correctamente.'
                       );

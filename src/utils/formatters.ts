@@ -21,27 +21,39 @@ export function formatCentsToEUR(cents: number | null | undefined): string {
  * Convierte una entrada de texto en euros (ej. "125,50" o "125.5" o "0") a céntimos enteros exactos.
  * Devuelve null si es inválido o negativo.
  */
-export function parseEurosToCents(input: string | number): number | null {
+export function parseEurosToCents(input: string | number | null | undefined): number | null {
+  if (input === null || input === undefined) return null;
   if (typeof input === 'number') {
     if (!Number.isFinite(input) || input < 0) return null;
     return Math.round(input * 100);
   }
-  const trimmed = input.trim().replace(/\s/g, '').replace('€', '');
-  if (!trimmed) return null;
+  const rawStr = String(input);
+  let cleaned = rawStr
+    .replace(/[\u00A0\u202F\r\n\t]/g, ' ')
+    .replace(/['"`]/g, '')
+    .replace(/\b(eur|euros|euro)\b/gi, '')
+    .replace(/[€$]/g, '')
+    .trim();
 
-  // Normalizar separador decimal español o punto y separador de miles
-  let normalized = trimmed;
-  if (trimmed.includes(',') && trimmed.includes('.')) {
-    if (trimmed.indexOf('.') < trimmed.indexOf(',')) {
-      normalized = trimmed.replace(/\./g, '').replace(',', '.');
+  if (!cleaned) return null;
+
+  cleaned = cleaned.replace(/\s+/g, '');
+
+  let normalized = cleaned;
+  if (cleaned.includes(',') && cleaned.includes('.')) {
+    if (cleaned.indexOf('.') < cleaned.indexOf(',')) {
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
     } else {
-      normalized = trimmed.replace(/,/g, '');
+      normalized = cleaned.replace(/,/g, '');
     }
-  } else if (trimmed.includes(',')) {
-    normalized = trimmed.replace(',', '.');
+  } else if (cleaned.includes(',')) {
+    normalized = cleaned.replace(',', '.');
   }
 
-  // Permitir enteros y decimales con cualquier número de posiciones (ej. 0.094, 0.26066666666666666, 117.73)
+  if (normalized.startsWith('.')) {
+    normalized = '0' + normalized;
+  }
+
   if (!/^\d+(\.\d+)?$/.test(normalized)) {
     return null;
   }

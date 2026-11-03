@@ -13,7 +13,7 @@
 
 import { supabaseClient, isRemoteSupabaseConfigured } from './supabaseClient';
 import { DatabaseState } from './seedData';
-import { WorkOrderAssignment } from '../types/domain';
+import { WorkOrderAssignment, BackupJob } from '../types/domain';
 import { InstallationBackendEngine } from './backendEngine';
 
 export type SyncEngineStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'disabled';
@@ -48,6 +48,24 @@ function getOrCreateDeviceId(): string {
  * Fusión determinista no destructiva de dos estados de base de datos.
  * Preserva registros de ambos dispositivos y ante colisiones escoge el más reciente por timestamp.
  */
+export function sanitizeStateForCloudSync(st: DatabaseState): DatabaseState {
+  if (!st) return st;
+  const cleanBackupJobs = Array.isArray(st.backup_jobs)
+    ? st.backup_jobs.map((b) => {
+        if ((b as any).snapshot_payload) {
+          const { snapshot_payload, ...rest } = b as any;
+          return rest as BackupJob;
+        }
+        return b;
+      })
+    : [];
+
+  return {
+    ...st,
+    backup_jobs: cleanBackupJobs,
+  };
+}
+
 export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState): DatabaseState {
   if (!local) return remote;
   if (!remote) return local;
@@ -116,7 +134,13 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     attendance_sessions: mergeById(local.attendance_sessions || [], remote.attendance_sessions || [], 'updated_at'),
     attendance_corrections: mergeById(local.attendance_corrections || [], remote.attendance_corrections || [], 'created_at'),
     audit_log: mergeById(local.audit_log || [], remote.audit_log || [], 'created_at'),
-    backup_jobs: mergeById(local.backup_jobs || [], remote.backup_jobs || [], 'created_at'),
+    backup_jobs: mergeById(local.backup_jobs || [], remote.backup_jobs || [], 'created_at').map((b) => {
+      if ((b as any).snapshot_payload) {
+        const { snapshot_payload, ...rest } = b as any;
+        return rest as BackupJob;
+      }
+      return b;
+    }),
     import_jobs: mergeById(local.import_jobs || [], remote.import_jobs || [], 'created_at'),
   };
 
@@ -534,7 +558,7 @@ export class SupabaseRealtimeSyncService {
     // Emisión inmediata vía Broadcast para otros dispositivos conectados (< 50ms)
     if (this.channel && this.backend) {
       try {
-        const state = this.backend.exportFullSnapshot();
+        const state = sanitizeStateForCloudSync(this.backend.exportFullSnapshot());
         this.channel.send({
           type: 'broadcast',
           event: 'realtime_db_mutation',
@@ -570,7 +594,7 @@ export class SupabaseRealtimeSyncService {
     this.pendingPush = false;
 
     try {
-      const currentState = this.backend.exportFullSnapshot();
+      const currentState = sanitizeStateForCloudSync(this.backend.exportFullSnapshot());
       const currentUser = this.backend.getCurrentUser();
 
       const { error } = await supabaseClient.from('app_sync_state').upsert({

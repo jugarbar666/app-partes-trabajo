@@ -24,6 +24,7 @@ import {
 } from '../utils/exportImportUtils';
 import { ScreenHeaderBar, useUIConfirmation } from './CommonUI';
 import { formatCentsToEUR, formatDateTimeES } from '../utils/formatters';
+import { supabaseSyncEngine } from '../services/supabaseSyncEngine';
 
 const ENTITY_FIELDS: Record<
   'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',

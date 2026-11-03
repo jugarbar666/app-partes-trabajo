@@ -1,5 +1,5 @@
 {
-  "version": "1.9.4",
-  "releasedAt": "2026-11-03T14:15:00.000Z",
-  "notes": "Eliminación definitiva de invalidación de firmas, sincronización bidireccional de datos de empresa entre dispositivos, retirada de indicadores técnicos de la interfaz y ventana emergente de fecha y hora"
+  "version": "1.9.5",
+  "releasedAt": "2026-11-03T16:50:00.000Z",
+  "notes": "Visualización de proveedor en listado de artículos, corrección de parser de precios compra/venta, optimización y desahogo de carga de copias de seguridad en base central para sincronización inmediata multiplataforma"
 }
