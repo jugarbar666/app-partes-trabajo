@@ -138,8 +138,10 @@ describe('Apartado Inicio móvil del Administrador: Selector desplegable compact
       });
 
       expect(select.value).toBe('no_programado');
-      // La cabecera móvil debe reflejar el estado actual seleccionado
-      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Partes No Programados');
+      // La cabecera móvil mantiene la denominación requerida «Inicio / Partes de trabajo»
+      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Inicio / Partes de trabajo');
+      // Y el subtítulo refleja la descripción del estado
+      expect(mobileHomeView?.querySelector('p')?.textContent).toContain('Trabajos sin fecha ni operario');
 
       // 2. Filtrar por "en_curso" (En ejecución)
       await act(async () => {
@@ -148,7 +150,8 @@ describe('Apartado Inicio móvil del Administrador: Selector desplegable compact
       });
 
       expect(select.value).toBe('en_curso');
-      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Partes En Ejecución');
+      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Inicio / Partes de trabajo');
+      expect(mobileHomeView?.querySelector('p')?.textContent).toContain('Trabajos actualmente en intervención');
 
       // 3. Filtrar por "terminado"
       await act(async () => {
@@ -157,7 +160,8 @@ describe('Apartado Inicio móvil del Administrador: Selector desplegable compact
       });
 
       expect(select.value).toBe('terminado');
-      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Partes Terminados');
+      expect(mobileHomeView?.querySelector('h1')?.textContent).toContain('Inicio / Partes de trabajo');
+      expect(mobileHomeView?.querySelector('p')?.textContent).toContain('Trabajos finalizados pendientes de cierre');
 
       // 4. Si el estado seleccionado no tiene partes, muestra mensaje claro
       await act(async () => {
@@ -237,6 +241,88 @@ describe('Apartado Inicio móvil del Administrador: Selector desplegable compact
         select.dispatchEvent(new Event('change', { bubbles: true }));
       });
       expect(select.className).toContain('bg-slate-900');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('renombra «Inicio» por «Inicio / Partes de trabajo» en el menú móvil y oculta «Todos los partes» en móvil', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(App));
+      });
+
+      // El botón de navegación móvil para inicio debe contener «Inicio / Partes de trabajo»
+      const navButtons = Array.from(container.querySelectorAll('nav button'));
+      const homeBtn = navButtons.find((btn) => btn.textContent?.includes('Inicio / Partes de trabajo'));
+      expect(homeBtn).toBeTruthy();
+
+      // El botón de «Todos los partes» debe estar oculto en móvil (clase hidden md:flex)
+      const allWoBtn = navButtons.find((btn) => btn.textContent?.includes('Todos los partes'));
+      expect(allWoBtn).toBeTruthy();
+      expect(allWoBtn?.className).toContain('hidden');
+      expect(allWoBtn?.className).toContain('md:flex');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('unifica la presentación de partes archivados en móvil con el mismo diseño de tarjetas que Inicio', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    // Cerramos y archivamos el parte 'wo-3'
+    defaultBackend.closeWorkOrder('wo-3');
+    defaultBackend.archiveWorkOrder('wo-3');
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(App));
+      });
+
+      // Buscamos y pulsamos el botón de navegación a «Partes archivados»
+      const navButtons = Array.from(container.querySelectorAll('button'));
+      const archivedNavBtn = navButtons.find((b) =>
+        (b.textContent || '').toLowerCase().includes('partes archivados')
+      );
+      expect(archivedNavBtn).toBeTruthy();
+
+      await act(async () => {
+        archivedNavBtn?.click();
+      });
+
+      // Debe existir el contenedor de tarjetas móviles de partes archivados
+      const mobileArchivedList = container.querySelector(
+        '[data-testid="archived-work-orders-mobile-list"]'
+      );
+      expect(mobileArchivedList).toBeTruthy();
+
+      // Debe renderizar la tarjeta del parte archivado wo-3
+      const archivedCard = mobileArchivedList?.querySelector('[data-testid="archived-card-wo-3"]');
+      expect(archivedCard).toBeTruthy();
+
+      // Debe mostrar el identificador del parte y el texto de archivado
+      expect(archivedCard?.textContent).toContain('PT-2026-0003');
+      expect(archivedCard?.textContent).toContain('Archivado');
+
+      // No debe contener botones de reprogramar ni de reasignar
+      expect(archivedCard?.textContent).not.toContain('Reprogramar');
+      expect(archivedCard?.textContent).not.toContain('Reasignar');
+
+      // Debe permitir consultar el detalle del parte archivado
+      const consultBtn = archivedCard?.querySelector('button');
+      expect(consultBtn?.textContent).toContain('Consultar');
     } finally {
       await act(async () => {
         root.unmount();

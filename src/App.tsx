@@ -205,12 +205,21 @@ const WorkOrderMobileCard: React.FC<{
   assignments: WorkOrderAssignment[];
   getUserName: (id: string) => string;
   onOpenDetail: (id: string) => void;
-  onReschedule: (wo: WorkOrder) => void;
+  onReschedule?: (wo: WorkOrder) => void;
   onReassign?: (wo: WorkOrder) => void;
   isAdmin?: boolean;
   cardIndex?: number;
 }> = ({ wo, tz, assignments, getUserName, onOpenDetail, onReschedule, onReassign, isAdmin, cardIndex = 0 }) => {
-  const palette = planningCardPalettes[cardIndex % planningCardPalettes.length];
+  const isArchived = Boolean(wo.archived_at);
+  const palette = isArchived
+    ? {
+        bg: 'bg-slate-900/[0.03]',
+        border: 'border-slate-300',
+        text: 'text-slate-900',
+        innerBox: 'bg-slate-100/80 border-slate-200 text-slate-800',
+      }
+    : planningCardPalettes[cardIndex % planningCardPalettes.length];
+
   const woOps = assignments
     .filter((a) => a.work_order_id === wo.id)
     .map((a) => getUserName(a.operator_id));
@@ -222,46 +231,60 @@ const WorkOrderMobileCard: React.FC<{
   return (
     <div
       key={wo.id}
-      data-testid={`operator-card-${wo.id}`}
+      data-testid={isArchived ? `archived-card-${wo.id}` : `operator-card-${wo.id}`}
       className={`${palette.bg} ${palette.border} rounded-2xl border-2 p-4 sm:p-5 shadow-xs space-y-3 flex flex-col justify-between transition hover:shadow-md`}
     >
       <div className="space-y-2.5">
-        {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA */}
+        {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA / HISTÓRICO ARCHIVADO */}
         <div
           className={`p-3 sm:p-3.5 rounded-xl shadow-sm space-y-2.5 ${
-            isWorkOrderUnscheduled(wo)
+            isArchived
+              ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white border border-slate-800'
+              : isWorkOrderUnscheduled(wo)
               ? 'bg-amber-100 border border-amber-300 text-slate-950'
               : 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white'
           }`}
         >
-          {/* Fila superior: etiqueta de fecha en dos líneas y código de parte */}
+          {/* Fila superior: etiqueta de fecha/archivo en dos líneas y código de parte */}
           <div className="flex items-center justify-between gap-2">
             <div
               className={`flex items-center gap-2 min-w-0 ${
-                isWorkOrderUnscheduled(wo) ? 'text-amber-950 font-bold' : 'text-blue-100'
+                isArchived
+                  ? 'text-slate-300'
+                  : isWorkOrderUnscheduled(wo)
+                  ? 'text-amber-950 font-bold'
+                  : 'text-blue-100'
               }`}
             >
               <div
                 className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                  isWorkOrderUnscheduled(wo)
+                  isArchived
+                    ? 'bg-white/10 text-slate-300 border border-slate-700'
+                    : isWorkOrderUnscheduled(wo)
                     ? 'bg-amber-200 border border-amber-400 text-amber-950'
                     : 'bg-white/15 text-white'
                 }`}
               >
-                <Calendar className="w-3.5 h-3.5" />
+                {isArchived ? <Archive className="w-3.5 h-3.5" /> : <Calendar className="w-3.5 h-3.5" />}
               </div>
               <div
                 className={`text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider leading-tight ${
-                  isWorkOrderUnscheduled(wo) ? 'text-amber-950' : 'text-blue-100'
+                  isArchived
+                    ? 'text-slate-300'
+                    : isWorkOrderUnscheduled(wo)
+                    ? 'text-amber-950'
+                    : 'text-blue-100'
                 }`}
               >
-                <div>Fecha y Hora</div>
-                <div>Prevista</div>
+                <div>{isArchived ? 'Histórico' : 'Fecha y Hora'}</div>
+                <div>{isArchived ? 'Archivado' : 'Prevista'}</div>
               </div>
             </div>
             <span
               className={`font-mono font-extrabold text-xs px-3 py-1 rounded-md shadow-2xs shrink-0 whitespace-nowrap tracking-wide ${
-                isWorkOrderUnscheduled(wo)
+                isArchived
+                  ? 'bg-slate-800 border border-slate-700 text-slate-200'
+                  : isWorkOrderUnscheduled(wo)
                   ? 'bg-amber-200 border border-amber-400 text-slate-950 font-black'
                   : 'bg-white/15 border border-white/25 text-white'
               }`}
@@ -270,59 +293,79 @@ const WorkOrderMobileCard: React.FC<{
             </span>
           </div>
 
-          {/* Fila inferior: fecha y hora destacada y botón reprogramar */}
+          {/* Fila inferior: fecha y hora destacada y acciones restringidas */}
           <div className="flex items-center justify-between gap-2 pt-0.5">
             <div
               className={`text-sm sm:text-base font-black tracking-tight ${
-                isWorkOrderUnscheduled(wo) ? 'text-slate-950' : 'text-white'
+                isArchived
+                  ? 'text-slate-100'
+                  : isWorkOrderUnscheduled(wo)
+                  ? 'text-slate-950'
+                  : 'text-white'
               }`}
             >
-              {isWorkOrderUnscheduled(wo) ? (
+              {isWorkOrderUnscheduled(wo) && !isArchived ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-300 text-slate-950 font-black text-xs sm:text-sm border border-amber-400 shadow-2xs">
                   Pendiente de programar
                 </span>
               ) : (
                 <>
-                  <span>{formatDateES(wo.scheduled_at, tz)}</span>
-                  <span className="text-blue-200 font-semibold text-xs mx-1.5">a las</span>
-                  <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
+                  <span>{formatDateES(wo.scheduled_at || wo.created_at, tz)}</span>
+                  {wo.scheduled_at && (
+                    <>
+                      <span className={isArchived ? 'text-slate-400 font-semibold text-xs mx-1.5' : 'text-blue-200 font-semibold text-xs mx-1.5'}>
+                        a las
+                      </span>
+                      <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
+                    </>
+                  )}
                 </>
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                data-testid={`operator-card-reschedule-${wo.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReschedule(wo);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
-                  isWorkOrderUnscheduled(wo)
-                    ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
-                    : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
-                }`}
-                title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora prevista' : 'Reprogramar fecha y hora prevista'}
-              >
-                {isWorkOrderUnscheduled(wo) ? 'Programar' : 'Reprogramar'}
-              </button>
-              {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
-                <button
-                  type="button"
-                  data-testid={`operator-card-reassign-${wo.id}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReassign(wo);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
-                    isWorkOrderUnscheduled(wo)
-                      ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
-                      : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
-                  }`}
-                  title="Reasignar operarios al parte (Solo Administrador)"
-                >
-                  Reasignar
-                </button>
+              {isArchived ? (
+                <span className="px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shadow-xs">
+                  ■ Archivado
+                </span>
+              ) : (
+                <>
+                  {onReschedule && (
+                    <button
+                      type="button"
+                      data-testid={`operator-card-reschedule-${wo.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReschedule(wo);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                        isWorkOrderUnscheduled(wo)
+                          ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
+                          : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
+                      }`}
+                      title={isWorkOrderUnscheduled(wo) ? 'Programar fecha y hora prevista' : 'Reprogramar fecha y hora prevista'}
+                    >
+                      {isWorkOrderUnscheduled(wo) ? 'Programar' : 'Reprogramar'}
+                    </button>
+                  )}
+                  {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
+                    <button
+                      type="button"
+                      data-testid={`operator-card-reassign-${wo.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReassign(wo);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                        isWorkOrderUnscheduled(wo)
+                          ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
+                          : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
+                      }`}
+                      title="Reasignar operarios al parte (Solo Administrador)"
+                    >
+                      Reasignar
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -407,9 +450,13 @@ const WorkOrderMobileCard: React.FC<{
       <button
         type="button"
         onClick={() => onOpenDetail(wo.id)}
-        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+        className={`w-full py-2.5 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer transition ${
+          isArchived
+            ? 'bg-slate-800 hover:bg-slate-900 border border-slate-700'
+            : 'bg-blue-600 hover:bg-blue-700'
+        }`}
       >
-        Abrir Parte / Gestionar →
+        {isArchived ? 'Consultar Parte Archivado →' : 'Abrir Parte / Gestionar →'}
       </button>
     </div>
   );
@@ -701,6 +748,14 @@ const MainApplicationContent: React.FC = () => {
   const currentRoute = routeStack[routeStack.length - 1] || 'dashboard';
 
   const navigateTo = (next: ActiveRoute) => {
+    // Redirección móvil admin: 'work_orders_list' queda cubierta por 'Inicio / Partes de trabajo'
+    if (next === 'work_orders_list' && isMobileDeviceOrViewport() && isAdmin) {
+      setAdminMobileFilter('todos');
+      setRouteStack(['dashboard']);
+      setMobileMenuOpen(false);
+      scrollToTopAllApp();
+      return;
+    }
     // Protección móvil: impedir abrir 'admin_system' con backups o audit en móvil
     if (
       next === 'admin_system' &&
@@ -2100,18 +2155,28 @@ const MainApplicationContent: React.FC = () => {
             }`}
           >
             <LayoutDashboard className="w-4 h-4 shrink-0" />
-            <span>Inicio</span>
+            <span>
+              {isAdmin ? (
+                <>
+                  <span className="md:hidden">Inicio / Partes de trabajo</span>
+                  <span className="hidden md:inline">Inicio</span>
+                </>
+              ) : (
+                'Inicio'
+              )}
+            </span>
           </button>
 
           {isAdmin && (
             <>
+              {/* Oculto en móvil (md:flex): retirado de la navegación móvil del admin al quedar cubierto por 'Inicio / Partes de trabajo' */}
               <button
                 type="button"
                 onClick={() => {
                   setWoListFilterStatus('all');
                   navigateTo('work_orders_list');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                className={`hidden md:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'work_orders_list'
                     ? 'bg-blue-600 text-white font-semibold shadow-sm'
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
@@ -2728,7 +2793,7 @@ const MainApplicationContent: React.FC = () => {
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
                                   <h1 className="text-base font-extrabold text-slate-900 truncate">
-                                    {headerTitle}
+                                    Inicio / Partes de trabajo
                                   </h1>
                                   <p className="text-[11px] text-slate-500 truncate">
                                     {headerSubtitle}
@@ -3952,9 +4017,11 @@ const MainApplicationContent: React.FC = () => {
                 )}
               </div>
 
-              {/* Contenedor con desplazamiento exclusivo para las filas de partes, manteniendo fija la cabecera de columnas */}
+              {/* Contenedor con desplazamiento para las filas de partes (escritorio en tabla y móvil en tarjetas homogéneas) */}
               <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 overflow-auto overscroll-contain shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
+                {/* 1. Vista escritorio en tabla (hidden md:block) */}
+                <div className="hidden md:block">
+                  <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 z-20 bg-[#0b1120] text-white shadow-sm">
                     <tr>
                       {visibleWoColumns.includes('code') && <th className="p-3.5">N.º Parte</th>}
@@ -4102,8 +4169,59 @@ const MainApplicationContent: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* 2. Vista móvil para partes archivados (block md:hidden): tarjetas homogéneas que reutilizan WorkOrderMobileCard */}
+              {currentRoute === 'archived_work_orders' && (
+                <div className="block md:hidden p-3 space-y-3.5" data-testid="archived-work-orders-mobile-list">
+                  {archivedWorkOrders
+                    .filter((w) => {
+                      if (!woSearch.trim()) return true;
+                      const query = woSearch.toLowerCase();
+                      if (w.code.toLowerCase().includes(query)) return true;
+                      if (w.snapshot_customer_name.toLowerCase().includes(query)) return true;
+                      if (w.planned_work.toLowerCase().includes(query)) return true;
+                      if ((w.snapshot_address_line || '').toLowerCase().includes(query)) return true;
+                      if ((w.snapshot_city || '').toLowerCase().includes(query)) return true;
+                      return false;
+                    })
+                    .length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs">
+                      No hay partes archivados que coincidan con la búsqueda.
+                    </div>
+                  ) : (
+                    archivedWorkOrders
+                      .filter((w) => {
+                        if (!woSearch.trim()) return true;
+                        const query = woSearch.toLowerCase();
+                        if (w.code.toLowerCase().includes(query)) return true;
+                        if (w.snapshot_customer_name.toLowerCase().includes(query)) return true;
+                        if (w.planned_work.toLowerCase().includes(query)) return true;
+                        if ((w.snapshot_address_line || '').toLowerCase().includes(query)) return true;
+                        if ((w.snapshot_city || '').toLowerCase().includes(query)) return true;
+                        return false;
+                      })
+                      .map((wo, idx) => (
+                        <WorkOrderMobileCard
+                          key={wo.id}
+                          wo={wo}
+                          cardIndex={idx}
+                          tz={tz}
+                          assignments={assignments}
+                          getUserName={getUserName}
+                          isAdmin={isAdmin}
+                          onOpenDetail={(id) => {
+                            setSelectedWorkOrderId(id);
+                            navigateTo('work_order_detail');
+                          }}
+                          onReschedule={() => {}}
+                        />
+                      ))
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
 
           {/* 4. DETALLE DE UN PARTE DE TRABAJO */}
           {currentRoute === 'work_order_detail' && selectedWorkOrderId && (
