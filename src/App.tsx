@@ -874,6 +874,9 @@ const MainApplicationContent: React.FC = () => {
   const [adminMobileSearchOpen, setAdminMobileSearchOpen] = useState(false);
   const [archivedMobileSearchOpen, setArchivedMobileSearchOpen] = useState(false);
   const adminMobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const [operatorMobileSearch, setOperatorMobileSearch] = useState('');
+  const [operatorMobileSearchOpen, setOperatorMobileSearchOpen] = useState(false);
+  const operatorMobileSearchInputRef = useRef<HTMLInputElement>(null);
 
   // Control de versión instalada en el dispositivo y aviso de nueva versión disponible
   const [installedVersion, setInstalledVersionState] = useState<string>(() =>
@@ -3913,57 +3916,251 @@ const MainApplicationContent: React.FC = () => {
                 </>
               ) : (
                 /* PANTALLA INICIAL DESPEJADA DEL OPERARIO (Regla 5 y Regla 7) */
-                <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden" data-testid="operator-home-view">
-                  <div className="shrink-0 bg-[#f4f6fa]">
-                    <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-                      <div>
-                        <h1 className="text-lg font-extrabold text-slate-900">
-                          Mis Partes de Trabajo Asignados ({agendaSortedWorkOrders.length})
-                        </h1>
-                        <p className="text-xs text-slate-500">
-                          Ordenados por fecha y hora previstas de realización (ascendente)
-                        </p>
+                (() => {
+                  const filteredOperatorWorkOrders = agendaSortedWorkOrders.filter((wo) =>
+                    matchesWorkOrderQuery(wo, operatorMobileSearch, assignments, getUserName)
+                  );
+
+                  return (
+                    <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden" data-testid="operator-home-view">
+                      <div className="shrink-0 bg-[#f4f6fa]">
+                        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3 shadow-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <h1 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
+                                Mis Partes de Trabajo Asignados ({filteredOperatorWorkOrders.length})
+                              </h1>
+                              <p className="text-xs text-slate-500 truncate">
+                                Ordenados por fecha y hora previstas de realización (ascendente)
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Botón compacto de búsqueda: no satura la cabecera cuando está cerrado */}
+                              <button
+                                type="button"
+                                data-testid="btn-toggle-operator-mobile-search"
+                                onClick={() => {
+                                  setOperatorMobileSearchOpen((prev) => !prev);
+                                  if (!operatorMobileSearchOpen) {
+                                    setTimeout(() => operatorMobileSearchInputRef.current?.focus(), 50);
+                                  }
+                                }}
+                                className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                  operatorMobileSearch.trim() || operatorMobileSearchOpen
+                                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                                    : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+                                }`}
+                                title="Buscar partes por cualquier campo"
+                              >
+                                <Search className="w-4 h-4" />
+                                <span>Buscar</span>
+                                {operatorMobileSearch.trim() && (
+                                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* PANEL DE BÚSQUEDA DESPLEGABLE COMPACTO: se despliega con el botón y se cierra al localizar el parte */}
+                          {operatorMobileSearchOpen && (
+                            <div
+                              data-testid="operator-mobile-search-dropdown"
+                              className="pt-2 border-t border-slate-100 space-y-2 animate-fadeIn"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <Search className="w-4 h-4" />
+                                  </div>
+                                  <input
+                                    ref={operatorMobileSearchInputRef}
+                                    type="search"
+                                    data-testid="input-operator-mobile-search"
+                                    value={operatorMobileSearch}
+                                    onChange={(e) => setOperatorMobileSearch(e.target.value)}
+                                    placeholder="Buscar por cliente, dirección, trabajo, código..."
+                                    className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                                    autoFocus
+                                  />
+                                  {operatorMobileSearch && (
+                                    <button
+                                      type="button"
+                                      data-testid="btn-clear-operator-mobile-search"
+                                      onClick={() => setOperatorMobileSearch('')}
+                                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                                      title="Borrar texto"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  data-testid="btn-close-operator-mobile-search"
+                                  onClick={() => setOperatorMobileSearchOpen(false)}
+                                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold cursor-pointer shrink-0"
+                                >
+                                  Cerrar
+                                </button>
+                              </div>
+
+                              {/* Resultados inmediatos desplegables */}
+                              {operatorMobileSearch.trim() && (() => {
+                                const matchesInSearch = agendaSortedWorkOrders.filter((w) =>
+                                  matchesWorkOrderQuery(w, operatorMobileSearch, assignments, getUserName)
+                                );
+                                return (
+                                  <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                                    <div className="flex items-center justify-between text-[11px] text-slate-600 px-0.5">
+                                      <span>
+                                        {matchesInSearch.length === 0
+                                          ? 'Sin coincidencias'
+                                          : `${matchesInSearch.length} parte(s) encontrado(s)`}
+                                      </span>
+                                      {operatorMobileSearch.trim() && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setOperatorMobileSearch('')}
+                                          className="text-blue-600 hover:underline font-bold text-[11px]"
+                                        >
+                                          Limpiar búsqueda
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {matchesInSearch.length > 0 && (
+                                      <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 bg-slate-50/70 rounded-xl border border-slate-200 p-1.5">
+                                        {matchesInSearch.slice(0, 15).map((wo) => (
+                                          <button
+                                            key={wo.id}
+                                            type="button"
+                                            data-testid={`operator-mobile-search-result-${wo.id}`}
+                                            onClick={() => {
+                                              // LOCALIZADO EL PARTE: cerrar buscador desplegable y abrir detalle
+                                              setOperatorMobileSearchOpen(false);
+                                              setSelectedWorkOrderId(wo.id);
+                                              navigateTo('work_order_detail');
+                                            }}
+                                            className="w-full text-left p-2 rounded-lg bg-white hover:bg-blue-50 border border-slate-100 transition flex flex-col gap-0.5 cursor-pointer shadow-2xs"
+                                          >
+                                            <div className="flex items-center justify-between gap-1">
+                                              <span className="font-mono font-bold text-[11px] text-blue-700">{wo.code}</span>
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                                                {wo.status}
+                                              </span>
+                                            </div>
+                                            <div className="font-bold text-xs text-slate-900 truncate">
+                                              {wo.snapshot_customer_name}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 truncate">
+                                              📍 {wo.snapshot_address_line || wo.snapshot_city || 'Sin dirección'}
+                                            </div>
+                                            <div className="text-[11px] text-slate-600 line-clamp-1 italic">
+                                              "{wo.planned_work}"
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Chip compacto en cabecera cuando el buscador está cerrado pero hay filtro activo */}
+                          {!operatorMobileSearchOpen && operatorMobileSearch.trim() && (
+                            <div className="pt-2 border-t border-slate-100">
+                              <div className="flex items-center justify-between bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs text-blue-900 shadow-2xs">
+                                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                  <Search className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                  <span className="truncate">
+                                    Filtro activo: <strong>"{operatorMobileSearch}"</strong>
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOperatorMobileSearchOpen(true)}
+                                    className="text-blue-700 font-bold hover:underline cursor-pointer"
+                                  >
+                                    Modificar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setOperatorMobileSearch('')}
+                                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    title="Quitar filtro"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
+                        {agendaSortedWorkOrders.length === 0 ? (
+                          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
+                            No tienes partes pendientes o en curso asignados en este momento.
+                          </div>
+                        ) : filteredOperatorWorkOrders.length === 0 ? (
+                          <div
+                            data-testid="operator-mobile-empty-search"
+                            className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 space-y-2"
+                          >
+                            <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                            <p className="font-bold text-slate-700">
+                              No se encontraron partes de trabajo que coincidan con «{operatorMobileSearch}».
+                            </p>
+                            <p className="text-slate-400 text-[11px]">
+                              Prueba con otro término de búsqueda o limpia el buscador.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setOperatorMobileSearch('')}
+                              className="mt-2 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition inline-block text-xs cursor-pointer"
+                            >
+                              Borrar búsqueda
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {filteredOperatorWorkOrders.map((wo, idx) => (
+                              <WorkOrderMobileCard
+                                key={wo.id}
+                                wo={wo}
+                                cardIndex={idx}
+                                tz={tz}
+                                assignments={assignments}
+                                getUserName={getUserName}
+                                isAdmin={isAdmin}
+                                onReassign={handleOpenReassign}
+                                onOpenDetail={(id) => {
+                                  setOperatorMobileSearchOpen(false);
+                                  setSelectedWorkOrderId(id);
+                                  navigateTo('work_order_detail');
+                                }}
+                                onReschedule={(targetWo) => {
+                                  setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
+                                  setRescheduleReasonInput('');
+                                  setRescheduleWoModal({
+                                    open: true,
+                                    workOrderId: targetWo.id,
+                                    code: targetWo.code,
+                                    currentScheduledAt: targetWo.scheduled_at,
+                                  });
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
-                    {agendaSortedWorkOrders.length === 0 ? (
-                      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
-                        No tienes partes pendientes o en curso asignados en este momento.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {agendaSortedWorkOrders.map((wo, idx) => (
-                          <WorkOrderMobileCard
-                            key={wo.id}
-                            wo={wo}
-                            cardIndex={idx}
-                            tz={tz}
-                            assignments={assignments}
-                            getUserName={getUserName}
-                            isAdmin={isAdmin}
-                            onReassign={handleOpenReassign}
-                            onOpenDetail={(id) => {
-                              setSelectedWorkOrderId(id);
-                              navigateTo('work_order_detail');
-                            }}
-                            onReschedule={(targetWo) => {
-                              setRescheduleDatetimeInput(targetWo.scheduled_at.slice(0, 16));
-                              setRescheduleReasonInput('');
-                              setRescheduleWoModal({
-                                open: true,
-                                workOrderId: targetWo.id,
-                                code: targetWo.code,
-                                currentScheduledAt: targetWo.scheduled_at,
-                              });
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  );
+                })()
               )}
             </div>
           )}
