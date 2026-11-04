@@ -110,6 +110,7 @@ export interface Customer {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface CustomerAddress {
@@ -127,6 +128,7 @@ export interface CustomerAddress {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface Supplier {
@@ -144,6 +146,7 @@ export interface Supplier {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface Article {
@@ -160,6 +163,7 @@ export interface Article {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 /**
@@ -197,6 +201,7 @@ export interface WorkEntry {
   created_by: string;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface WorkSession {
@@ -209,6 +214,7 @@ export interface WorkSession {
   created_by: string;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface WorkMaterial {
@@ -223,6 +229,7 @@ export interface WorkMaterial {
   created_by: string;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface WorkFile {
@@ -348,6 +355,7 @@ export interface InstallationReview {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  version?: number;
 }
 
 export interface ReviewOccurrence {

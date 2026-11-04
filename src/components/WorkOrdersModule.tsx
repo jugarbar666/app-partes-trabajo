@@ -1378,6 +1378,9 @@ const WorkOrderDetailLoadedView: React.FC<{
       ],
       onConfirm: () => {
         backend.addWorkEntry(wo.id, descToSave, obsToSave);
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[AddEntry] push error:', e);
+        });
         setNewEntryDesc('');
         setNewEntryObs('');
         refreshLocal();
@@ -1403,6 +1406,9 @@ const WorkOrderDetailLoadedView: React.FC<{
           description: descToSave,
           observations: obsToSave,
         });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[UpdateEntry] push error:', e);
+        });
         refreshLocal();
       },
     });
@@ -1427,6 +1433,9 @@ const WorkOrderDetailLoadedView: React.FC<{
           started_at: startIso,
           ended_at: endIso,
           notes: notesToSave,
+        });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[AddSession] push error:', e);
         });
         setSessNotes('');
         refreshLocal();
@@ -1465,6 +1474,9 @@ const WorkOrderDetailLoadedView: React.FC<{
           unit_price_cents: art.sale_price_cents ?? 0,
           notes: notesToSave,
         });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[AddMaterial] push error:', e);
+        });
         setMatNotes('');
         refreshLocal();
       },
@@ -1498,6 +1510,9 @@ const WorkOrderDetailLoadedView: React.FC<{
         backend.updateWorkMaterial(targetId, {
           quantity: qtyToSave,
           notes: notesToSave,
+        });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[UpdateMaterial] push error:', e);
         });
         notifySuccessGreen('Material actualizado correctamente.');
         refreshLocal();
@@ -1562,6 +1577,9 @@ const WorkOrderDetailLoadedView: React.FC<{
           customer_has_paid: finalizeHasPaid === 'yes',
           observations: finalizeObservations.trim() || undefined,
         });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[FinalizeWO] push error:', e);
+        });
         if (!isAdmin) {
           onBack();
         } else {
@@ -1584,6 +1602,9 @@ const WorkOrderDetailLoadedView: React.FC<{
           size_bytes: file.size || 1024,
           caption: photoCaption || file.name,
           data_url: String(reader.result || ''),
+        });
+        supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+          console.warn('[AddFile] push error:', e);
         });
         setPhotoCaption('');
         setShowPhotoModal(false);
@@ -2198,6 +2219,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                           consequence: 'Se eliminará esta aportación del parte de trabajo.',
                           onConfirm: () => {
                             backend.deleteWorkEntry(entry.id);
+                            supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                              console.warn('[DeleteEntry] push error:', e);
+                            });
                             refreshLocal();
                           },
                         })
@@ -2314,6 +2338,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                           consequence: 'Se retirará el material imputado al parte.',
                           onConfirm: () => {
                             backend.deleteWorkMaterial(m.id);
+                            supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                              console.warn('[DeleteMaterial] push error:', e);
+                            });
                             refreshLocal();
                           },
                         })
@@ -2800,6 +2827,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                     signer_dni: signerDni,
                     data_url: dataUrl,
                   });
+                  supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                    console.warn('[SaveSignature] push error:', e);
+                  });
                   setShowSignatureModal(false);
                   notifySuccessGreen('Firma manuscrita del cliente guardada con éxito.');
                   refreshLocal();
@@ -2915,6 +2945,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                   try {
                     const assignedName = closingOperatorName;
                     backend.reopenWorkOrder(wo.id, reopenReason, reopenTarget || 'reabierto');
+                    supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                      console.warn('[ReopenWO] push error:', e);
+                    });
                     setReopenReason('');
                     setShowReopenModal(false);
                     notifySuccessGreen(`Parte reabierto y asignado a ${assignedName}.`);
@@ -3050,6 +3083,9 @@ const WorkOrderDetailLoadedView: React.FC<{
                   try {
                     const deletedCode = wo.code;
                     backend.permanentDeleteWorkOrder(wo.id);
+                    supabaseSyncEngine.pushStateToSupabase().catch((e) => {
+                      console.warn('[PermanentDeleteWO] push error:', e);
+                    });
                     setDeleteConfirmStep(null);
                     onRefresh?.();
                     notifySuccessGreen(

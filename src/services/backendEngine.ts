@@ -1086,6 +1086,12 @@ export class InstallationBackendEngine {
 
     // 1. Eliminar perfil de la lista de usuarios
     this.state.profiles.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_user_profile_ids)) {
+      (this.state as any).deleted_user_profile_ids = [];
+    }
+    if (!(this.state as any).deleted_user_profile_ids.includes(targetUserId)) {
+      (this.state as any).deleted_user_profile_ids.push(targetUserId);
+    }
 
     // 2. Eliminar contraseñas almacenadas
     delete this.state.passwords[current.email];
@@ -1237,8 +1243,14 @@ export class InstallationBackendEngine {
         notes: data.notes.trim(),
         is_active: data.is_active,
         updated_at: now,
+        version: (prev.version || 0) + 1,
       };
       this.state.customers[idx] = updated;
+      if (Array.isArray((this.state as any).deleted_customer_ids)) {
+        (this.state as any).deleted_customer_ids = (this.state as any).deleted_customer_ids.filter(
+          (id: string) => id !== updated.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'customer', updated.id, 'MODIFICAR_CLIENTE', {
         before: prev,
         after: updated,
@@ -1263,8 +1275,14 @@ export class InstallationBackendEngine {
         is_active: data.is_active ?? true,
         created_at: now,
         updated_at: now,
+        version: 1,
       };
       this.state.customers.unshift(created);
+      if (Array.isArray((this.state as any).deleted_customer_ids)) {
+        (this.state as any).deleted_customer_ids = (this.state as any).deleted_customer_ids.filter(
+          (id: string) => id !== created.id
+        );
+      }
       // Si tiene dirección principal, crear también un domicilio por defecto
       if (created.main_address) {
         this.state.customer_addresses.push({
@@ -1299,6 +1317,12 @@ export class InstallationBackendEngine {
 
     // Eliminar del array de clientes
     this.state.customers.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_customer_ids)) {
+      (this.state as any).deleted_customer_ids = [];
+    }
+    if (!(this.state as any).deleted_customer_ids.includes(customerId)) {
+      (this.state as any).deleted_customer_ids.push(customerId);
+    }
 
     // En los partes de trabajo donde figuraba este cliente:
     // en el campo del cliente debe figurar 'Cliente borrado'
@@ -1356,8 +1380,14 @@ export class InstallationBackendEngine {
         contact_phone: formatPhoneWithPrefix34(data.contact_phone),
         id: prev.id,
         updated_at: now,
+        version: (prev.version || 0) + 1,
       };
       this.state.customer_addresses[idx] = updated;
+      if (Array.isArray((this.state as any).deleted_customer_address_ids)) {
+        (this.state as any).deleted_customer_address_ids = (this.state as any).deleted_customer_address_ids.filter(
+          (id: string) => id !== updated.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'customer_address', updated.id, 'MODIFICAR_DOMICILIO', {
         before: prev,
         after: updated,
@@ -1371,8 +1401,14 @@ export class InstallationBackendEngine {
         id: genId('addr'),
         created_at: now,
         updated_at: now,
+        version: 1,
       };
       this.state.customer_addresses.push(created);
+      if (Array.isArray((this.state as any).deleted_customer_address_ids)) {
+        (this.state as any).deleted_customer_address_ids = (this.state as any).deleted_customer_address_ids.filter(
+          (id: string) => id !== created.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'customer_address', created.id, 'ALTA_DOMICILIO', {
         created,
       });
@@ -1389,6 +1425,12 @@ export class InstallationBackendEngine {
     const deletedAddress = this.state.customer_addresses[idx];
 
     this.state.customer_addresses.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_customer_address_ids)) {
+      (this.state as any).deleted_customer_address_ids = [];
+    }
+    if (!(this.state as any).deleted_customer_address_ids.includes(addressId)) {
+      (this.state as any).deleted_customer_address_ids.push(addressId);
+    }
 
     // En partes de trabajo donde figuraba este domicilio
     this.state.work_orders.forEach((wo) => {
@@ -1432,8 +1474,14 @@ export class InstallationBackendEngine {
         province: (data.province ?? prev.province ?? '').trim(),
         id: prev.id,
         updated_at: now,
+        version: (prev.version || 0) + 1,
       };
       this.state.suppliers[idx] = updated;
+      if (Array.isArray((this.state as any).deleted_supplier_ids)) {
+        (this.state as any).deleted_supplier_ids = (this.state as any).deleted_supplier_ids.filter(
+          (id: string) => id !== updated.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'supplier', updated.id, 'MODIFICAR_PROVEEDOR', {
         before: prev,
         after: updated,
@@ -1450,8 +1498,14 @@ export class InstallationBackendEngine {
         id: genId('sup'),
         created_at: now,
         updated_at: now,
+        version: 1,
       };
       this.state.suppliers.push(created);
+      if (Array.isArray((this.state as any).deleted_supplier_ids)) {
+        (this.state as any).deleted_supplier_ids = (this.state as any).deleted_supplier_ids.filter(
+          (id: string) => id !== created.id
+        );
+      }
       this.recordAudit(admin, 'maestros', 'supplier', created.id, 'ALTA_PROVEEDOR', { created });
       this.persist();
       return { ...created };
@@ -1466,6 +1520,12 @@ export class InstallationBackendEngine {
     const deletedSupplier = this.state.suppliers[idx];
 
     this.state.suppliers.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_supplier_ids)) {
+      (this.state as any).deleted_supplier_ids = [];
+    }
+    if (!(this.state as any).deleted_supplier_ids.includes(supplierId)) {
+      (this.state as any).deleted_supplier_ids.push(supplierId);
+    }
 
     // En artículos desvincular proveedor
     this.state.articles.forEach((a) => {
@@ -1983,6 +2043,11 @@ export class InstallationBackendEngine {
     };
 
     this.state.work_orders.unshift(newWo);
+    if (Array.isArray((this.state as any).deleted_work_order_ids)) {
+      (this.state as any).deleted_work_order_ids = (this.state as any).deleted_work_order_ids.filter(
+        (id: string) => id !== newWo.id
+      );
+    }
     this.state.work_order_admin.push({
       work_order_id: newWo.id,
       money_delivered: false,
@@ -2458,8 +2523,18 @@ export class InstallationBackendEngine {
       created_by: user.id, // Forzado en servidor
       created_at: now,
       updated_at: now,
+      version: 1,
     };
     this.state.work_entries.push(entry);
+    if (Array.isArray((this.state as any).deleted_work_entry_ids)) {
+      (this.state as any).deleted_work_entry_ids = (this.state as any).deleted_work_entry_ids.filter(
+        (id: string) => id !== entry.id
+      );
+    }
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recomputeHashAndCheckSignatureValidity(workOrderId, 'Nuevo trabajo añadido');
     this.recordAudit(user, 'partes', 'work_entry', entry.id, 'AÑADIR_TRABAJO', {
       work_order_id: workOrderId,
@@ -2490,13 +2565,20 @@ export class InstallationBackendEngine {
       throw new AuthorizationError('Operación rechazada: no está permitido cambiar el autor de una aportación.');
     }
 
+    const now = new Date().toISOString();
     const updated: WorkEntry = {
       ...current,
       description: patch.description.trim(),
       observations: patch.observations.trim(),
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      version: (current.version || 0) + 1,
     };
     this.state.work_entries[idx] = updated;
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recomputeHashAndCheckSignatureValidity(current.work_order_id, 'Trabajo modificado');
     this.recordAudit(user, 'partes', 'work_entry', entryId, 'MODIFICAR_TRABAJO', {
       before: current,
@@ -2520,7 +2602,19 @@ export class InstallationBackendEngine {
       );
     }
 
+    const now = new Date().toISOString();
     this.state.work_entries.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_work_entry_ids)) {
+      (this.state as any).deleted_work_entry_ids = [];
+    }
+    if (!(this.state as any).deleted_work_entry_ids.includes(entryId)) {
+      (this.state as any).deleted_work_entry_ids.push(entryId);
+    }
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recomputeHashAndCheckSignatureValidity(current.work_order_id, 'Trabajo eliminado');
     this.recordAudit(user, 'partes', 'work_entry', entryId, 'BORRAR_TRABAJO', { deleted: current });
     this.persist();
@@ -2563,8 +2657,18 @@ export class InstallationBackendEngine {
       created_by: user.id,
       created_at: now,
       updated_at: now,
+      version: 1,
     };
     this.state.work_sessions.push(session);
+    if (Array.isArray((this.state as any).deleted_work_session_ids)) {
+      (this.state as any).deleted_work_session_ids = (this.state as any).deleted_work_session_ids.filter(
+        (id: string) => id !== session.id
+      );
+    }
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recordAudit(user, 'partes', 'work_session', session.id, 'AÑADIR_JORNADA_PARTE', { session });
     this.persist();
     return { ...session };
@@ -2585,14 +2689,21 @@ export class InstallationBackendEngine {
       throw new AuthorizationError('Un operario no puede alterar las jornadas de otro compañero.');
     }
 
+    const now = new Date().toISOString();
     const updated: WorkSession = {
       ...current,
       started_at: patch.started_at ?? current.started_at,
       ended_at: patch.ended_at !== undefined ? patch.ended_at : current.ended_at,
       notes: patch.notes !== undefined ? patch.notes.trim() : current.notes,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      version: (current.version || 0) + 1,
     };
     this.state.work_sessions[idx] = updated;
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recordAudit(user, 'partes', 'work_session', sessionId, 'MODIFICAR_JORNADA_PARTE', {
       before: current,
       after: updated,
@@ -2613,7 +2724,19 @@ export class InstallationBackendEngine {
       throw new AuthorizationError('Un operario no puede borrar las jornadas de otro compañero.');
     }
 
+    const now = new Date().toISOString();
     this.state.work_sessions.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_work_session_ids)) {
+      (this.state as any).deleted_work_session_ids = [];
+    }
+    if (!(this.state as any).deleted_work_session_ids.includes(sessionId)) {
+      (this.state as any).deleted_work_session_ids.push(sessionId);
+    }
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recordAudit(user, 'partes', 'work_session', sessionId, 'BORRAR_JORNADA_PARTE', {
       deleted: current,
     });
@@ -2663,8 +2786,16 @@ export class InstallationBackendEngine {
       created_by: user.id,
       created_at: now,
       updated_at: now,
+      version: 1,
     };
     this.state.work_materials.push(material);
+    if (Array.isArray((this.state as any).deleted_work_material_ids)) {
+      (this.state as any).deleted_work_material_ids = (this.state as any).deleted_work_material_ids.filter(
+        (id: string) => id !== material.id
+      );
+    }
+    wo.version = (wo.version || 0) + 1;
+    wo.updated_at = now;
     this.recomputeHashAndCheckSignatureValidity(params.work_order_id, 'Material añadido');
     this.recordAudit(user, 'partes', 'work_material', material.id, 'AÑADIR_MATERIAL_PARTE', {
       material,
@@ -2691,13 +2822,20 @@ export class InstallationBackendEngine {
       throw new ValidationError('La cantidad debe ser mayor que cero.');
     }
 
+    const now = new Date().toISOString();
     const updated: WorkMaterial = {
       ...current,
       quantity: roundToTwoDecimals(patch.quantity),
       notes: patch.notes.trim(),
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      version: (current.version || 0) + 1,
     };
     this.state.work_materials[idx] = updated;
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recomputeHashAndCheckSignatureValidity(current.work_order_id, 'Material modificado');
     this.recordAudit(user, 'partes', 'work_material', materialId, 'MODIFICAR_MATERIAL_PARTE', {
       before: current,
@@ -2719,7 +2857,19 @@ export class InstallationBackendEngine {
       throw new AuthorizationError('Un operario no puede borrar materiales registrados por otro compañero.');
     }
 
+    const now = new Date().toISOString();
     this.state.work_materials.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_work_material_ids)) {
+      (this.state as any).deleted_work_material_ids = [];
+    }
+    if (!(this.state as any).deleted_work_material_ids.includes(materialId)) {
+      (this.state as any).deleted_work_material_ids.push(materialId);
+    }
+    const wo = this.state.work_orders.find((w) => w.id === current.work_order_id);
+    if (wo) {
+      wo.version = (wo.version || 0) + 1;
+      wo.updated_at = now;
+    }
     this.recomputeHashAndCheckSignatureValidity(current.work_order_id, 'Material eliminado');
     this.recordAudit(user, 'partes', 'work_material', materialId, 'BORRAR_MATERIAL_PARTE', {
       deleted: current,
@@ -3223,6 +3373,12 @@ export class InstallationBackendEngine {
 
     // 1. Eliminar de work_orders
     this.state.work_orders = this.state.work_orders.filter((w) => w.id !== workOrderId);
+    if (!Array.isArray((this.state as any).deleted_work_order_ids)) {
+      (this.state as any).deleted_work_order_ids = [];
+    }
+    if (!(this.state as any).deleted_work_order_ids.includes(workOrderId)) {
+      (this.state as any).deleted_work_order_ids.push(workOrderId);
+    }
 
     // 2. Eliminar datos administrativos reservados
     this.state.work_order_admin = this.state.work_order_admin.filter((a) => a.work_order_id !== workOrderId);
@@ -3521,6 +3677,12 @@ export class InstallationBackendEngine {
     if (idx === -1) throw new ValidationError('Tipo de revisión no encontrado.');
     const prev = this.state.review_types[idx];
     this.state.review_types.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_review_type_ids)) {
+      (this.state as any).deleted_review_type_ids = [];
+    }
+    if (!(this.state as any).deleted_review_type_ids.includes(reviewTypeId)) {
+      (this.state as any).deleted_review_type_ids.push(reviewTypeId);
+    }
     this.recordAudit(admin, 'revisiones', 'review_type', reviewTypeId, 'BORRADO_TIPO_REVISIÓN', {
       deleted: prev,
     });
@@ -3731,6 +3893,23 @@ export class InstallationBackendEngine {
     if (idx === -1) throw new ValidationError('Revisión periódica no encontrada.');
     const prev = this.state.installation_reviews[idx];
     this.state.installation_reviews.splice(idx, 1);
+    if (!Array.isArray((this.state as any).deleted_installation_review_ids)) {
+      (this.state as any).deleted_installation_review_ids = [];
+    }
+    if (!(this.state as any).deleted_installation_review_ids.includes(reviewId)) {
+      (this.state as any).deleted_installation_review_ids.push(reviewId);
+    }
+    if (!Array.isArray((this.state as any).deleted_review_occurrence_ids)) {
+      (this.state as any).deleted_review_occurrence_ids = [];
+    }
+    const occurrencesToDelete = this.state.review_occurrences.filter(
+      (o) => o.installation_review_id === reviewId
+    );
+    occurrencesToDelete.forEach((o) => {
+      if (!(this.state as any).deleted_review_occurrence_ids.includes(o.id)) {
+        (this.state as any).deleted_review_occurrence_ids.push(o.id);
+      }
+    });
     this.state.review_occurrences = this.state.review_occurrences.filter(
       (o) => o.installation_review_id !== reviewId
     );

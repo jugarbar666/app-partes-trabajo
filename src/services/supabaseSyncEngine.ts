@@ -92,13 +92,41 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
 
       return remoteTime >= localTime ? remote.company_settings : local.company_settings;
     })(),
-    profiles: mergeById(local.profiles, remote.profiles, 'updated_at'),
+    profiles: (() => {
+      const deletedProfileIds = new Set<string>([
+        ...((local as any)?.deleted_user_profile_ids || []),
+        ...((remote as any)?.deleted_user_profile_ids || []),
+      ]);
+      const merged = mergeById(local.profiles, remote.profiles, 'updated_at');
+      return merged.filter((p) => !deletedProfileIds.has(p.id));
+    })(),
     passwords: { ...(remote.passwords || {}), ...(local.passwords || {}) },
     invitations: mergeById(local.invitations || [], remote.invitations || [], 'created_at'),
     password_resets: mergeById(local.password_resets || [], remote.password_resets || [], 'created_at'),
-    customers: mergeById(local.customers || [], remote.customers || [], 'updated_at'),
-    customer_addresses: mergeById(local.customer_addresses || [], remote.customer_addresses || [], 'created_at'),
-    suppliers: mergeById(local.suppliers || [], remote.suppliers || [], 'updated_at'),
+    customers: (() => {
+      const deletedCustomerIds = new Set<string>([
+        ...((local as any)?.deleted_customer_ids || []),
+        ...((remote as any)?.deleted_customer_ids || []),
+      ]);
+      const merged = mergeById(local.customers || [], remote.customers || [], 'updated_at');
+      return merged.filter((c) => !deletedCustomerIds.has(c.id));
+    })(),
+    customer_addresses: (() => {
+      const deletedAddressIds = new Set<string>([
+        ...((local as any)?.deleted_customer_address_ids || []),
+        ...((remote as any)?.deleted_customer_address_ids || []),
+      ]);
+      const merged = mergeById(local.customer_addresses || [], remote.customer_addresses || [], 'updated_at');
+      return merged.filter((a) => !deletedAddressIds.has(a.id));
+    })(),
+    suppliers: (() => {
+      const deletedSupplierIds = new Set<string>([
+        ...((local as any)?.deleted_supplier_ids || []),
+        ...((remote as any)?.deleted_supplier_ids || []),
+      ]);
+      const merged = mergeById(local.suppliers || [], remote.suppliers || [], 'updated_at');
+      return merged.filter((s) => !deletedSupplierIds.has(s.id));
+    })(),
     articles: (() => {
       const isDemo = (a: any) => !a || !a.id || a.id.startsWith('art-roma-') || /^art-[0-9]{1,3}$/.test(a.id);
 
@@ -110,18 +138,67 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
       const mergedArticles = mergeById(local.articles || [], remote.articles || [], 'updated_at');
       return mergedArticles.filter((a) => !isDemo(a) && !deletedArticleIds.has(a.id));
     })(),
-    work_orders: mergeById(local.work_orders || [], remote.work_orders || [], 'updated_at'),
+    work_orders: (() => {
+      const deletedWorkOrderIds = new Set<string>([
+        ...((local as any)?.deleted_work_order_ids || []),
+        ...((remote as any)?.deleted_work_order_ids || []),
+      ]);
+      const merged = mergeById(local.work_orders || [], remote.work_orders || [], 'updated_at');
+      return merged.filter((w) => !deletedWorkOrderIds.has(w.id));
+    })(),
     work_order_admin: mergeByKey(local.work_order_admin || [], remote.work_order_admin || [], 'work_order_id'),
     work_order_assignments: mergeWorkOrderAssignments(local, remote),
-    work_entries: mergeById(local.work_entries || [], remote.work_entries || [], 'created_at'),
-    work_sessions: mergeById(local.work_sessions || [], remote.work_sessions || [], 'started_at'),
-    work_materials: mergeById(local.work_materials || [], remote.work_materials || [], 'created_at'),
+    work_entries: (() => {
+      const deletedEntryIds = new Set<string>([
+        ...((local as any)?.deleted_work_entry_ids || []),
+        ...((remote as any)?.deleted_work_entry_ids || []),
+      ]);
+      const merged = mergeById(local.work_entries || [], remote.work_entries || [], 'updated_at');
+      return merged.filter((e) => !deletedEntryIds.has(e.id));
+    })(),
+    work_sessions: (() => {
+      const deletedSessionIds = new Set<string>([
+        ...((local as any)?.deleted_work_session_ids || []),
+        ...((remote as any)?.deleted_work_session_ids || []),
+      ]);
+      const merged = mergeById(local.work_sessions || [], remote.work_sessions || [], 'updated_at');
+      return merged.filter((s) => !deletedSessionIds.has(s.id));
+    })(),
+    work_materials: (() => {
+      const deletedMaterialIds = new Set<string>([
+        ...((local as any)?.deleted_work_material_ids || []),
+        ...((remote as any)?.deleted_work_material_ids || []),
+      ]);
+      const merged = mergeById(local.work_materials || [], remote.work_materials || [], 'updated_at');
+      return merged.filter((m) => !deletedMaterialIds.has(m.id));
+    })(),
     work_signatures: mergeById(local.work_signatures || [], remote.work_signatures || [], 'signed_at'),
     work_files: mergeById(local.work_files || [], remote.work_files || [], 'uploaded_at'),
     work_order_events: mergeById(local.work_order_events || [], remote.work_order_events || [], 'created_at'),
-    installation_reviews: mergeById(local.installation_reviews || [], remote.installation_reviews || [], 'updated_at'),
-    review_occurrences: mergeById(local.review_occurrences || [], remote.review_occurrences || [], 'scheduled_date'),
-    review_types: mergeById(local.review_types || [], remote.review_types || [], 'created_at'),
+    installation_reviews: (() => {
+      const deletedReviewIds = new Set<string>([
+        ...((local as any)?.deleted_installation_review_ids || []),
+        ...((remote as any)?.deleted_installation_review_ids || []),
+      ]);
+      const merged = mergeById(local.installation_reviews || [], remote.installation_reviews || [], 'updated_at');
+      return merged.filter((r) => !deletedReviewIds.has(r.id));
+    })(),
+    review_occurrences: (() => {
+      const deletedOccurrenceIds = new Set<string>([
+        ...((local as any)?.deleted_review_occurrence_ids || []),
+        ...((remote as any)?.deleted_review_occurrence_ids || []),
+      ]);
+      const merged = mergeById(local.review_occurrences || [], remote.review_occurrences || [], 'scheduled_date');
+      return merged.filter((o) => !deletedOccurrenceIds.has(o.id));
+    })(),
+    review_types: (() => {
+      const deletedReviewTypeIds = new Set<string>([
+        ...((local as any)?.deleted_review_type_ids || []),
+        ...((remote as any)?.deleted_review_type_ids || []),
+      ]);
+      const merged = mergeById(local.review_types || [], remote.review_types || [], 'created_at');
+      return merged.filter((rt) => !deletedReviewTypeIds.has(rt.id));
+    })(),
     notification_outbox: mergeById(local.notification_outbox || [], remote.notification_outbox || [], 'scheduled_for'),
     shopping_requests: (() => {
       const deletedShoppingIds = new Set<string>([
@@ -164,6 +241,83 @@ export function mergeDatabaseStates(local: DatabaseState, remote: DatabaseState)
     ...((remote as any)?.deleted_work_order_assignment_ids || []),
   ])).filter((id) => !activeAssignmentIds.has(id));
   (result as any).deleted_work_order_assignment_ids = allDeletedAssignments;
+
+  const activeMaterialIds = new Set((result.work_materials || []).map((m) => m.id));
+  const allDeletedMaterials = Array.from(new Set<string>([
+    ...((local as any)?.deleted_work_material_ids || []),
+    ...((remote as any)?.deleted_work_material_ids || []),
+  ])).filter((id) => !activeMaterialIds.has(id));
+  (result as any).deleted_work_material_ids = allDeletedMaterials;
+
+  const activeEntryIds = new Set((result.work_entries || []).map((e) => e.id));
+  const allDeletedEntries = Array.from(new Set<string>([
+    ...((local as any)?.deleted_work_entry_ids || []),
+    ...((remote as any)?.deleted_work_entry_ids || []),
+  ])).filter((id) => !activeEntryIds.has(id));
+  (result as any).deleted_work_entry_ids = allDeletedEntries;
+
+  const activeSessionIds = new Set((result.work_sessions || []).map((s) => s.id));
+  const allDeletedSessions = Array.from(new Set<string>([
+    ...((local as any)?.deleted_work_session_ids || []),
+    ...((remote as any)?.deleted_work_session_ids || []),
+  ])).filter((id) => !activeSessionIds.has(id));
+  (result as any).deleted_work_session_ids = allDeletedSessions;
+
+  const activeCustomerIds = new Set((result.customers || []).map((c) => c.id));
+  const allDeletedCustomers = Array.from(new Set<string>([
+    ...((local as any)?.deleted_customer_ids || []),
+    ...((remote as any)?.deleted_customer_ids || []),
+  ])).filter((id) => !activeCustomerIds.has(id));
+  (result as any).deleted_customer_ids = allDeletedCustomers;
+
+  const activeAddressIds = new Set((result.customer_addresses || []).map((a) => a.id));
+  const allDeletedAddresses = Array.from(new Set<string>([
+    ...((local as any)?.deleted_customer_address_ids || []),
+    ...((remote as any)?.deleted_customer_address_ids || []),
+  ])).filter((id) => !activeAddressIds.has(id));
+  (result as any).deleted_customer_address_ids = allDeletedAddresses;
+
+  const activeSupplierIds = new Set((result.suppliers || []).map((s) => s.id));
+  const allDeletedSuppliers = Array.from(new Set<string>([
+    ...((local as any)?.deleted_supplier_ids || []),
+    ...((remote as any)?.deleted_supplier_ids || []),
+  ])).filter((id) => !activeSupplierIds.has(id));
+  (result as any).deleted_supplier_ids = allDeletedSuppliers;
+
+  const activeReviewTypeIds = new Set((result.review_types || []).map((rt) => rt.id));
+  const allDeletedReviewTypes = Array.from(new Set<string>([
+    ...((local as any)?.deleted_review_type_ids || []),
+    ...((remote as any)?.deleted_review_type_ids || []),
+  ])).filter((id) => !activeReviewTypeIds.has(id));
+  (result as any).deleted_review_type_ids = allDeletedReviewTypes;
+
+  const activeInstallationReviewIds = new Set((result.installation_reviews || []).map((ir) => ir.id));
+  const allDeletedInstallationReviews = Array.from(new Set<string>([
+    ...((local as any)?.deleted_installation_review_ids || []),
+    ...((remote as any)?.deleted_installation_review_ids || []),
+  ])).filter((id) => !activeInstallationReviewIds.has(id));
+  (result as any).deleted_installation_review_ids = allDeletedInstallationReviews;
+
+  const activeReviewOccurrenceIds = new Set((result.review_occurrences || []).map((ro) => ro.id));
+  const allDeletedReviewOccurrences = Array.from(new Set<string>([
+    ...((local as any)?.deleted_review_occurrence_ids || []),
+    ...((remote as any)?.deleted_review_occurrence_ids || []),
+  ])).filter((id) => !activeReviewOccurrenceIds.has(id));
+  (result as any).deleted_review_occurrence_ids = allDeletedReviewOccurrences;
+
+  const activeWorkOrderIds = new Set((result.work_orders || []).map((wo) => wo.id));
+  const allDeletedWorkOrders = Array.from(new Set<string>([
+    ...((local as any)?.deleted_work_order_ids || []),
+    ...((remote as any)?.deleted_work_order_ids || []),
+  ])).filter((id) => !activeWorkOrderIds.has(id));
+  (result as any).deleted_work_order_ids = allDeletedWorkOrders;
+
+  const activeProfileIds = new Set((result.profiles || []).map((p) => p.id));
+  const allDeletedProfiles = Array.from(new Set<string>([
+    ...((local as any)?.deleted_user_profile_ids || []),
+    ...((remote as any)?.deleted_user_profile_ids || []),
+  ])).filter((id) => !activeProfileIds.has(id));
+  (result as any).deleted_user_profile_ids = allDeletedProfiles;
 
   if (
     !result.installationId ||
