@@ -1158,7 +1158,7 @@ export const MasterDataAndUsersModule: React.FC<{
       case 'articles':
         return [
           { key: 'export_excel', label: 'Exportar Artículos (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           { key: 'download_template', label: 'Descargar Plantilla Excel' },
           { key: 'import_excel', label: 'Importar Artículos (Excel)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
@@ -1166,7 +1166,7 @@ export const MasterDataAndUsersModule: React.FC<{
       case 'customers':
         return [
           { key: 'export_excel', label: 'Exportar Clientes (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           { key: 'download_template', label: 'Descargar Plantilla Excel' },
           { key: 'import_excel', label: 'Importar Clientes (Excel)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
@@ -1174,13 +1174,13 @@ export const MasterDataAndUsersModule: React.FC<{
       case 'addresses':
         return [
           { key: 'export_excel', label: 'Exportar Domicilios (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
         ];
       case 'suppliers':
         return [
           { key: 'export_excel', label: 'Exportar Proveedores (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           { key: 'download_template', label: 'Descargar Plantilla Excel' },
           { key: 'import_excel', label: 'Importar Proveedores (Excel)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
@@ -1188,19 +1188,19 @@ export const MasterDataAndUsersModule: React.FC<{
       case 'review_types':
         return [
           { key: 'export_excel', label: 'Exportar Tipos Revisión (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
         ];
       case 'work_orders':
         return [
           { key: 'export_excel', label: 'Exportar Partes (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
         ];
       case 'reviews':
         return [
           { key: 'export_excel', label: 'Exportar Revisiones (Excel)' },
-          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'export_pdf', label: 'Imprimir / Descargar Listado (PDF)' },
           ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
         ];
       default:
@@ -1504,14 +1504,14 @@ export const MasterDataAndUsersModule: React.FC<{
             </button>
           }
         />
-      ) : isMobile ? (
+      ) : (
         <div
           data-testid="catalog-mobile-compact-header"
-          className="bg-white rounded-xl border border-slate-200 p-2 sm:p-2.5 space-y-2 shadow-2xs"
+          className="bg-white rounded-xl border border-slate-200 p-2 sm:p-2.5 shadow-2xs space-y-2"
         >
-          {/* Fila 1: Volver + Título + Botón Nuevo */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+          {/* Fila compacta adaptable: Volver + Título + Selector Fichero + Selector Acción + Botón Ejecutar/Vaciar + Botón Nuevo */}
+          <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
               <button
                 type="button"
                 data-testid="btn-catalog-back"
@@ -1526,72 +1526,57 @@ export const MasterDataAndUsersModule: React.FC<{
               </h2>
             </div>
 
-            {createButtonLabel[activeTab] && (
-              <button
-                type="button"
-                data-testid="btn-catalog-create-new"
-                onClick={handleOpenCreate}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 shadow-2xs cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">{createButtonLabel[activeTab]}</span>
-                <span className="xs:hidden">Nuevo</span>
-              </button>
-            )}
-          </div>
+            {/* Grupo Controles Desplegables y Acciones */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 flex-1 min-w-0 max-w-2xl">
+              {/* Selector Tipo de Fichero */}
+              <div className="relative flex-1 min-w-[140px] sm:min-w-[170px]">
+                <select
+                  data-testid="select-catalog-type"
+                  aria-label="Tipo de fichero"
+                  value={activeTab}
+                  onChange={(e) => {
+                    const nextTab = e.target.value as any;
+                    setActiveTab(nextTab);
+                    setShowCreateModal(false);
+                    setEditingId(null);
+                    const acts = getCatalogActions(nextTab);
+                    setSelectedAction(acts[0]?.key || 'export_excel');
+                  }}
+                  className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
+                >
+                  {catalogOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label} ({opt.key === 'import_export' ? '⚙️' : opt.count})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
 
-          {/* Fila 2: Desplegable Tipo de Fichero + Desplegable Acción + Botón Ejecutar */}
-          <div className="grid grid-cols-12 gap-1.5 items-center">
-            {/* Selector Tipo de Fichero */}
-            <div className="col-span-5 sm:col-span-5 relative">
-              <select
-                data-testid="select-catalog-type"
-                aria-label="Tipo de fichero"
-                value={activeTab}
-                onChange={(e) => {
-                  const nextTab = e.target.value as any;
-                  setActiveTab(nextTab);
-                  setShowCreateModal(false);
-                  setEditingId(null);
-                  const acts = getCatalogActions(nextTab);
-                  setSelectedAction(acts[0]?.key || 'export_excel');
-                }}
-                className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
-              >
-                {catalogOptions.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    {opt.label} ({opt.key === 'import_export' ? '⚙️' : opt.count})
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+              {/* Selector Acción */}
+              <div className="relative flex-1 min-w-[130px] sm:min-w-[160px]">
+                <select
+                  data-testid="select-catalog-action"
+                  aria-label="Acción para el catálogo"
+                  value={selectedAction}
+                  onChange={(e) => setSelectedAction(e.target.value)}
+                  className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
+                >
+                  {getCatalogActions(activeTab).map((act) => (
+                    <option key={act.key} value={act.key}>
+                      {act.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
 
-            {/* Selector Acción */}
-            <div className="col-span-4 sm:col-span-4 relative">
-              <select
-                data-testid="select-catalog-action"
-                aria-label="Acción para el catálogo"
-                value={selectedAction}
-                onChange={(e) => setSelectedAction(e.target.value)}
-                className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
-              >
-                {getCatalogActions(activeTab).map((act) => (
-                  <option key={act.key} value={act.key}>
-                    {act.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-
-            {/* Botón Ejecutar Acción */}
-            <div className="col-span-3 sm:col-span-3 flex justify-end">
+              {/* Botón Ejecutar Acción */}
               <button
                 type="button"
                 data-testid="btn-execute-catalog-action"
                 onClick={() => handleExecuteCatalogAction()}
-                className={`w-full justify-center inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer truncate ${
+                className={`shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer truncate ${
                   selectedAction === 'clear_catalog'
                     ? 'bg-red-600 hover:bg-red-700 text-white border border-red-700'
                     : 'bg-slate-900 hover:bg-slate-800 text-white'
@@ -1601,164 +1586,74 @@ export const MasterDataAndUsersModule: React.FC<{
                 {selectedAction === 'clear_catalog' ? (
                   <>
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Vaciar</span>
+                    <span>Vaciar</span>
                   </>
                 ) : (
                   <>
                     <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Ejecutar</span>
+                    <span>Ejecutar</span>
                   </>
                 )}
               </button>
-            </div>
-          </div>
 
-          {/* Fila 3: Buscador Visible y Compacto */}
-          {activeTab !== 'import_export' && (
-            <div className="flex items-center gap-2 pt-0.5">
-              <div className="relative flex-1 min-w-0">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  data-testid="input-catalog-search"
-                  aria-label="Buscar en el catálogo"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={searchPlaceholder[activeTab] || 'Buscar en este fichero...'}
-                  className="w-full pl-8 pr-7 py-1 rounded-lg border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                />
-                {search.length > 0 && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-catalog-search"
-                    onClick={() => setSearch('')}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
-                    title="Limpiar búsqueda"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <div
-                data-testid="catalog-search-count"
-                className="text-[11px] font-semibold text-slate-500 shrink-0 whitespace-nowrap bg-slate-100 px-2 py-1 rounded-md"
-              >
-                {getCurrentFilteredCount()} / {getCurrentTotalCount()}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          <ScreenHeaderBar
-            title="Catálogos y ficheros"
-            subtitle="Clientes, domicilios, artículos, proveedores, tipos de revisión, partes, revisiones e importación/exportación"
-            onBack={onBack}
-            searchTerm={activeTab !== 'import_export' ? search : undefined}
-            onSearchChange={activeTab !== 'import_export' ? setSearch : undefined}
-            actions={
-              createButtonLabel[activeTab] ? (
+              {/* Botón Nuevo */}
+              {createButtonLabel[activeTab] && (
                 <button
                   type="button"
+                  data-testid="btn-catalog-create-new"
                   onClick={handleOpenCreate}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 shadow-2xs cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> {createButtonLabel[activeTab]}
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{createButtonLabel[activeTab]}</span>
+                  <span className="sm:hidden">Nuevo</span>
                 </button>
-              ) : undefined
-            }
-          />
+              )}
+            </div>
 
-          {/* Pestañas de catálogos y ficheros */}
-          <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs overflow-x-auto mobile-scroll-container">
-            {catalogOptions.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  data-testid={`tab-${tab.key}`}
-                  onClick={() => {
-                    setActiveTab(tab.key as typeof activeTab);
-                    setShowCreateModal(false);
-                    setEditingId(null);
-                    const acts = getCatalogActions(tab.key);
-                    setSelectedAction(acts[0]?.key || 'export_excel');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 ${
-                    active
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                  }`}
+            {/* Buscador Visible y Compacto */}
+            {activeTab !== 'import_export' && (
+              <div className="flex items-center gap-1.5 w-full lg:w-auto lg:min-w-[280px]">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    data-testid="input-catalog-search"
+                    aria-label="Buscar en el catálogo"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={searchPlaceholder[activeTab] || 'Buscar en este fichero...'}
+                    className="w-full pl-8 pr-7 py-1 rounded-lg border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                  />
+                  {search.length > 0 && (
+                    <button
+                      type="button"
+                      data-testid="btn-clear-catalog-search"
+                      onClick={() => setSearch('')}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                      title="Limpiar búsqueda"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div
+                  data-testid="catalog-search-count"
+                  className="text-[11px] font-semibold text-slate-500 shrink-0 whitespace-nowrap bg-slate-100 px-2 py-1 rounded-md"
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label} ({tab.key === 'import_export' ? '⚙️' : tab.count})</span>
-                </button>
-              );
-            })}
+                  {getCurrentFilteredCount()} / {getCurrentTotalCount()}
+                </div>
+              </div>
+            )}
           </div>
-        </>
+        </div>
       )}
       </div>
 
       {/* 1. LISTADO DE CLIENTES */}
       {activeTab === 'customers' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Clientes:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadImportTemplateExcel('customers')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
-                  title="Descargar archivo Excel con plantilla oficial de clientes (incluye código postal, población y provincia)"
-                >
-                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-                </button>
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
-                  <Upload className="w-3.5 h-3.5" /> Importar Clientes (Excel)
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    className="hidden"
-                    data-testid="input-import-customers-excel-desktop"
-                    onChange={handleCustomerFileImport}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleExportCustomersPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF oficial de clientes con filtros aplicados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportCustomers}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                  title="Exportar catálogo completo de clientes a Excel"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Clientes (Excel)
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-customers-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('customers')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de clientes"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {customers.length === 0 ? (
@@ -1881,42 +1776,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 2. LISTADO DE DOMICILIOS / INSTALACIONES */}
       {activeTab === 'addresses' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Domicilios:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleExportAddressesPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF oficial de domicilios e instalaciones con filtros aplicados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportAddressesExcel}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                  title="Exportar domicilios e instalaciones a Excel"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Domicilios (Excel)
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-addresses-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('addresses')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de domicilios"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
           {addresses.length === 0 ? (
@@ -2008,59 +1868,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 3. LISTADO DE ARTÍCULOS */}
       {activeTab === 'articles' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Artículos:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadImportTemplateExcel('articles')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
-                  title="Descargar archivo Excel con plantilla oficial de artículos coincidente con la ficha (código, unidad, nombre, precio compra, precio venta y proveedor habitual)"
-                >
-                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-                </button>
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
-                  <Upload className="w-3.5 h-3.5" /> Importar Artículos (Excel)
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    className="hidden"
-                    data-testid="input-import-articles-excel"
-                    onChange={handleArticleFileImport}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleExportArticlesPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF oficial de artículos con tarifas y existencias"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportArticles}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-articles-catalog"
-                    onClick={() => handleOpenEmptyCatalogModal('articles')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de artículos"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
           {articles.length === 0 ? (
@@ -2171,59 +1979,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 4. LISTADO DE PROVEEDORES */}
       {activeTab === 'suppliers' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Proveedores:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadImportTemplateExcel('suppliers')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold"
-                  title="Descargar archivo Excel con plantilla oficial de proveedores"
-                >
-                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-                </button>
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
-                  <Upload className="w-3.5 h-3.5" /> Importar Proveedores (Excel)
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    className="hidden"
-                    data-testid="input-import-suppliers-excel"
-                    onChange={handleSupplierFileImport}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleExportSuppliersPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF oficial de proveedores homologados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportSuppliers}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-suppliers-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('suppliers')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de proveedores"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
             {suppliers.length === 0 ? (
@@ -2332,42 +2088,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 5. LISTADO DE TIPOS DE REVISIÓN */}
       {activeTab === 'review_types' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Tipos de Revisión:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleExportReviewTypesPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF de tipos de revisión homologados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportReviewTypesExcel}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                  title="Exportar tipos de revisión a Excel"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar a Excel
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-review-types-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('review_types')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de tipos de revisión"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
           {reviewTypes.length === 0 ? (
@@ -2451,44 +2172,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 7. LISTADO DE PARTES DE TRABAJO */}
       {activeTab === 'work_orders' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Partes de Trabajo:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  data-testid="btn-export-work-orders-pdf"
-                  onClick={handleExportWorkOrdersPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF de partes de trabajo reflejando los filtros aplicados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Partes (PDF)
-                </button>
-                <button
-                  type="button"
-                  data-testid="btn-export-work-orders-excel"
-                  onClick={handleExportWorkOrdersExcel}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                  title="Exportar partes de trabajo a archivo Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Partes (Excel)
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-work-orders-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('work_orders')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de partes de trabajo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
             {workOrders.length === 0 ? (
@@ -2530,44 +2214,7 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 8. LISTADO DE REVISIONES PERIÓDICAS */}
       {activeTab === 'reviews' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          {!isMobile && (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Acciones con Revisiones:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  data-testid="btn-export-reviews-pdf"
-                  onClick={handleExportReviewsPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                  title="Generar y descargar listado PDF oficial de revisiones periódicas reflejando filtros aplicados"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Revisiones (PDF)
-                </button>
-                <button
-                  type="button"
-                  data-testid="btn-export-reviews-excel"
-                  onClick={handleExportReviewsExcel}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                  title="Exportar revisiones periódicas a archivo Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Revisiones (Excel)
-                </button>
-                {currentUser.role === 'admin' && (
-                  <button
-                    type="button"
-                    data-testid="btn-clear-reviews-catalog-desktop"
-                    onClick={() => handleOpenEmptyCatalogModal('reviews')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                    title="Vaciar todo el catálogo de revisiones"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
             {installationReviews.length === 0 ? (
@@ -4493,7 +4140,7 @@ export const MasterDataAndUsersModule: React.FC<{
               )}
 
               <div className="text-[11px] bg-red-900/60 p-2.5 rounded-lg border border-red-400/30 text-red-200 leading-relaxed">
-                <strong>Nota sobre copias de seguridad:</strong> Las exportaciones a Excel/PDF descargadas localmente o las copias de seguridad de infraestructura no se alteran, pero los datos operativos de la plataforma se vaciarán permanentemente.
+                <strong>Alcance del purgado y respaldos:</strong> La aplicación purga los registros operativos del servidor, cachés y réplicas en dispositivos mediante lápidas de borrado permanentes. Copias históricas externas (backups automáticos de infraestructura o archivos Excel/PDF previamente exportados o impresos) quedan fuera del control de la aplicación y requieren actuaciones directas en infraestructura si se desean eliminar.
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-red-500/40">
