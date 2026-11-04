@@ -809,7 +809,9 @@ const MainApplicationContent: React.FC = () => {
   const [masterInitialTab, setMasterInitialTab] = useState<
     'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'users'
   >('customers');
-  const [adminMobileFilter, setAdminMobileFilter] = useState<'pendientes' | 'todos' | 'pendientes_programar'>('pendientes');
+  const [adminMobileFilter, setAdminMobileFilter] = useState<
+    'pendientes' | 'no_programado' | 'pendientes_programar' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado' | 'todos'
+  >('pendientes');
   const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
 
   // Control de versión instalada en el dispositivo y aviso de nueva versión disponible
@@ -2649,119 +2651,244 @@ const MainApplicationContent: React.FC = () => {
             <div className={isAdmin ? 'space-y-4' : 'flex-1 min-h-0 flex flex-col overflow-hidden'}>
               {isAdmin ? (
                 <>
-                  {/* VISTA MÓVIL EXCLUSIVA DE ADMINISTRADOR (md:hidden): PARTES PENDIENTES EN FORMATO TARJETAS (IGUAL A LA DEL OPERARIO) */}
+                  {/* VISTA MÓVIL EXCLUSIVA DE ADMINISTRADOR (md:hidden): PARTES EN FORMATO TARJETAS CON SELECTOR DESPLEGABLE COMPACTO DE ESTADO */}
                   <div className="block md:hidden space-y-3" data-testid="admin-mobile-home-view">
-                    <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2">
-                      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <h1 className="text-base font-extrabold text-slate-900 truncate">
-                              Partes Pendientes ({pendingAdminWorkOrders.length})
-                            </h1>
-                            <p className="text-[11px] text-slate-500 truncate">
-                              Próximos trabajos por hora prevista (ascendente)
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCreateWoModalProps({ open: true })}
-                            className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <Plus className="w-4 h-4" />
-                            <span>Nuevo</span>
-                          </button>
-                        </div>
-
-                        {/* Selector de filtro rápido en móvil */}
-                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
-                          <button
-                            type="button"
-                            onClick={() => setAdminMobileFilter('pendientes')}
-                            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                              adminMobileFilter === 'pendientes'
-                                ? 'bg-blue-600 text-white shadow-2xs'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                          >
-                            Pendientes ({pendingAdminWorkOrders.length})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAdminMobileFilter('todos')}
-                            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                              adminMobileFilter === 'todos'
-                                ? 'bg-blue-600 text-white shadow-2xs'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                          >
-                            Todos ({agendaSortedWorkOrders.length})
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="btn-mobile-filter-pendientes-programar"
-                            onClick={() => setAdminMobileFilter('pendientes_programar')}
-                            className={`ml-auto px-3 py-1.5 rounded-lg font-bold transition cursor-pointer border ${
-                              adminMobileFilter === 'pendientes_programar'
-                                ? 'bg-amber-400 font-black text-slate-950 border-amber-500 shadow-2xs'
-                                : 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
-                            }`}
-                          >
-                            Pendientes de programar ({countPendientesProgramar})
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* VISTA PRINCIPAL POR DEFECTO EN MÓVIL: TARJETAS DE PARTES */}
                     {(() => {
-                      const listToDisplay =
-                        adminMobileFilter === 'pendientes_programar'
-                          ? activeWorkOrders.filter(isWorkOrderUnscheduled).sort(compareWorkOrdersScheduledFirst)
-                          : adminMobileFilter === 'todos'
-                          ? agendaSortedWorkOrders
-                          : pendingAdminWorkOrders;
+                      // Contadores de estados excluyendo partes archivados
+                      const countMobilePendientes = pendingAdminWorkOrders.filter((w) => !w.archived_at).length;
+                      const countMobileNoProgramado = activeWorkOrders.filter((w) => !w.archived_at && isWorkOrderUnscheduled(w)).length;
+                      const countMobileNoIniciado = activeWorkOrders.filter((w) => !w.archived_at && w.status === 'no_iniciado' && !isWorkOrderUnscheduled(w)).length;
+                      const countMobileEnEjecucion = activeWorkOrders.filter((w) => !w.archived_at && w.status === 'en_curso').length;
+                      const countMobileReabierto = activeWorkOrders.filter((w) => !w.archived_at && w.status === 'reabierto').length;
+                      const countMobileTerminado = activeWorkOrders.filter((w) => !w.archived_at && w.status === 'terminado').length;
+                      const countMobileCerrado = activeWorkOrders.filter((w) => !w.archived_at && w.status === 'cerrado').length;
+                      const countMobileTodos = activeWorkOrders.filter((w) => !w.archived_at).length;
 
-                      if (listToDisplay.length === 0) {
-                        return (
-                          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
-                            {adminMobileFilter === 'pendientes_programar'
-                              ? 'No hay partes pendientes de programar.'
-                              : adminMobileFilter === 'todos'
-                              ? 'No hay partes de trabajo registrados.'
-                              : 'No hay partes pendientes de realizar en este momento.'}
-                          </div>
-                        );
+                      // Filtrado sincrónico del listado según el estado elegido (inmune a respuestas fuera de orden)
+                      let listToDisplay = pendingAdminWorkOrders.filter((w) => !w.archived_at);
+                      let headerTitle = `Partes Pendientes (${countMobilePendientes})`;
+                      let headerSubtitle = 'Próximos trabajos por hora prevista (ascendente)';
+                      let emptyMessage = 'No hay partes pendientes de realizar en este momento.';
+
+                      if (adminMobileFilter === 'no_programado' || adminMobileFilter === 'pendientes_programar') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && isWorkOrderUnscheduled(w))
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes No Programados (${countMobileNoProgramado})`;
+                        headerSubtitle = 'Trabajos sin fecha ni operario asignado';
+                        emptyMessage = 'No hay partes no programados (pendientes de programar).';
+                      } else if (adminMobileFilter === 'no_iniciado') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && w.status === 'no_iniciado' && !isWorkOrderUnscheduled(w))
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes No Iniciados (${countMobileNoIniciado})`;
+                        headerSubtitle = 'Trabajos planificados pendientes de inicio';
+                        emptyMessage = 'No hay partes pendientes sin iniciar.';
+                      } else if (adminMobileFilter === 'en_curso') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && w.status === 'en_curso')
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes En Ejecución (${countMobileEnEjecucion})`;
+                        headerSubtitle = 'Trabajos actualmente en intervención';
+                        emptyMessage = 'No hay partes en ejecución actualmente.';
+                      } else if (adminMobileFilter === 'reabierto') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && w.status === 'reabierto')
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes Reabiertos (${countMobileReabierto})`;
+                        headerSubtitle = 'Trabajos reabiertos para seguimiento o corrección';
+                        emptyMessage = 'No hay partes reabiertos.';
+                      } else if (adminMobileFilter === 'terminado') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && w.status === 'terminado')
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes Terminados (${countMobileTerminado})`;
+                        headerSubtitle = 'Trabajos finalizados pendientes de cierre';
+                        emptyMessage = 'No hay partes terminados pendientes de cierre.';
+                      } else if (adminMobileFilter === 'cerrado') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at && w.status === 'cerrado')
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Partes Cerrados (${countMobileCerrado})`;
+                        headerSubtitle = 'Trabajos completados y cerrados administrativamente';
+                        emptyMessage = 'No hay partes cerrados.';
+                      } else if (adminMobileFilter === 'todos') {
+                        listToDisplay = activeWorkOrders
+                          .filter((w) => !w.archived_at)
+                          .sort(compareWorkOrdersScheduledFirst);
+                        headerTitle = `Todos los Partes (${countMobileTodos})`;
+                        headerSubtitle = 'Listado completo de partes activos';
+                        emptyMessage = 'No hay partes de trabajo registrados.';
                       }
 
                       return (
-                        <div className="space-y-3.5">
-                          {listToDisplay.map((wo, idx) => (
-                            <WorkOrderMobileCard
-                              key={wo.id}
-                              wo={wo}
-                              cardIndex={idx}
-                              tz={tz}
-                              assignments={assignments}
-                              getUserName={getUserName}
-                              isAdmin={isAdmin}
-                              onReassign={handleOpenReassign}
-                              onOpenDetail={(id) => {
-                                setSelectedWorkOrderId(id);
-                                navigateTo('work_order_detail');
-                              }}
-                              onReschedule={(targetWo) => {
-                                setRescheduleDatetimeInput(targetWo.scheduled_at?.slice(0, 16) || '');
-                                setRescheduleReasonInput('');
-                                setRescheduleWoModal({
-                                  open: true,
-                                  workOrderId: targetWo.id,
-                                  code: targetWo.code,
-                                  currentScheduledAt: targetWo.scheduled_at,
-                                });
-                              }}
-                            />
-                          ))}
-                        </div>
+                        <>
+                          <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2">
+                            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <h1 className="text-base font-extrabold text-slate-900 truncate">
+                                    {headerTitle}
+                                  </h1>
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    {headerSubtitle}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCreateWoModalProps({ open: true })}
+                                  className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  <span>Nuevo</span>
+                                </button>
+                              </div>
+
+                              {/* Desplegable compacto único «Estado del parte» con color dinámico del estado seleccionado */}
+                              {(() => {
+                                const statusColor = (() => {
+                                  switch (adminMobileFilter) {
+                                    case 'no_programado':
+                                    case 'pendientes_programar':
+                                      return {
+                                        selectClass: 'bg-amber-400 hover:bg-amber-500 text-slate-950 font-black border-amber-500 shadow-xs ring-1 ring-amber-400/50',
+                                        chevronClass: 'text-slate-950',
+                                      };
+                                    case 'no_iniciado':
+                                      return {
+                                        selectClass: 'bg-blue-600 hover:bg-blue-700 text-white font-bold border-blue-700 shadow-xs ring-1 ring-blue-600/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'en_curso':
+                                      return {
+                                        selectClass: 'bg-[#ea580c] hover:bg-[#c2410c] text-white font-bold border-orange-700 shadow-xs ring-1 ring-orange-600/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'reabierto':
+                                      return {
+                                        selectClass: 'bg-[#78350f] hover:bg-[#58250a] text-white font-bold border-[#451a03] shadow-xs ring-1 ring-amber-900/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'terminado':
+                                      return {
+                                        selectClass: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold border-emerald-700 shadow-xs ring-1 ring-emerald-600/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'cerrado':
+                                      return {
+                                        selectClass: 'bg-red-700 hover:bg-red-800 text-white font-bold border-red-800 shadow-xs ring-1 ring-red-700/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'todos':
+                                      return {
+                                        selectClass: 'bg-slate-900 hover:bg-slate-800 text-white font-bold border-slate-950 shadow-xs ring-1 ring-slate-800/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                    case 'pendientes':
+                                    default:
+                                      return {
+                                        selectClass: 'bg-blue-600 hover:bg-blue-700 text-white font-bold border-blue-700 shadow-xs ring-1 ring-blue-600/50',
+                                        chevronClass: 'text-white/90',
+                                      };
+                                  }
+                                })();
+
+                                return (
+                                  <div className="pt-2 border-t border-slate-100 space-y-1">
+                                    <label
+                                      htmlFor="select-admin-mobile-status"
+                                      className="block text-xs font-bold text-slate-700"
+                                    >
+                                      Estado del parte
+                                    </label>
+                                    <div className="relative">
+                                      <select
+                                        id="select-admin-mobile-status"
+                                        data-testid="select-admin-mobile-status"
+                                        value={adminMobileFilter}
+                                        onChange={(e) => setAdminMobileFilter(e.target.value as any)}
+                                        className={`w-full appearance-none px-4 py-2.5 pr-10 rounded-xl border text-xs shadow-xs transition-colors cursor-pointer ${statusColor.selectClass}`}
+                                      >
+                                        <option value="pendientes" className="bg-white text-slate-900 font-semibold">
+                                          Pendiente ({countMobilePendientes})
+                                        </option>
+                                        <option
+                                          value="no_programado"
+                                          data-testid="btn-mobile-filter-pendientes-programar"
+                                          className="bg-amber-100 text-amber-950 font-bold"
+                                        >
+                                          No programado (Pendientes de programar) ({countMobileNoProgramado})
+                                        </option>
+                                        <option value="no_iniciado" className="bg-white text-slate-900 font-semibold">
+                                          No iniciado ({countMobileNoIniciado})
+                                        </option>
+                                        <option value="en_curso" className="bg-white text-slate-900 font-semibold">
+                                          En ejecución ({countMobileEnEjecucion})
+                                        </option>
+                                        <option value="reabierto" className="bg-white text-slate-900 font-semibold">
+                                          Reabierto ({countMobileReabierto})
+                                        </option>
+                                        <option value="terminado" className="bg-white text-slate-900 font-semibold">
+                                          Terminado ({countMobileTerminado})
+                                        </option>
+                                        <option value="cerrado" className="bg-white text-slate-900 font-semibold">
+                                          Cerrado ({countMobileCerrado})
+                                        </option>
+                                        <option value="todos" className="bg-white text-slate-900 font-semibold">
+                                          Todos ({countMobileTodos})
+                                        </option>
+                                      </select>
+                                      <div
+                                        className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 transition-colors ${statusColor.chevronClass}`}
+                                      >
+                                        <ChevronDown className="w-4 h-4" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* TARJETAS DE PARTES MÓVILES (FORMATO EXACTO ACTUAL CONSERVADO) */}
+                          {listToDisplay.length === 0 ? (
+                            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs space-y-1">
+                              <p className="font-bold text-slate-700">{emptyMessage}</p>
+                              <p className="text-slate-400 text-[11px]">
+                                Selecciona otro estado en el desplegable o crea un nuevo parte.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3.5">
+                              {listToDisplay.map((wo, idx) => (
+                                <WorkOrderMobileCard
+                                  key={wo.id}
+                                  wo={wo}
+                                  cardIndex={idx}
+                                  tz={tz}
+                                  assignments={assignments}
+                                  getUserName={getUserName}
+                                  isAdmin={isAdmin}
+                                  onReassign={handleOpenReassign}
+                                  onOpenDetail={(id) => {
+                                    setSelectedWorkOrderId(id);
+                                    navigateTo('work_order_detail');
+                                  }}
+                                  onReschedule={(targetWo) => {
+                                    setRescheduleDatetimeInput(targetWo.scheduled_at?.slice(0, 16) || '');
+                                    setRescheduleReasonInput('');
+                                    setRescheduleWoModal({
+                                      open: true,
+                                      workOrderId: targetWo.id,
+                                      code: targetWo.code,
+                                      currentScheduledAt: targetWo.scheduled_at,
+                                    });
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </>
                       );
                     })()}
                   </div>
