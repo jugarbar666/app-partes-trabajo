@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users,
   Building2,
@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { appBackHandler } from '../services/appBackHandler';
 import { supabaseSyncEngine } from '../services/supabaseSyncEngine';
 import { BackupJob, UserRole } from '../types/domain';
 import {
@@ -122,6 +123,12 @@ export const MasterDataAndUsersModule: React.FC<{
     isProcessing: boolean;
     errorMessage?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (emptyCatalogModal) {
+      return appBackHandler.register('empty-catalog-modal', () => setEmptyCatalogModal(null), 50);
+    }
+  }, [emptyCatalogModal]);
 
   const handleOpenEmptyCatalogModal = (
     catalogKey: 'articles' | 'customers' | 'addresses' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews'

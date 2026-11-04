@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarClock,
   Calendar,
@@ -25,6 +25,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { appBackHandler } from '../services/appBackHandler';
 import { ScreenHeaderBar, useUIConfirmation, SearchableSelect, DateTimePickerField } from './CommonUI';
 import {
   calculateDuration,
@@ -1528,6 +1529,18 @@ export const AttendanceAndReportsModule: React.FC<{
   const [adminClockOut, setAdminClockOut] = useState('2026-10-21T16:00');
   const [adminNotesIn, setAdminNotesIn] = useState('');
   const [adminReason, setAdminReason] = useState('');
+
+  useEffect(() => {
+    if (showAdminModal) return appBackHandler.register('attendance-admin-modal', () => setShowAdminModal(false), 30);
+  }, [showAdminModal]);
+
+  useEffect(() => {
+    if (showScheduleInfoModal) return appBackHandler.register('attendance-schedule-info-modal', () => setShowScheduleInfoModal(false), 30);
+  }, [showScheduleInfoModal]);
+
+  useEffect(() => {
+    if (showCorrectionsModal) return appBackHandler.register('attendance-corrections-modal', () => setShowCorrectionsModal(false), 30);
+  }, [showCorrectionsModal]);
 
   const filteredSessions = useMemo(() => {
     const sTerm = normalize(searchTerm);

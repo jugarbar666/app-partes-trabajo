@@ -26,6 +26,7 @@ import {
   translateErrorMessageToSpanish,
 } from '../utils/formatters';
 import { WorkOrderStatus } from '../types/domain';
+import { appBackHandler } from '../services/appBackHandler';
 import { DateTimeWheelModal } from './DateTimeWheelModal';
 
 // =============================================================================
@@ -103,6 +104,15 @@ export const UIConfirmationProvider: React.FC<{ children: React.ReactNode }> = (
     const timer = setTimeout(() => setBanner(null), 5000);
     return () => clearTimeout(timer);
   }, [banner]);
+
+  // Cerrar confirmaciones modales con retroceso de dispositivo/navegador
+  useEffect(() => {
+    if (saveModal) return appBackHandler.register('ui-save-modal', () => setSaveModal(null), 50);
+  }, [saveModal]);
+
+  useEffect(() => {
+    if (deleteModal) return appBackHandler.register('ui-delete-modal', () => setDeleteModal(null), 50);
+  }, [deleteModal]);
 
   const requestSaveConfirmation = useCallback((params: SaveConfirmModalState) => {
     setProgressInfo(null);

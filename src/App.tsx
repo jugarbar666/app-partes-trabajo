@@ -41,6 +41,7 @@ import {
   CalendarX,
 } from 'lucide-react';
 import { defaultBackend } from './services/backendEngine';
+import { appBackHandler } from './services/appBackHandler';
 import { supabaseSyncEngine, SyncEngineState } from './services/supabaseSyncEngine';
 import { UserProfile } from './types/domain';
 
@@ -793,14 +794,62 @@ const MainApplicationContent: React.FC = () => {
     ) {
       return;
     }
-    setRouteStack((prev) => [...prev, next]);
+    setRouteStack((prev) => {
+      if (prev[prev.length - 1] === next) return prev;
+      if (typeof window !== 'undefined') {
+        try {
+          window.history.pushState({ appId: 'pt_roma', level: prev.length + 1, route: next }, '');
+        } catch {}
+      }
+      return [...prev, next];
+    });
     setMobileMenuOpen(false);
     scrollToTopAllApp();
   };
 
+  const routeStackRef = useRef(routeStack);
+  routeStackRef.current = routeStack;
+
+  // Inicialización y enlace con el gestor centralizado de retroceso (móvil, tablet y navegador)
+  useEffect(() => {
+    const cleanup = appBackHandler.init();
+    appBackHandler.setNavigationHandlers({
+      onNavigateBack: () => {
+        if (routeStackRef.current.length > 1) {
+          setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
+          scrollToTopAllApp();
+          return true;
+        }
+        return false;
+      },
+      onRootBack: () => {
+        // En la pantalla inicial: atrapar retroceso sin salir ni cerrar sesión
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.pushState({ appId: 'pt_roma', level: 1 }, '');
+          } catch {}
+        }
+      },
+    });
+    return () => {
+      cleanup();
+    };
+  }, []);
+
   const navigateBack = () => {
-    setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
-    scrollToTopAllApp();
+    if (appBackHandler.hasActiveOverlays()) {
+      appBackHandler.handleBack();
+      return;
+    }
+    if (routeStack.length > 1) {
+      setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
+      scrollToTopAllApp();
+      if (typeof window !== 'undefined' && window.history.state?.level > 1) {
+        try {
+          window.history.back();
+        } catch {}
+      }
+    }
   };
 
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
@@ -825,6 +874,11 @@ const MainApplicationContent: React.FC = () => {
   // Selectores de periodo en cabecera del Dashboard (estilo Panel de Control)
   const [selectedMonth, setSelectedMonth] = useState<string>('10');
   const [selectedYear, setSelectedYear] = useState<string>('2026');
+
+  // Menú lateral móvil recogido por defecto (Regla 5)
+  // Salida voluntaria de la aplicación (conservando sesión activa)
+  const [isAppExited, setIsAppExited] = useState(false);
+  const [exitConfirmModalOpen, setExitConfirmModalOpen] = useState(false);
 
   // Menú lateral móvil recogido por defecto (Regla 5)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -916,6 +970,56 @@ const MainApplicationContent: React.FC = () => {
   const [updateMessage, setUpdateMessage] = useState<string>('');
   const [updateError, setUpdateError] = useState<string>('');
   const [crossTabNotice, setCrossTabNotice] = useState<string | null>(null);
+
+  // Registro reactivo de overlays para que el retroceso los cierre en orden LIFO
+  useEffect(() => {
+    if (exitConfirmModalOpen) return appBackHandler.register('exit-confirm-modal', () => setExitConfirmModalOpen(false), 40);
+  }, [exitConfirmModalOpen]);
+
+  useEffect(() => {
+    if (mobileMenuOpen) return appBackHandler.register('mobile-menu', () => setMobileMenuOpen(false), 10);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (adminMobileSearchOpen) return appBackHandler.register('admin-mobile-search', () => setAdminMobileSearchOpen(false), 15);
+  }, [adminMobileSearchOpen]);
+
+  useEffect(() => {
+    if (archivedMobileSearchOpen) return appBackHandler.register('archived-mobile-search', () => setArchivedMobileSearchOpen(false), 15);
+  }, [archivedMobileSearchOpen]);
+
+  useEffect(() => {
+    if (operatorMobileSearchOpen) return appBackHandler.register('operator-mobile-search', () => setOperatorMobileSearchOpen(false), 15);
+  }, [operatorMobileSearchOpen]);
+
+  useEffect(() => {
+    if (quickShopModalOpen) return appBackHandler.register('quick-shop-modal', () => setQuickShopModalOpen(false), 20);
+  }, [quickShopModalOpen]);
+
+  useEffect(() => {
+    if (createWoModalProps.open) return appBackHandler.register('create-wo-modal', () => setCreateWoModalProps({ open: false }), 20);
+  }, [createWoModalProps.open]);
+
+  useEffect(() => {
+    if (rescheduleWoModal.open) return appBackHandler.register('reschedule-wo-modal', () => setRescheduleWoModal((prev) => ({ ...prev, open: false })), 20);
+  }, [rescheduleWoModal.open]);
+
+  useEffect(() => {
+    if (reassignWoModal.open) return appBackHandler.register('reassign-wo-modal', () => setReassignWoModal((prev) => ({ ...prev, open: false })), 20);
+  }, [reassignWoModal.open]);
+
+  useEffect(() => {
+    if (reviewDetailRescheduleOpen) return appBackHandler.register('review-reschedule-modal', () => setReviewDetailRescheduleOpen(false), 20);
+  }, [reviewDetailRescheduleOpen]);
+
+  useEffect(() => {
+    if (reviewDetailEditOpen) return appBackHandler.register('review-edit-modal', () => setReviewDetailEditOpen(false), 20);
+  }, [reviewDetailEditOpen]);
+
+  useEffect(() => {
+    if (showInstallHelpModal) return appBackHandler.register('install-help-modal', () => setShowInstallHelpModal(false), 20);
+  }, [showInstallHelpModal]);
+
 
   // Aviso de actualización completada tras reinicio
   useEffect(() => {
@@ -2091,6 +2195,39 @@ const MainApplicationContent: React.FC = () => {
     </div>
   );
 
+  if (isAppExited) {
+    return (
+      <div
+        className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6 select-none"
+        data-testid="app-exited-screen"
+      >
+        <div className="max-w-md w-full bg-[#131c31] border border-slate-800 rounded-2xl p-6 sm:p-8 text-center space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-extrabold text-white">Has salido de la aplicación</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Puedes cerrar esta pestaña o minimizar la aplicación con tranquilidad. Tu sesión sigue guardada de forma segura para cuando vuelvas.
+            </p>
+          </div>
+          <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-center gap-2">
+            <span>👤 Sesión activa:</span>
+            <strong className="text-white font-bold">{loggedUser.full_name}</strong>
+          </div>
+          <button
+            type="button"
+            data-testid="btn-reenter-app"
+            onClick={() => setIsAppExited(false)}
+            className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md cursor-pointer"
+          >
+            Volver a la aplicación
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen overflow-hidden flex bg-[#f4f6fa] text-slate-900">
       {/* Telón de fondo oscuro para cerrar el menú móvil/tableta al tocar fuera */}
@@ -2426,6 +2563,20 @@ const MainApplicationContent: React.FC = () => {
           </div>
           <button
             type="button"
+            data-testid="sidebar-btn-exit-app"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setExitConfirmModalOpen(true);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            aria-label="Salir de la aplicación"
+          >
+            <X className="w-4 h-4 text-red-400" />
+            <span>Salir de la aplicación</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition"
           >
@@ -2522,8 +2673,22 @@ const MainApplicationContent: React.FC = () => {
             </span>
           </div>
 
-          {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
-          <div className="hidden md:flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Botón de Salida «X / Salir» siempre visible y accesible en móvil, tablet y escritorio */}
+            <button
+              type="button"
+              data-testid="btn-exit-app"
+              onClick={() => setExitConfirmModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs transition cursor-pointer shadow-2xs shrink-0"
+              aria-label="Salir de la aplicación"
+              title="Salir de la aplicación (conservando la sesión activa)"
+            >
+              <X className="w-4 h-4 text-red-600 stroke-[2.5]" />
+              <span>Salir</span>
+            </button>
+
+            {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
+            <div className="hidden md:flex items-center gap-2 shrink-0">
             {/* Selector interactivo de versiones móviles (Solo visible en rama pruebas / desarrollo; omitido en producción Fontanería Roma) */}
             {isMobilePreviewEnabled() && (
               <div className="relative group" data-testid="header-mobile-view-container">
@@ -2678,6 +2843,7 @@ const MainApplicationContent: React.FC = () => {
                 <Plus className="w-4 h-4" /> Nuevo parte
               </button>
             )}
+            </div>
           </div>
         </header>
 
@@ -5870,6 +6036,53 @@ const MainApplicationContent: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* Modal de confirmación para salir voluntariamente de la aplicación */}
+      {exitConfirmModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          data-testid="modal-exit-app-confirm"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 text-xs animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 border border-red-200 flex items-center justify-center shrink-0">
+                <X className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">¿Deseas salir de la aplicación?</h3>
+                <p className="text-slate-500 text-[11px] mt-0.5">Salida voluntaria del entorno</p>
+              </div>
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              Tu sesión permanecerá guardada de forma segura para cuando vuelvas a abrir la aplicación. No se cerrará tu sesión ni se borrarán tus datos.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                data-testid="btn-cancel-exit-app"
+                onClick={() => setExitConfirmModalOpen(false)}
+                className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-confirm-exit-app"
+                onClick={() => {
+                  setExitConfirmModalOpen(false);
+                  try {
+                    if (typeof window !== 'undefined') window.close();
+                  } catch {}
+                  setIsAppExited(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition shadow-xs cursor-pointer"
+              >
+                Salir de la aplicación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

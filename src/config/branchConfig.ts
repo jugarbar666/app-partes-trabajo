@@ -33,7 +33,7 @@ export function isMobilePreviewEnabled(): boolean {
   }
 
   // 2. Parámetro de depuración en URL (?preview=0 para ocultar o ?preview=1 para forzar)
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window.location?.search) {
     const params = new URLSearchParams(window.location.search);
     if (params.get('preview') === '0') return false;
     if (params.get('preview') === '1') return true;
@@ -67,7 +67,7 @@ export function isDemoUserSwitchEnabled(): boolean {
   }
 
   // 2. Parámetro de depuración en URL (?demo_switch=0 para ocultar o ?demo_switch=1 para forzar)
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window.location?.search) {
     const params = new URLSearchParams(window.location.search);
     if (params.get('demo_switch') === '0') return false;
     if (params.get('demo_switch') === '1') return true;
