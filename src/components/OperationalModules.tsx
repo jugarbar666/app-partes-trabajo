@@ -10,6 +10,19 @@ import {
   Edit3,
   Trash2,
   Send,
+  Search,
+  X,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  Filter,
+  RotateCcw,
+  Info,
+  SlidersHorizontal,
+  History,
+  User,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import { ScreenHeaderBar, useUIConfirmation, SearchableSelect, DateTimePickerField } from './CommonUI';
@@ -1393,7 +1406,7 @@ export const ShoppingListModule: React.FC<{
 };
 
 // =============================================================================
-// 3. MÓDULO DE FICHAJE Y CONTROL HORARIO CON INFORMES PDF Y DOBLE BLOQUE DE FIRMA (SECCIÓN 13)
+// 3. MÓDULO DE GESTIÓN DE FICHAJES Y CONTROL HORARIO (SECCIÓN 13)
 // =============================================================================
 export const AttendanceAndReportsModule: React.FC<{
   backend: InstallationBackendEngine;
@@ -1419,6 +1432,7 @@ export const AttendanceAndReportsModule: React.FC<{
   const corrections = isAdmin ? backend.getAttendanceCorrections() : [];
 
   const [workerNote, setWorkerNote] = useState('');
+  const [showNoteInput, setShowNoteInput] = useState(false);
 
   // Rango de fechas por defecto: mes en curso según zona horaria
   const todayStr = getCurrentLocalDate(tz);
@@ -1430,6 +1444,67 @@ export const AttendanceAndReportsModule: React.FC<{
   const [filterWorkerId, setFilterWorkerId] = useState<string>('all');
   const [filterFrom, setFilterFrom] = useState(defaultFrom);
   const [filterTo, setFilterTo] = useState(defaultTo);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'auto'>('all');
+  const [datePreset, setDatePreset] = useState<'this_month' | 'today' | 'this_week' | 'last_month' | 'all' | 'custom'>('this_month');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [showScheduleInfoModal, setShowScheduleInfoModal] = useState(false);
+  const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
+
+  const normalize = (val: string) =>
+    (val || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset as any);
+    if (preset === 'this_month') {
+      setFilterFrom(defaultFrom);
+      setFilterTo(defaultTo);
+    } else if (preset === 'today') {
+      setFilterFrom(todayStr);
+      setFilterTo(todayStr);
+    } else if (preset === 'this_week') {
+      const now = parseDateRobust(todayStr) || new Date();
+      const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Lunes, 6 = Domingo
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - dayOfWeek);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const fmt = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      setFilterFrom(fmt(monday));
+      setFilterTo(fmt(sunday));
+    } else if (preset === 'last_month') {
+      const prevMonthDate = new Date(Number(currentYear), Number(currentMonth) - 2, 1);
+      const pY = prevMonthDate.getFullYear();
+      const pM = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+      const pLastDay = new Date(pY, Number(pM), 0).getDate();
+      setFilterFrom(`${pY}-${pM}-01`);
+      setFilterTo(`${pY}-${pM}-${String(pLastDay).padStart(2, '0')}`);
+    } else if (preset === 'all') {
+      setFilterFrom('');
+      setFilterTo('');
+    } else if (preset === 'custom') {
+      setShowAdvancedFilters(true);
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setFilterWorkerId('all');
+    setStatusFilter('all');
+    setFilterFrom(defaultFrom);
+    setFilterTo(defaultTo);
+    setDatePreset('this_month');
+  };
 
   const handleRunAutoResolveAttendance = () => {
     try {
@@ -1454,35 +1529,83 @@ export const AttendanceAndReportsModule: React.FC<{
   const [adminNotesIn, setAdminNotesIn] = useState('');
   const [adminReason, setAdminReason] = useState('');
 
-  const filteredSessions = sessions
-    .filter((s) => {
-      if (filterWorkerId !== 'all' && s.user_id !== filterWorkerId) return false;
-      const inDate = s.clock_in_at ? getCurrentLocalDate(tz, parseDateRobust(s.clock_in_at) || undefined) : '';
-      const outDate = s.clock_out_at
-        ? getCurrentLocalDate(tz, parseDateRobust(s.clock_out_at) || undefined)
-        : inDate;
-      if (filterFrom && outDate < filterFrom) return false;
-      if (filterTo && inDate > filterTo) return false;
-      return true;
-    })
-    .sort((a, b) => new Date(b.clock_in_at).getTime() - new Date(a.clock_in_at).getTime());
+  const filteredSessions = useMemo(() => {
+    const sTerm = normalize(searchTerm);
+    return sessions
+      .filter((s) => {
+        if (filterWorkerId !== 'all' && s.user_id !== filterWorkerId) return false;
+        const inDate = s.clock_in_at ? getCurrentLocalDate(tz, parseDateRobust(s.clock_in_at) || undefined) : '';
+        const outDate = s.clock_out_at
+          ? getCurrentLocalDate(tz, parseDateRobust(s.clock_out_at) || undefined)
+          : inDate;
+        if (filterFrom && outDate < filterFrom) return false;
+        if (filterTo && inDate > filterTo) return false;
 
-  const totalMinutes = filteredSessions.reduce(
-    (acc, s) => acc + calculateDuration(s.clock_in_at, s.clock_out_at).minutes,
-    0
-  );
+        // Filtro por estado
+        if (statusFilter === 'open' && s.clock_out_at) return false;
+        if (statusFilter === 'closed' && !s.clock_out_at) return false;
+        if (statusFilter === 'auto') {
+          const isAuto =
+            s.worker_notes_in?.includes('por defecto') ||
+            s.worker_notes_out?.includes('automático') ||
+            s.worker_notes_out?.includes('por defecto') ||
+            s.delete_reason?.includes('Consolidado');
+          if (!isAuto) return false;
+        }
+
+        // Buscador de texto en múltiples campos relevantes
+        if (sTerm) {
+          const worker = profiles.find((p) => p.id === s.user_id);
+          const workerName = normalize(worker?.full_name || '');
+          const notesIn = normalize(s.worker_notes_in || '');
+          const notesOut = normalize(s.worker_notes_out || '');
+          const delReason = normalize(s.delete_reason || '');
+          const inDateFormatted = normalize(formatDateES(s.clock_in_at, tz));
+          const outDateFormatted = s.clock_out_at ? normalize(formatDateES(s.clock_out_at, tz)) : '';
+          const weekday = normalize(getWeekdayNameES(s.clock_in_at, tz));
+
+          const matches =
+            workerName.includes(sTerm) ||
+            notesIn.includes(sTerm) ||
+            notesOut.includes(sTerm) ||
+            delReason.includes(sTerm) ||
+            inDateFormatted.includes(sTerm) ||
+            outDateFormatted.includes(sTerm) ||
+            weekday.includes(sTerm) ||
+            inDate.includes(sTerm);
+
+          if (!matches) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.clock_in_at).getTime() - new Date(a.clock_in_at).getTime());
+  }, [sessions, filterWorkerId, filterFrom, filterTo, statusFilter, searchTerm, tz, profiles]);
+
+  const totalMinutes = useMemo(() => {
+    return filteredSessions.reduce(
+      (acc, s) => acc + calculateDuration(s.clock_in_at, s.clock_out_at).minutes,
+      0
+    );
+  }, [filteredSessions]);
+
+  const openSessionsCount = useMemo(() => {
+    return filteredSessions.filter((s) => !s.clock_out_at).length;
+  }, [filteredSessions]);
 
   const handleClockInOrOut = () => {
     try {
       if (!openSession) {
         const created = backend.clockIn(workerNote);
         setWorkerNote('');
+        setShowNoteInput(false);
         notifySuccessGreen(
           `Entrada fichada en servidor: ${formatDateTimeES(created.clock_in_at, tz)}`
         );
       } else {
         const closed = backend.clockOut(workerNote);
         setWorkerNote('');
+        setShowNoteInput(false);
         notifySuccessGreen(
           `Salida fichada en servidor: ${formatDateTimeES(closed.clock_out_at, tz)}`
         );
@@ -1560,322 +1683,509 @@ export const AttendanceAndReportsModule: React.FC<{
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
-      <div className="shrink-0 bg-[#f4f6fa]">
-        <ScreenHeaderBar
-          title="Fichaje y Control Horario"
-          subtitle="Fichaje en directo con hora del servidor, cálculo real de duración (medianoche y horario de verano) e informes PDF con firmas"
-          onBack={onBack}
-          actions={
-            isAdmin && (
-              <div className="flex flex-wrap items-center gap-2">
-                {company.logo_url && (
-                  <img
-                    src={company.logo_url}
-                    alt={company.company_name}
-                    className="h-8 max-w-[120px] object-contain rounded border border-slate-200 bg-white p-0.5"
-                  />
-                )}
-                <button
-                  type="button"
-                  data-testid="btn-download-attendance-pdf"
-                  onClick={handleDownloadAttendancePDF}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
-                >
-                  <FileText className="w-3.5 h-3.5" /> Exportar Informe PDF Oficial con Bloques de Firma
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingSessionId(undefined);
-                    setAdminReason('');
-                    setShowAdminModal(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
-                >
-                  <Plus className="w-3.5 h-3.5" /> + Añadir Fichaje (Admin)
-                </button>
-              </div>
-            )
-          }
-        />
-      </div>
+    <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden text-slate-800" data-testid="attendance-desktop-view">
+      {/* 1. Barra superior compacta (Título + Control rápido de fichaje + Acciones principales) */}
+      <div className="shrink-0 bg-white border border-slate-200 rounded-xl p-2.5 px-3 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+            title="Volver"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+              Gestión de fichajes
+            </h2>
+          </div>
 
-      {/* Panel de información de cierre automático por jornada individual de cada trabajador */}
-      {isAdmin && (
-        <div className="shrink-0 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-3 sm:p-4 shadow-sm space-y-2">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs sm:text-sm font-extrabold text-white">
-                  Cierre Automático de Fichajes por Jornada Individual
-                </h3>
+          {/* Estado de jornada del usuario en sesión (ultra compacto) */}
+          {currentUser.can_clock !== false && (
+            <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200">
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                  openSession
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${openSession ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                <span>
+                  {openSession
+                    ? `En jornada (${formatTimeES(openSession.clock_in_at, tz)})`
+                    : 'Fuera de jornada'}
+                </span>
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 max-w-3xl leading-relaxed">
-                Cada trabajador cuenta con su propio horario de entrada y salida habitual fijado de forma independiente en su ficha (<span className="text-indigo-200 font-semibold">Datos Maestros &gt; Usuarios y Roles</span>). Al ejecutar el cierre automático o finalizar la jornada, el sistema aplica el horario individual asignado a cada operario.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                data-testid="btn-auto-resolve-attendance"
-                onClick={handleRunAutoResolveAttendance}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
-                title="Comprobar jornadas pendientes y completar con el horario individual asignado a cada trabajador"
+                data-testid="btn-direct-clock-toggle"
+                onClick={handleClockInOrOut}
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-white text-xs font-bold transition shadow-2xs cursor-pointer ${
+                  openSession
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+                title={openSession ? 'Registrar salida ahora' : 'Registrar entrada ahora'}
               >
-                <Check className="w-3.5 h-3.5" /> Ejecutar Cierre Automático Ahora
+                <span>{openSession ? 'Fichar Salida' : 'Fichar Entrada'}</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setShowNoteInput(!showNoteInput)}
+                className={`p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition cursor-pointer ${workerNote ? 'text-blue-600 font-bold' : ''}`}
+                title={workerNote ? `Nota: "${workerNote}"` : 'Añadir nota opcional al fichaje'}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+              {showNoteInput && (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={workerNote}
+                    onChange={(e) => setWorkerNote(e.target.value)}
+                    placeholder="Observaciones de fichaje..."
+                    className="px-2 py-0.5 rounded border border-slate-300 text-xs w-44 bg-white"
+                    autoFocus
+                  />
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Panel de fichaje en directo para el usuario actual */}
-      {currentUser.can_clock === false ? (
-        <div className="shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-2.5 text-xs text-slate-700">
-          <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-          <span>
-            Tu usuario tiene el <strong>control de fichaje desactivado</strong>. No se requiere registro de entradas ni salidas y estás excluido de los procesos de regularización y firmas de fichajes.
-          </span>
+        {/* Acciones principales y desplegable «Más acciones» */}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <>
+              {/* Acción principal 1: Añadir fichaje */}
+              <button
+                type="button"
+                data-testid="btn-add-attendance"
+                onClick={() => {
+                  setEditingSessionId(undefined);
+                  setAdminReason('');
+                  setAdminNotesIn('');
+                  setShowAdminModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Añadir Fichaje</span>
+              </button>
+
+              {/* Acción principal 2: Exportar informe PDF oficial con firmas */}
+              <button
+                type="button"
+                data-testid="btn-download-attendance-pdf"
+                onClick={handleDownloadAttendancePDF}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                title="Generar e imprimir informe PDF oficial con las dos cajas de firma manuscrita"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Exportar PDF Oficial</span>
+                <span className="sm:hidden">PDF</span>
+              </button>
+
+              {/* Desplegable «Más acciones» */}
+              <div className="relative">
+                <button
+                  type="button"
+                  data-testid="btn-more-actions"
+                  onClick={() => setShowMoreActions(!showMoreActions)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                >
+                  <span>Más acciones</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+
+                {showMoreActions && (
+                  <div
+                    className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+                    onMouseLeave={() => setShowMoreActions(false)}
+                  >
+                    <button
+                      type="button"
+                      data-testid="btn-auto-resolve-attendance"
+                      onClick={() => {
+                        setShowMoreActions(false);
+                        handleRunAutoResolveAttendance();
+                      }}
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition text-indigo-700 font-semibold cursor-pointer"
+                    >
+                      <Check className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <div>
+                        <div>Cierre Automático Ahora</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Aplica horario individual a jornadas</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="btn-open-corrections-modal"
+                      onClick={() => {
+                        setShowMoreActions(false);
+                        setShowCorrectionsModal(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium cursor-pointer"
+                    >
+                      <History className="w-4 h-4 text-slate-500 shrink-0" />
+                      <div>
+                        <div>Historial de Correcciones ({corrections.length})</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Auditoría con motivo inmutable</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="btn-open-schedule-info-modal"
+                      onClick={() => {
+                        setShowMoreActions(false);
+                        setShowScheduleInfoModal(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium border-t border-slate-100 cursor-pointer"
+                    >
+                      <Info className="w-4 h-4 text-blue-500 shrink-0" />
+                      <div>
+                        <div>Información de Horarios</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Configuración y reglas de jornada</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
-      ) : (
-        <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="text-xs font-bold uppercase text-slate-500 flex flex-wrap items-center gap-2">
-              <span>Tu Estado Actual de Jornada ({currentUser.full_name})</span>
-              <span className="text-[11px] font-normal text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                🕒 Horario asignado: <strong>{currentUser.work_start_time || '08:00'}</strong> a <strong>{currentUser.work_end_time || '18:00'}</strong>
-              </span>
-            </div>
-            {openSession ? (
-              <div className="text-xs sm:text-sm font-bold text-emerald-700">
-                ● JORNADA ABIERTA — Entrada registrada a las{' '}
-                {formatDateTimeES(openSession.clock_in_at, tz)}
-              </div>
-            ) : (
-              <div className="text-xs sm:text-sm font-bold text-slate-700">
-                ○ Fuera de jornada (Sin entrada abierta)
-              </div>
+      </div>
+
+      {/* 2. Barra compacta de búsqueda, filtros principales y resúmenes */}
+      <div className="shrink-0 bg-white border border-slate-200 rounded-xl p-2 px-3 flex flex-wrap items-center justify-between gap-2 shadow-2xs text-xs">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          {/* Buscador de texto en tiempo real */}
+          <div className="relative min-w-[180px] max-w-xs flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              data-testid="input-attendance-search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por trabajador, notas, fecha..."
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:border-blue-500 transition"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                data-testid="btn-clear-attendance-search"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={workerNote}
-              onChange={(e) => setWorkerNote(e.target.value)}
-              placeholder="Observaciones del fichaje (opcional)..."
-              className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs w-64"
-            />
-            <button
-              type="button"
-              data-testid="btn-direct-clock-toggle"
-              onClick={handleClockInOrOut}
-              className={`px-4 py-1.5 rounded-lg text-white text-xs font-bold shadow-xs ${
-                openSession
-                  ? 'bg-red-600 hover:bg-red-700'
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
-            >
-              {openSession ? 'Registrar Salida Ahora' : 'Registrar Entrada Ahora'}
-            </button>
-          </div>
-        </div>
-      )}
+          {/* Filtro de Trabajador */}
+          {isAdmin && (
+            <div className="min-w-[170px] max-w-xs">
+              <select
+                data-testid="select-attendance-worker"
+                value={filterWorkerId}
+                onChange={(e) => setFilterWorkerId(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">Informe Conjunto (Todos)</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name} {p.can_clock === false ? '(Sin fichaje)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-      {/* Filtros administrativos de escritorio */}
-      {isAdmin && (
-        <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs items-end">
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Trabajador</label>
+          {/* Selector de Periodo Rápido */}
+          <div className="min-w-[120px]">
             <select
-              value={filterWorkerId}
-              onChange={(e) => setFilterWorkerId(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded border border-slate-300 bg-white"
+              data-testid="select-attendance-preset"
+              value={datePreset}
+              onChange={(e) => handleDatePresetChange(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500"
             >
-              <option value="all">Informe Conjunto (Todos los trabajadores)</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name}
-                </option>
-              ))}
+              <option value="this_month">Este mes</option>
+              <option value="today">Hoy</option>
+              <option value="this_week">Esta semana</option>
+              <option value="last_month">Mes anterior</option>
+              <option value="all">Todo el historial</option>
+              <option value="custom">Personalizado...</option>
             </select>
           </div>
+
+          {/* Botón para desplegar filtros adicionales */}
+          <button
+            type="button"
+            data-testid="btn-toggle-advanced-filters"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+              showAdvancedFilters || statusFilter !== 'all' || datePreset === 'custom'
+                ? 'bg-blue-50 border-blue-300 text-blue-700'
+                : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span>Filtros</span>
+            {showAdvancedFilters ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+        </div>
+
+        {/* Resúmenes e indicadores en línea (Formato ultra compacto sin desplazar la tabla) */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div
+            data-testid="badge-attendance-total-hours"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold text-xs"
+            title="Total de horas computadas en el filtro actual"
+          >
+            <Clock className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Total: <strong>{Math.floor(totalMinutes / 60)}h {String(totalMinutes % 60).padStart(2, '0')}m</strong></span>
+          </div>
+
+          <div
+            data-testid="badge-attendance-count"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs"
+          >
+            <span>{filteredSessions.length} {filteredSessions.length === 1 ? 'registro' : 'registros'}</span>
+          </div>
+
+          {openSessionsCount > 0 && (
+            <div
+              data-testid="badge-attendance-open-count"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold text-xs"
+              title="Jornadas actualmente abiertas pendientes de salida"
+            >
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              <span>{openSessionsCount} abierta{openSessionsCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 3. Sección plegable de filtros adicionales */}
+      {showAdvancedFilters && (
+        <div className="shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5 px-3 grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs items-end animate-in fade-in duration-100">
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Desde fecha</label>
             <input
               type="date"
+              data-testid="input-filter-from"
               value={filterFrom}
-              onChange={(e) => setFilterFrom(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded border border-slate-300"
+              onChange={(e) => {
+                setFilterFrom(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full px-2.5 py-1 rounded border border-slate-300 bg-white text-xs"
             />
           </div>
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Hasta fecha</label>
             <input
               type="date"
+              data-testid="input-filter-to"
               value={filterTo}
-              onChange={(e) => setFilterTo(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded border border-slate-300"
+              onChange={(e) => {
+                setFilterTo(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full px-2.5 py-1 rounded border border-slate-300 bg-white text-xs"
             />
           </div>
-          <div className="p-2 rounded-lg bg-slate-100 border border-slate-200 font-bold text-slate-900 text-center">
-            Total horas filtradas: {Math.floor(totalMinutes / 60)}h{' '}
-            {String(totalMinutes % 60).padStart(2, '0')}m
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Estado de jornada</label>
+            <select
+              data-testid="select-filter-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="w-full px-2.5 py-1 rounded border border-slate-300 bg-white text-xs"
+            >
+              <option value="all">Todas las jornadas</option>
+              <option value="open">Solo jornadas abiertas</option>
+              <option value="closed">Solo jornadas cerradas</option>
+              <option value="auto">Solo horario automático / cierre por defecto</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="btn-reset-attendance-filters"
+              onClick={handleResetFilters}
+              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Restablecer filtros
+            </button>
           </div>
         </div>
       )}
 
-      {/* Tabla con todos los campos mínimos exigidos en el apartado 13 */}
-      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain">
+      {/* 4. Tabla de registros compacta de alta densidad */}
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 overflow-auto overscroll-contain shadow-xs">
         <table className="w-full text-left text-xs border-collapse">
           <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-xs">
             <tr>
-              <th className="p-3">Trabajador</th>
-              <th className="p-3">Fecha completa</th>
-              <th className="p-3">Día de la semana</th>
-              <th className="p-3">Hora de entrada</th>
-              <th className="p-3">Hora de salida</th>
-              <th className="p-3">Horas trabajadas</th>
-              <th className="p-3">Observaciones</th>
-              {isAdmin && <th className="p-3 text-right">Corrección Admin</th>}
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Trabajador</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Fecha</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Día</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Entrada</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Salida</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Horas</th>
+              <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider">Observaciones</th>
+              {isAdmin && <th className="py-2 px-3 font-bold text-[11px] uppercase tracking-wider text-right">Acciones</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
-            {filteredSessions.map((s) => {
-              const worker = profiles.find((p) => p.id === s.user_id);
-              const dur = calculateDuration(s.clock_in_at, s.clock_out_at);
-              const inDate = formatDateES(s.clock_in_at, tz);
-              const outDate = s.clock_out_at ? formatDateES(s.clock_out_at, tz) : null;
-              const isMultiDay = Boolean(outDate && inDate !== outDate);
-              const inWeekday = getWeekdayNameES(s.clock_in_at, tz);
-              const outWeekday = s.clock_out_at ? getWeekdayNameES(s.clock_out_at, tz) : null;
+          <tbody className="divide-y divide-slate-100">
+            {filteredSessions.length === 0 ? (
+              <tr>
+                <td colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-slate-500">
+                  <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="font-semibold text-slate-700">No se encontraron registros de fichaje</p>
+                  <p className="text-xs text-slate-500 mt-1">Prueba a modificar los filtros o el periodo seleccionado.</p>
+                  {(searchTerm || filterWorkerId !== 'all' || statusFilter !== 'all' || datePreset !== 'this_month') && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="mt-3 px-3 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-semibold hover:bg-blue-100 text-xs cursor-pointer"
+                    >
+                      Limpiar filtros y búsqueda
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              filteredSessions.map((s) => {
+                const worker = profiles.find((p) => p.id === s.user_id);
+                const dur = calculateDuration(s.clock_in_at, s.clock_out_at);
+                const inDate = formatDateES(s.clock_in_at, tz);
+                const outDate = s.clock_out_at ? formatDateES(s.clock_out_at, tz) : null;
+                const isMultiDay = Boolean(outDate && inDate !== outDate);
+                const inWeekday = getWeekdayNameES(s.clock_in_at, tz);
+                const outWeekday = s.clock_out_at ? getWeekdayNameES(s.clock_out_at, tz) : null;
+                const isAutoResolved =
+                  s.worker_notes_in?.includes('por defecto') ||
+                  s.worker_notes_out?.includes('automático') ||
+                  s.worker_notes_out?.includes('por defecto') ||
+                  s.delete_reason?.includes('Consolidado');
 
-              return (
-                <tr key={s.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-semibold text-slate-900">
-                    {worker?.full_name || s.user_id}
-                  </td>
-                  <td className="p-3">
-                    <div className="font-medium text-slate-800">{inDate}</div>
-                    {isMultiDay && (
-                      <div className="text-[10px] text-amber-700 font-bold mt-0.5">
-                        Salida: {outDate}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <div className="text-slate-700">{inWeekday}</div>
-                    {isMultiDay && (
-                      <div className="text-[10px] text-amber-700 font-bold mt-0.5">
-                        a {outWeekday}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-3 font-mono font-bold text-emerald-700">
-                    {formatTimeES(s.clock_in_at, tz)}
-                  </td>
-                  <td className="p-3 font-mono font-bold text-blue-700">
-                    {s.clock_out_at ? formatTimeES(s.clock_out_at, tz) : 'ABIERTA'}
-                  </td>
-                  <td className="p-3 font-bold">{dur.formatted}</td>
-                  <td className="p-3 text-slate-600">
-                    <div className="space-y-1">
-                      <div>
-                        {[s.worker_notes_in, s.worker_notes_out].filter(Boolean).join(' / ') || '—'}
-                      </div>
-                      {(s.worker_notes_in?.includes('por defecto') ||
-                        s.worker_notes_out?.includes('automático') ||
-                        s.worker_notes_out?.includes('por defecto')) && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          Horario automático
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-1.5 px-3 font-semibold text-slate-900 whitespace-nowrap">
+                      {worker?.full_name || s.user_id}
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      <span className="font-medium text-slate-800">{inDate}</span>
+                      {isMultiDay && (
+                        <span className="text-[10px] text-amber-700 font-bold ml-1">
+                          → {outDate}
                         </span>
                       )}
-                    </div>
-                  </td>
-                  {isAdmin && (
-                    <td className="p-3 text-right space-x-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingSessionId(s.id);
-                          setAdminUserId(s.user_id);
-                          const dIn = parseDateRobust(s.clock_in_at);
-                          const dOut = s.clock_out_at ? parseDateRobust(s.clock_out_at) : null;
-                          const fmtLocal = (d: Date) => {
-                            const y = d.getFullYear();
-                            const m = String(d.getMonth() + 1).padStart(2, '0');
-                            const day = String(d.getDate()).padStart(2, '0');
-                            const h = String(d.getHours()).padStart(2, '0');
-                            const min = String(d.getMinutes()).padStart(2, '0');
-                            return `${y}-${m}-${day}T${h}:${min}`;
-                          };
-                          setAdminClockIn(dIn ? fmtLocal(dIn) : s.clock_in_at.slice(0, 16));
-                          setAdminClockOut(dOut ? fmtLocal(dOut) : '');
-                          setAdminNotesIn(s.worker_notes_in);
-                          setAdminReason('');
-                          setShowAdminModal(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 font-semibold"
-                      >
-                        <Edit3 className="w-3 h-3" /> Corregir
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          requestDeleteConfirmation({
-                            recordName: `Fichaje de ${worker?.full_name} (${formatDateES(
-                              s.clock_in_at,
-                              tz
-                            )})`,
-                            consequence:
-                              'Se aplicará borrado lógico conservando datos originales y motivo en trazabilidad.',
-                            requireReason: true,
-                            onConfirm: (reason) => {
-                              backend.adminSoftDeleteAttendance(s.id, reason);
-                              refresh();
-                            },
-                          })
-                        }
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 bg-red-50 text-red-700 font-semibold"
-                      >
-                        <Trash2 className="w-3 h-3" /> Borrar
-                      </button>
                     </td>
-                  )}
-                </tr>
-              );
-            })}
+                    <td className="py-1.5 px-3 text-slate-600 capitalize whitespace-nowrap">
+                      {inWeekday}
+                      {isMultiDay && ` a ${outWeekday}`}
+                    </td>
+                    <td className="py-1.5 px-3 font-mono font-bold text-emerald-700 whitespace-nowrap">
+                      {formatTimeES(s.clock_in_at, tz)}
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      {s.clock_out_at ? (
+                        <span className="font-mono font-bold text-blue-700">
+                          {formatTimeES(s.clock_out_at, tz)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 animate-pulse">
+                          ABIERTA
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                      {dur.formatted}
+                    </td>
+                    <td className="py-1.5 px-3 text-slate-600 max-w-xs truncate">
+                      <div className="flex items-center gap-1.5 truncate">
+                        {isAutoResolved && (
+                          <span className="shrink-0 inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Auto
+                          </span>
+                        )}
+                        <span className="truncate">
+                          {[s.worker_notes_in, s.worker_notes_out].filter(Boolean).join(' / ') || '—'}
+                        </span>
+                      </div>
+                    </td>
+                    {isAdmin && (
+                      <td className="py-1.5 px-3 text-right space-x-1 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSessionId(s.id);
+                            setAdminUserId(s.user_id);
+                            const dIn = parseDateRobust(s.clock_in_at);
+                            const dOut = s.clock_out_at ? parseDateRobust(s.clock_out_at) : null;
+                            const fmtLocal = (d: Date) => {
+                              const y = d.getFullYear();
+                              const m = String(d.getMonth() + 1).padStart(2, '0');
+                              const day = String(d.getDate()).padStart(2, '0');
+                              const h = String(d.getHours()).padStart(2, '0');
+                              const min = String(d.getMinutes()).padStart(2, '0');
+                              return `${y}-${m}-${day}T${h}:${min}`;
+                            };
+                            setAdminClockIn(dIn ? fmtLocal(dIn) : s.clock_in_at.slice(0, 16));
+                            setAdminClockOut(dOut ? fmtLocal(dOut) : '');
+                            setAdminNotesIn(s.worker_notes_in || '');
+                            setAdminReason('');
+                            setShowAdminModal(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100 text-xs transition cursor-pointer"
+                          title="Corregir fichaje con motivo"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Corregir</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            requestDeleteConfirmation({
+                              recordName: `Fichaje de ${worker?.full_name} (${formatDateES(
+                                s.clock_in_at,
+                                tz
+                              )})`,
+                              consequence:
+                                'Se aplicará borrado lógico conservando datos originales y motivo en trazabilidad.',
+                              requireReason: true,
+                              onConfirm: (reason) => {
+                                backend.adminSoftDeleteAttendance(s.id, reason);
+                                refresh();
+                              },
+                            })
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-700 font-semibold hover:bg-red-100 text-xs transition cursor-pointer"
+                          title="Borrar fichaje"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Borrar</span>
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Trazabilidad de correcciones administrativas */}
-      {isAdmin && corrections.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 text-xs">
-          <h3 className="font-bold text-slate-900">
-            Historial de Correcciones Administrativas de Fichajes ({corrections.length})
-          </h3>
-          <div className="divide-y divide-slate-100">
-            {corrections.map((c) => (
-              <div key={c.id} className="py-2 flex flex-wrap justify-between gap-2">
-                <div>
-                  <strong>Motivo:</strong> {c.reason} ·{' '}
-                  <span className="text-slate-500">
-                    Antes: {formatDateTimeES(c.previous_data.clock_in_at, tz)} →{' '}
-                    {formatDateTimeES(c.previous_data.clock_out_at, tz)} | Nuevo:{' '}
-                    {formatDateTimeES(c.new_data.clock_in_at, tz)} →{' '}
-                    {formatDateTimeES(c.new_data.clock_out_at, tz)}
-                  </span>
-                </div>
-                <div className="text-slate-500">{formatDateTimeES(c.corrected_at, tz)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
+      {/* Modal 1: Alta y corrección administrativa con motivo obligatorio */}
       {showAdminModal && (
         <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <form
@@ -1947,18 +2257,115 @@ export const AttendanceAndReportsModule: React.FC<{
               <button
                 type="button"
                 onClick={() => setShowAdminModal(false)}
-                className="px-3 py-1.5 rounded border border-slate-300"
+                className="px-3 py-1.5 rounded border border-slate-300 cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 rounded bg-blue-600 text-white font-bold"
+                className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
               >
                 Guardar con Auditoría
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal 2: Información sobre horarios habituales y cierre automático */}
+      {showScheduleInfoModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-5 space-y-4 text-xs animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  Horarios Habituales y Cierre Automático
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleInfoModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-slate-600 leading-relaxed">
+              <p>
+                Cada trabajador cuenta con su propio horario de entrada y salida habitual fijado de forma independiente en su ficha (<span className="text-indigo-600 font-semibold">Datos Maestros &gt; Usuarios y Roles</span>).
+              </p>
+              <p>
+                Al ejecutar el <strong>cierre automático</strong> o al finalizar la jornada, el sistema:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-700">
+                <li>Cierra automáticamente jornadas que hayan quedado abiertas.</li>
+                <li>Genera los fichajes por defecto con el horario individual asignado al trabajador.</li>
+                <li>Consolida marcas múltiples si el trabajador tiene jornada partida.</li>
+                <li>Protege estrictamente fichajes corregidos previamente de forma manual por administración.</li>
+              </ul>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowScheduleInfoModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Historial de correcciones administrativas con auditoría inmutable */}
+      {showCorrectionsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4 shrink-0 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  Historial de Correcciones Administrativas ({corrections.length})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCorrectionsModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100">
+              {corrections.length === 0 ? (
+                <p className="text-slate-500 py-8 text-center font-medium">No hay correcciones administrativas registradas en auditoría.</p>
+              ) : (
+                corrections.map((c) => (
+                  <div key={c.id} className="py-2.5 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-800">
+                      <span>Motivo: {c.reason}</span>
+                      <span className="text-slate-400 font-normal">{formatDateTimeES(c.corrected_at, tz)}</span>
+                    </div>
+                    <div className="text-slate-600 text-[11px]">
+                      <span className="text-red-700 font-semibold">Anterior:</span> {formatDateTimeES(c.previous_data.clock_in_at, tz)} → {c.previous_data.clock_out_at ? formatDateTimeES(c.previous_data.clock_out_at, tz) : 'Abierta'}
+                      <span className="mx-2">|</span>
+                      <span className="text-emerald-700 font-semibold">Nuevo:</span> {formatDateTimeES(c.new_data.clock_in_at, tz)} → {c.new_data.clock_out_at ? formatDateTimeES(c.new_data.clock_out_at, tz) : 'Abierta'}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end p-3 border-t border-slate-200 shrink-0 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowCorrectionsModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

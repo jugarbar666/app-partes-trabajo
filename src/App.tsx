@@ -774,6 +774,10 @@ const MainApplicationContent: React.FC = () => {
 
   const navigateTo = (next: ActiveRoute) => {
     // Redirección móvil admin: 'work_orders_list' queda cubierta por 'Inicio / Partes de trabajo'
+        // Redirección móvil/tablet: 'attendance' retirado del menú y navegación móvil
+    if (next === 'attendance' && isMobileDeviceOrViewport()) {
+      return;
+    }
     if (next === 'work_orders_list' && isMobileDeviceOrViewport() && isAdmin) {
       setAdminMobileFilter('todos');
       setRouteStack(['dashboard']);
@@ -2275,18 +2279,25 @@ const MainApplicationContent: React.FC = () => {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => navigateTo('attendance')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-              currentRoute === 'attendance'
-                ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                : 'text-slate-300 hover:bg-white/5 hover:text-white'
-            }`}
-          >
-            <Clock className="w-4 h-4 shrink-0" />
-            <span>Fichaje e informes</span>
-          </button>
+          {/* 6. GESTIÓN DE FICHAJES: Solo en versión de escritorio (retirado de móviles y tablets Android/iPad) */}
+          {!isMobileDeviceOrViewport() && (
+            <button
+              type="button"
+              data-testid="nav-attendance-btn"
+              onClick={() => {
+                if (isMobileDeviceOrViewport()) return;
+                navigateTo('attendance');
+              }}
+              className={`hidden md:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                currentRoute === 'attendance'
+                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-300 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Clock className="w-4 h-4 shrink-0" />
+              <span>Gestión de fichajes</span>
+            </button>
+          )}
 
           {isAdmin && (
             <>
@@ -4805,8 +4816,8 @@ const MainApplicationContent: React.FC = () => {
             />
           )}
 
-          {/* 7. FICHAJE Y CONTROL HORARIO */}
-          {currentRoute === 'attendance' && (
+          {/* 7. FICHAJE Y CONTROL HORARIO (Gestión de fichajes solo en escritorio) */}
+          {currentRoute === 'attendance' && !isMobileDeviceOrViewport() && (
             <AttendanceAndReportsModule
               key={tick}
               backend={backend}
