@@ -13,6 +13,8 @@ import {
   Calendar,
   Check,
   Loader2,
+  Search,
+  RotateCcw,
 } from 'lucide-react';
 import {
   normalizePhoneLinks,
@@ -603,12 +605,18 @@ export interface SearchableSelectOption {
   value: string;
   label: string;
   sublabel?: string;
+  keywords?: string[];
 }
 
 /**
- * Desplegable interactivo con filtro en tiempo real.
- * Al empezar a escribir en el campo, filtra las opciones por cualquier parte del texto
- * ignorando mayúsculas, minúsculas y tildes.
+ * Desplegable interactivo con selector y buscador integrado en tiempo real.
+ * - Soporta búsqueda por coincidencias parciales de texto, código, referencia y descripción.
+ * - Insensible a acentos, tildes y mayúsculas/minúsculas.
+ * - Navegación completa por teclado (Flechas Arriba/Abajo, Enter y Escape).
+ * - Desplazamiento automático al elemento resaltado.
+ * - Botón para borrar el término de búsqueda y restablecer el listado completo.
+ * - Mensaje comprensible cuando no existan coincidencias.
+ * - Adaptado tanto para pantallas táctiles de móviles como para escritorio.
  */
 export const SearchableSelect: React.FC<{
   options: SearchableSelectOption[];
@@ -637,21 +645,56 @@ export const SearchableSelect: React.FC<{
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((o) => o.value === value);
 
   // Normalizador para búsqueda insensible a acentos y mayúsculas
   const normalize = (str: string) =>
-    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
 
   // Filtrado de opciones en tiempo real por cualquier parte del texto
-  const filteredOptions = options.filter((o) => {
-    if (!searchTerm.trim()) return true;
+  const filteredOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
     const term = normalize(searchTerm);
-    return normalize(o.label).includes(term) || (o.sublabel && normalize(o.sublabel).includes(term));
-  });
+    return options.filter((o) => {
+      if (normalize(o.label).includes(term)) return true;
+      if (o.sublabel && normalize(o.sublabel).includes(term)) return true;
+      if (o.keywords && o.keywords.some((k) => normalize(k).includes(term))) return true;
+      return false;
+    });
+  }, [options, searchTerm]);
+
+  // Al cambiar opciones filtradas o abrirse, ajustar el índice resaltado
+  useEffect(() => {
+    if (isOpen) {
+      if (filteredOptions.length > 0) {
+        const selectedIdx = filteredOptions.findIndex((o) => o.value === value);
+        setHighlightedIndex(selectedIdx >= 0 ? selectedIdx : 0);
+      } else {
+        setHighlightedIndex(-1);
+      }
+    }
+  }, [searchTerm, isOpen, filteredOptions, value]);
+
+  // Scroll automático para mantener visible la opción resaltada
+  useEffect(() => {
+    if (isOpen && highlightedIndex >= 0 && listRef.current) {
+      const activeEl = listRef.current.querySelector<HTMLElement>(
+        `[data-option-index="${highlightedIndex}"]`
+      );
+      if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+        activeEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [highlightedIndex, isOpen]);
 
   // Cierre al hacer clic fuera del componente
   useEffect(() => {
@@ -671,12 +714,49 @@ export const SearchableSelect: React.FC<{
     setSearchTerm('');
   };
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClearSelection = (e: React.MouseEvent) => {
     e.stopPropagation();
     onChange('');
     setSearchTerm('');
     setIsOpen(false);
     if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleClearSearch = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSearchTerm('');
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+      setSearchTerm('');
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+      } else if (filteredOptions.length > 0) {
+        setHighlightedIndex((prev) => (prev < filteredOptions.length - 1 ? prev + 1 : 0));
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+      } else if (filteredOptions.length > 0) {
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredOptions.length - 1));
+      }
+    } else if (e.key === 'Enter') {
+      if (isOpen) {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+          handleSelectOption(filteredOptions[highlightedIndex].value);
+        } else if (filteredOptions.length > 0) {
+          handleSelectOption(filteredOptions[0].value);
+        }
+      }
+    }
   };
 
   return (
@@ -718,9 +798,11 @@ export const SearchableSelect: React.FC<{
         }`}
       >
         <div className="flex-1 min-w-0 flex items-center gap-2">
+          <Search className="w-4 h-4 text-slate-400 shrink-0 pointer-events-none" />
           <input
             ref={inputRef}
             type="text"
+            data-testid={testId ? `${testId}-search-input` : 'searchable-select-input'}
             disabled={disabled}
             value={isOpen ? searchTerm : selectedOption ? selectedOption.label : ''}
             onChange={(e) => {
@@ -730,42 +812,60 @@ export const SearchableSelect: React.FC<{
             onFocus={() => {
               if (!disabled) setIsOpen(true);
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setIsOpen(false);
-                setSearchTerm('');
-              } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (filteredOptions.length > 0) {
-                  handleSelectOption(filteredOptions[0].value);
-                }
-              }
-            }}
-            placeholder={selectedOption ? selectedOption.label : placeholder}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isOpen
+                ? selectedOption
+                  ? `Actual: ${selectedOption.label}`
+                  : placeholder
+                : selectedOption
+                ? selectedOption.label
+                : placeholder
+            }
             className="w-full bg-transparent text-slate-800 placeholder:text-slate-400 focus:outline-none text-sm truncate"
           />
         </div>
 
         <div className="flex items-center gap-1 shrink-0 text-slate-400">
-          {value && !disabled && (
+          {isOpen && searchTerm ? (
             <button
               type="button"
-              onClick={handleClear}
-              className="p-0.5 rounded hover:bg-slate-100 hover:text-slate-600 transition"
-              title="Borrar selección"
+              data-testid={testId ? `${testId}-clear-search` : 'btn-clear-search'}
+              onClick={handleClearSearch}
+              className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+              title="Borrar texto de búsqueda"
+              aria-label="Borrar texto de búsqueda"
             >
               <X className="w-3.5 h-3.5" />
             </button>
-          )}
+          ) : value && !disabled ? (
+            <button
+              type="button"
+              data-testid={testId ? `${testId}-clear-selection` : 'btn-clear-selection'}
+              onClick={handleClearSelection}
+              className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+              title="Borrar selección"
+              aria-label="Borrar selección"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : null}
+
           <ChevronDown
-            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-blue-600' : ''}`}
+            className={`w-4 h-4 transition-transform text-slate-400 pointer-events-none ${
+              isOpen ? 'rotate-180 text-blue-600' : ''
+            }`}
           />
         </div>
       </div>
 
       {/* Lista desplegable filtrada en tiempo real */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl bg-white border border-slate-200 shadow-xl py-1 text-sm divide-y divide-slate-50">
+        <div
+          ref={listRef}
+          data-testid={testId ? `${testId}-dropdown-list` : 'searchable-select-dropdown'}
+          className="absolute z-50 left-0 right-0 mt-1 max-h-56 sm:max-h-64 overflow-y-auto overscroll-contain rounded-xl bg-white border border-slate-200 shadow-xl py-1 text-sm divide-y divide-slate-50 touch-pan-y"
+        >
           {emptyOptionLabel && (
             <div
               onClick={() => handleSelectOption('')}
@@ -780,27 +880,44 @@ export const SearchableSelect: React.FC<{
           )}
 
           {filteredOptions.length === 0 ? (
-            <div className="px-3 py-3 text-center text-xs text-slate-500 italic">
-              No se encontraron coincidencias para "{searchTerm}"
+            <div className="px-4 py-4 text-center text-xs text-slate-500">
+              <p className="font-semibold text-slate-700">No se encontraron artículos</p>
+              <p className="mt-0.5 text-slate-500">
+                No hay coincidencias para &laquo;<span className="font-semibold text-slate-800">{searchTerm}</span>&raquo;
+              </p>
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="mt-2.5 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-semibold"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Restablecer búsqueda
+              </button>
             </div>
           ) : (
-            filteredOptions.map((opt) => {
+            filteredOptions.map((opt, idx) => {
               const isSelected = opt.value === value;
+              const isHighlighted = idx === highlightedIndex;
               return (
                 <div
                   key={opt.value}
+                  data-option-index={idx}
+                  data-testid={testId ? `${testId}-option-${opt.value}` : `option-${opt.value}`}
                   onClick={() => handleSelectOption(opt.value)}
-                  className={`px-3 py-2.5 cursor-pointer transition flex items-center justify-between gap-2 ${
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                  className={`px-3 py-2.5 cursor-pointer transition flex items-center justify-between gap-2 text-left ${
                     isSelected
                       ? 'bg-blue-600 text-white font-semibold'
-                      : 'hover:bg-blue-50/70 text-slate-800'
+                      : isHighlighted
+                      ? 'bg-blue-50 text-blue-900 font-medium'
+                      : 'hover:bg-slate-50 text-slate-800'
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate">{opt.label}</div>
                     {opt.sublabel && (
                       <div
-                        className={`text-[11px] truncate ${
+                        className={`text-[11px] truncate mt-0.5 ${
                           isSelected ? 'text-blue-100' : 'text-slate-500'
                         }`}
                       >

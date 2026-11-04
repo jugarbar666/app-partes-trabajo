@@ -2675,6 +2675,8 @@ const WorkOrderDetailLoadedView: React.FC<{
                   options={articlesCatalog.map((a) => ({
                     value: a.id,
                     label: `${a.code} — ${a.name} (${a.unit} · ${formatCentsToEUR(a.sale_price_cents)})`,
+                    sublabel: a.description || undefined,
+                    keywords: [a.code, a.name, a.description || '', a.unit],
                   }))}
                 />
               </div>

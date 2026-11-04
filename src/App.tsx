@@ -49,6 +49,7 @@ import {
   DateTimePickerField,
   PhoneActionLinks,
   ScreenHeaderBar,
+  SearchableSelect,
   UIConfirmationProvider,
   useUIConfirmation,
   WorkOrderStatusBadge,
@@ -4144,18 +4145,20 @@ const MainApplicationContent: React.FC = () => {
               <label className="block font-semibold text-slate-700 mb-1">
                 Artículo existente *
               </label>
-              <select
+              <SearchableSelect
+                data-testid="select-quick-shop-article"
                 value={quickShopArticleId}
-                onChange={(e) => setQuickShopArticleId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
-              >
-                <option value="">Seleccione un artículo</option>
-                {articlesCatalog.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.code} — {a.name} ({a.unit})
-                  </option>
-                ))}
-              </select>
+                onChange={setQuickShopArticleId}
+                placeholder="Escribe para buscar o selecciona..."
+                emptyOptionLabel="Seleccione un artículo"
+                required
+                options={articlesCatalog.map((a) => ({
+                  value: a.id,
+                  label: `${a.code} — ${a.name} (${a.unit})`,
+                  sublabel: a.description || undefined,
+                  keywords: [a.code, a.name, a.description || '', a.unit],
+                }))}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <button

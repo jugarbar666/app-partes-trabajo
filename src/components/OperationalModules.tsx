@@ -1132,6 +1132,8 @@ export const ShoppingListModule: React.FC<{
                   options={articles.map((a) => ({
                     value: a.id,
                     label: `${a.code} — ${a.name} (${a.unit})`,
+                    sublabel: a.description || undefined,
+                    keywords: [a.code, a.name, a.description || '', a.unit],
                   }))}
                 />
                 {isAdmin && (
