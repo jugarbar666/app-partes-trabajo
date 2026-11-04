@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Users,
   Building2,
@@ -22,7 +22,10 @@ import {
   Send,
   Trash2,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
+  ChevronDown,
+  Search,
   MailCheck,
   CheckCircle2,
   RefreshCw,
@@ -69,7 +72,7 @@ import {
   validateAndPreviewImport,
   validateExactHeaders,
 } from '../utils/exportImportUtils';
-import { isInstalledDesktopApp } from '../config/branchConfig';
+import { isInstalledDesktopApp, isMobileDeviceOrViewport } from '../config/branchConfig';
 import { ImportExportModule } from './ImportExportModule';
 
 // =============================================================================
@@ -78,6 +81,20 @@ import { ImportExportModule } from './ImportExportModule';
 // + Nuevo Proveedor, + Nuevo Tipo de Revisión, + Invitar Usuario) se abren
 // en una VENTANA EMERGENTE (Modal).
 // =============================================================================
+
+/**
+ * Normaliza una cadena de texto eliminando tildes/diacríticos y convirtiendo a minúsculas
+ * para búsquedas insensibles a mayúsculas, minúsculas y acentos.
+ */
+export function normalizeSearchText(str: string | null | undefined): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 export const MasterDataAndUsersModule: React.FC<{
   backend: InstallationBackendEngine;
   initialTab?: 'customers' | 'addresses' | 'articles' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews' | 'import_export' | 'users';
@@ -88,6 +105,161 @@ export const MasterDataAndUsersModule: React.FC<{
   const isUsersMode = initialTab === 'users';
   const [activeTab, setActiveTab] = useState(isUsersMode ? 'users' : initialTab);
   const [search, setSearch] = useState('');
+  const isMobile = isMobileDeviceOrViewport();
+  const articleFileInputRef = useRef<HTMLInputElement>(null);
+  const supplierFileInputRef = useRef<HTMLInputElement>(null);
+  const customerFileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedAction, setSelectedAction] = useState<string>('export_excel');
+
+  const [emptyCatalogModal, setEmptyCatalogModal] = useState<{
+    step: 1 | 2;
+    catalog: 'articles' | 'customers' | 'addresses' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews';
+    catalogName: string;
+    totalRecords: number;
+    scopeDescription: string;
+    consequences: string[];
+    warnings: string[];
+    isProcessing: boolean;
+    errorMessage?: string;
+  } | null>(null);
+
+  const handleOpenEmptyCatalogModal = (
+    catalogKey: 'articles' | 'customers' | 'addresses' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews'
+  ) => {
+    const stats = backend.getCatalogStatsAndDependencies(catalogKey);
+    setEmptyCatalogModal({
+      step: 1,
+      catalog: catalogKey,
+      catalogName: stats.name,
+      totalRecords: stats.count,
+      scopeDescription: stats.description,
+      consequences: stats.consequences,
+      warnings: stats.warnings,
+      isProcessing: false,
+    });
+  };
+
+  const handleConfirmEmptyCatalogFinal = async () => {
+    if (!emptyCatalogModal) return;
+    setEmptyCatalogModal((prev) => (prev ? { ...prev, isProcessing: true, errorMessage: undefined } : null));
+    try {
+      const res = backend.clearCatalog(emptyCatalogModal.catalog);
+      try {
+        await supabaseSyncEngine.pushStateToSupabase();
+      } catch (syncErr) {
+        console.warn('Error sincronizando vaciado con Supabase:', syncErr);
+      }
+      setEmptyCatalogModal(null);
+      notifySuccessGreen(
+        `Catálogo de ${res.catalogName} vaciado con éxito. Se han eliminado ${res.deletedCount} registros en el servidor y sincronizado con todos los dispositivos.`
+      );
+      refresh();
+    } catch (err: any) {
+      setEmptyCatalogModal((prev) =>
+        prev ? { ...prev, isProcessing: false, errorMessage: err?.message || 'Error desconocido al vaciar el catálogo.' } : null
+      );
+      notifyError(err?.message || 'No se pudo vaciar el catálogo.');
+    }
+  };
+
+  const handleCustomerFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const firstSheet = wb.SheetNames[0];
+      if (!firstSheet) {
+        notifyError('El archivo Excel no contiene ninguna hoja.');
+        return;
+      }
+      const ws = wb.Sheets[firstSheet];
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+      if (grid.length === 0) {
+        notifyError('La hoja Excel está vacía.');
+        return;
+      }
+
+      const headers = (grid[0] || []).map((h) => String(h || '').trim());
+      const expectedHeaders = IMPORT_ENTITY_DEFINITIONS.customers.columns.map((c) => c.header);
+      const headerVal = validateExactHeaders(headers, expectedHeaders);
+      if (!headerVal.isValid) {
+        notifyError(headerVal.errorMessage || 'Las cabeceras del archivo no coinciden con la plantilla oficial de clientes.');
+        return;
+      }
+
+      const jsonRaw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+      const json = jsonRaw.map((row) => {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+          clean[k] = typeof v === 'string' && /^[=@+-]/.test(v) ? `'${v}` : v;
+        }
+        return clean;
+      });
+
+      const mapping = buildDefaultEntityMapping('customers', headers);
+
+      const preview = validateAndPreviewImport({
+        backend,
+        entityType: 'customers',
+        rawRows: json,
+        columnMapping: mapping,
+        receivedHeaders: headers,
+      });
+
+      requestSaveConfirmation({
+        title: `Importar Clientes desde Excel (${file.name})`,
+        changes: [
+          { label: 'Filas leídas en Excel', value: String(preview.totalRows) },
+          { label: 'Clientes válidos nuevos', value: String(preview.validNewCount) },
+          {
+            label: 'Clientes existentes coincidentes (se actualizarán)',
+            value: String(preview.duplicateCount),
+          },
+          { label: 'Filas con errores (se omitirán)', value: String(preview.errorCount) },
+        ],
+        onConfirm: async (helpers) => {
+          const res = await executeValidatedImportAsync({
+            backend,
+            entityType: 'customers',
+            fileName: file.name,
+            conflictPolicy: 'update_existing',
+            preview,
+            onProgress: (p) => {
+              if (helpers?.updateProgress) {
+                helpers.updateProgress({
+                  current: p.current,
+                  total: p.total,
+                  message: `Guardando clientes (${p.current} de ${p.total})...`,
+                });
+              }
+            },
+          });
+          if (helpers?.updateProgress) {
+            helpers.updateProgress({
+              current: preview.totalRows,
+              total: preview.totalRows,
+              message: 'Sincronizando clientes con todos los dispositivos...',
+            });
+          }
+          try {
+            await supabaseSyncEngine.pushStateToSupabase();
+          } catch (syncErr) {
+            console.warn('Error sincronizando clientes con la base central:', syncErr);
+          }
+          notifySuccessGreen(
+            `Importación completada: ${res.inserted} creados, ${res.updated} actualizados, ${res.rejected} omitidos.`
+          );
+          refresh();
+        },
+      });
+    } catch (err: any) {
+      notifyError(err?.message || 'Error al procesar el archivo Excel.');
+    } finally {
+      e.target.value = '';
+    }
+  };
   const [tick, setTick] = useState(0);
   const refresh = () => {
     setTick((t) => t + 1);
@@ -958,6 +1130,276 @@ export const MasterDataAndUsersModule: React.FC<{
     });
   };
 
+  const catalogOptions: Array<{
+    key: 'articles' | 'customers' | 'addresses' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews' | 'import_export';
+    label: string;
+    count: number;
+    icon: any;
+  }> = [
+    { key: 'articles', label: 'Artículos', count: articles.length, icon: Package },
+    { key: 'customers', label: 'Clientes', count: customers.length, icon: Building2 },
+    { key: 'addresses', label: 'Domicilios', count: addresses.length, icon: Building2 },
+    { key: 'suppliers', label: 'Proveedores', count: suppliers.length, icon: Truck },
+    { key: 'review_types', label: 'Tipos de Revisión', count: reviewTypes.length, icon: CalendarClock },
+    { key: 'work_orders', label: 'Partes de Trabajo', count: workOrders.length, icon: ClipboardList },
+    { key: 'reviews', label: 'Revisiones', count: installationReviews.length, icon: CalendarClock },
+    { key: 'import_export', label: 'Importar / Exportar Ficheros', count: 0, icon: FileSpreadsheet },
+  ];
+
+  const getCatalogActions = (catalogKey: string): Array<{ key: string; label: string; isDanger?: boolean }> => {
+    switch (catalogKey) {
+      case 'articles':
+        return [
+          { key: 'export_excel', label: 'Exportar Artículos (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'download_template', label: 'Descargar Plantilla Excel' },
+          { key: 'import_excel', label: 'Importar Artículos (Excel)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'customers':
+        return [
+          { key: 'export_excel', label: 'Exportar Clientes (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'download_template', label: 'Descargar Plantilla Excel' },
+          { key: 'import_excel', label: 'Importar Clientes (Excel)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'addresses':
+        return [
+          { key: 'export_excel', label: 'Exportar Domicilios (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'suppliers':
+        return [
+          { key: 'export_excel', label: 'Exportar Proveedores (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          { key: 'download_template', label: 'Descargar Plantilla Excel' },
+          { key: 'import_excel', label: 'Importar Proveedores (Excel)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'review_types':
+        return [
+          { key: 'export_excel', label: 'Exportar Tipos Revisión (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'work_orders':
+        return [
+          { key: 'export_excel', label: 'Exportar Partes (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      case 'reviews':
+        return [
+          { key: 'export_excel', label: 'Exportar Revisiones (Excel)' },
+          { key: 'export_pdf', label: 'Descargar Listado (PDF)' },
+          ...(currentUser.role === 'admin' ? [{ key: 'clear_catalog', label: 'Vaciar catálogo', isDanger: true }] : []),
+        ];
+      default:
+        return [
+          { key: 'go_import_export', label: 'Abrir Asistente Importación' },
+        ];
+    }
+  };
+
+  const handleExecuteCatalogAction = (actionKey?: string) => {
+    const act = actionKey || selectedAction;
+    if (act === 'clear_catalog') {
+      if (activeTab === 'import_export' || activeTab === 'users') return;
+      handleOpenEmptyCatalogModal(activeTab as any);
+      return;
+    }
+    if (act === 'export_excel') {
+      if (activeTab === 'articles') handleExportArticles();
+      else if (activeTab === 'customers') handleExportCustomers();
+      else if (activeTab === 'addresses') handleExportAddressesExcel();
+      else if (activeTab === 'suppliers') handleExportSuppliers();
+      else if (activeTab === 'review_types') handleExportReviewTypesExcel();
+      else if (activeTab === 'work_orders') handleExportWorkOrdersExcel();
+      else if (activeTab === 'reviews') handleExportReviewsExcel();
+      return;
+    }
+    if (act === 'export_pdf') {
+      if (activeTab === 'articles') handleExportArticlesPDF();
+      else if (activeTab === 'customers') handleExportCustomersPDF();
+      else if (activeTab === 'addresses') handleExportAddressesPDF();
+      else if (activeTab === 'suppliers') handleExportSuppliersPDF();
+      else if (activeTab === 'review_types') handleExportReviewTypesPDF();
+      else if (activeTab === 'work_orders') handleExportWorkOrdersPDF();
+      else if (activeTab === 'reviews') handleExportReviewsPDF();
+      return;
+    }
+    if (act === 'download_template') {
+      if (activeTab === 'articles' || activeTab === 'customers' || activeTab === 'suppliers') {
+        downloadImportTemplateExcel(activeTab as any);
+      }
+      return;
+    }
+    if (act === 'import_excel') {
+      if (activeTab === 'articles') articleFileInputRef.current?.click();
+      else if (activeTab === 'suppliers') supplierFileInputRef.current?.click();
+      else if (activeTab === 'customers') customerFileInputRef.current?.click();
+      return;
+    }
+    if (act === 'go_import_export') {
+      setActiveTab('import_export');
+      return;
+    }
+  };
+
+  const searchPlaceholder: Record<string, string> = {
+    articles: 'Buscar por nombre, código o proveedor...',
+    customers: 'Buscar por nombre, código, NIF, ciudad o teléfono...',
+    addresses: 'Buscar por dirección, alias, ciudad o cliente...',
+    suppliers: 'Buscar por proveedor, NIF, contacto o teléfono...',
+    review_types: 'Buscar por tipo de revisión...',
+    work_orders: 'Buscar por nº parte, cliente, dirección o trabajo...',
+    reviews: 'Buscar por cliente, tipo de revisión o estado...',
+  };
+
+  const nq = normalizeSearchText(search);
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(
+      (c) =>
+        !nq ||
+        normalizeSearchText(c.name).includes(nq) ||
+        normalizeSearchText(c.code).includes(nq) ||
+        normalizeSearchText(c.tax_id).includes(nq) ||
+        normalizeSearchText(c.contact_name).includes(nq) ||
+        normalizeSearchText(c.main_address).includes(nq) ||
+        normalizeSearchText(c.city).includes(nq) ||
+        normalizeSearchText(c.postal_code).includes(nq) ||
+        (c.phones && c.phones.some((p) => normalizeSearchText(p).includes(nq))) ||
+        (c.emails && c.emails.some((e) => normalizeSearchText(e).includes(nq)))
+    );
+  }, [customers, nq]);
+
+  const filteredAddresses = useMemo(() => {
+    return addresses.filter((a) => {
+      const cust = customers.find((c) => c.id === a.customer_id);
+      return (
+        !nq ||
+        normalizeSearchText(a.address_line).includes(nq) ||
+        normalizeSearchText(a.alias).includes(nq) ||
+        normalizeSearchText(a.city).includes(nq) ||
+        normalizeSearchText(a.postal_code).includes(nq) ||
+        normalizeSearchText(a.province).includes(nq) ||
+        normalizeSearchText(a.contact_name).includes(nq) ||
+        normalizeSearchText(a.contact_phone).includes(nq) ||
+        (cust && (normalizeSearchText(cust.name).includes(nq) || normalizeSearchText(cust.code).includes(nq)))
+      );
+    });
+  }, [addresses, customers, nq]);
+
+  const filteredArticles = useMemo(() => {
+    return articles.filter((a) => {
+      const supp = suppliers.find((s) => s.id === a.supplier_id);
+      return (
+        !nq ||
+        normalizeSearchText(a.name).includes(nq) ||
+        normalizeSearchText(a.code).includes(nq) ||
+        normalizeSearchText(a.description).includes(nq) ||
+        (supp && normalizeSearchText(supp.name).includes(nq))
+      );
+    });
+  }, [articles, suppliers, nq]);
+
+  const filteredSuppliers = useMemo(() => {
+    return suppliers.filter(
+      (s) =>
+        !nq ||
+        normalizeSearchText(s.name).includes(nq) ||
+        normalizeSearchText(s.tax_id).includes(nq) ||
+        normalizeSearchText(s.contact_person).includes(nq) ||
+        normalizeSearchText(s.phone).includes(nq) ||
+        normalizeSearchText(s.email).includes(nq) ||
+        normalizeSearchText(s.city).includes(nq) ||
+        normalizeSearchText(s.notes).includes(nq)
+    );
+  }, [suppliers, nq]);
+
+  const filteredReviewTypes = useMemo(() => {
+    return reviewTypes.filter(
+      (rt) => !nq || normalizeSearchText(rt.name).includes(nq)
+    );
+  }, [reviewTypes, nq]);
+
+  const filteredWorkOrders = useMemo(() => {
+    return workOrders.filter(
+      (w) =>
+        !nq ||
+        normalizeSearchText(w.code).includes(nq) ||
+        normalizeSearchText(w.snapshot_customer_name).includes(nq) ||
+        normalizeSearchText(w.planned_work).includes(nq) ||
+        normalizeSearchText(w.snapshot_address_line).includes(nq) ||
+        normalizeSearchText(w.snapshot_city).includes(nq) ||
+        normalizeSearchText(w.status).includes(nq)
+    );
+  }, [workOrders, nq]);
+
+  const filteredReviews = useMemo(() => {
+    return installationReviews.filter((r) => {
+      const cust = customers.find((c) => c.id === r.customer_id);
+      const rt = reviewTypes.find((t) => t.id === r.review_type_id);
+      return (
+        !nq ||
+        (cust && normalizeSearchText(cust.name).includes(nq)) ||
+        (rt && normalizeSearchText(rt.name).includes(nq)) ||
+        normalizeSearchText(r.status).includes(nq) ||
+        normalizeSearchText(r.next_review_date).includes(nq) ||
+        normalizeSearchText(r.last_review_date).includes(nq)
+      );
+    });
+  }, [installationReviews, customers, reviewTypes, nq]);
+
+  const getCurrentFilteredCount = (): number => {
+    switch (activeTab) {
+      case 'articles': return filteredArticles.length;
+      case 'customers': return filteredCustomers.length;
+      case 'addresses': return filteredAddresses.length;
+      case 'suppliers': return filteredSuppliers.length;
+      case 'review_types': return filteredReviewTypes.length;
+      case 'work_orders': return filteredWorkOrders.length;
+      case 'reviews': return filteredReviews.length;
+      default: return 0;
+    }
+  };
+
+  const getCurrentTotalCount = (): number => {
+    switch (activeTab) {
+      case 'articles': return articles.length;
+      case 'customers': return customers.length;
+      case 'addresses': return addresses.length;
+      case 'suppliers': return suppliers.length;
+      case 'review_types': return reviewTypes.length;
+      case 'work_orders': return workOrders.length;
+      case 'reviews': return installationReviews.length;
+      default: return 0;
+    }
+  };
+
+  const renderEmptySearchBox = (totalCount: number) => (
+    <div data-testid="catalog-empty-search-results" className="p-8 text-center text-slate-500">
+      <Search className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+      <p className="font-semibold text-sm text-slate-700">
+        No se encontraron registros para «{search}»
+      </p>
+      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+        Prueba a buscar por otro término o limpia la búsqueda para ver todos los registros ({totalCount}).
+      </p>
+      <button
+        type="button"
+        data-testid="btn-clear-search-empty-state"
+        onClick={() => setSearch('')}
+        className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+      >
+        Limpiar búsqueda
+      </button>
+    </div>
+  );
+
   const q = search.trim().toLowerCase();
 
   const createButtonLabel: Partial<Record<typeof activeTab, string>> = {
@@ -1055,6 +1497,150 @@ export const MasterDataAndUsersModule: React.FC<{
             </button>
           }
         />
+      ) : isMobile ? (
+        <div
+          data-testid="catalog-mobile-compact-header"
+          className="bg-white rounded-xl border border-slate-200 p-2 sm:p-2.5 space-y-2 shadow-2xs"
+        >
+          {/* Fila 1: Volver + Título + Botón Nuevo */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                data-testid="btn-catalog-back"
+                onClick={onBack}
+                className="p-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 shrink-0 cursor-pointer"
+                title="Volver"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="font-black text-sm text-slate-900 truncate">
+                Catálogos y ficheros
+              </h2>
+            </div>
+
+            {createButtonLabel[activeTab] && (
+              <button
+                type="button"
+                data-testid="btn-catalog-create-new"
+                onClick={handleOpenCreate}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">{createButtonLabel[activeTab]}</span>
+                <span className="xs:hidden">Nuevo</span>
+              </button>
+            )}
+          </div>
+
+          {/* Fila 2: Desplegable Tipo de Fichero + Desplegable Acción + Botón Ejecutar */}
+          <div className="grid grid-cols-12 gap-1.5 items-center">
+            {/* Selector Tipo de Fichero */}
+            <div className="col-span-5 sm:col-span-5 relative">
+              <select
+                data-testid="select-catalog-type"
+                aria-label="Tipo de fichero"
+                value={activeTab}
+                onChange={(e) => {
+                  const nextTab = e.target.value as any;
+                  setActiveTab(nextTab);
+                  setShowCreateModal(false);
+                  setEditingId(null);
+                  const acts = getCatalogActions(nextTab);
+                  setSelectedAction(acts[0]?.key || 'export_excel');
+                }}
+                className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
+              >
+                {catalogOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label} ({opt.key === 'import_export' ? '⚙️' : opt.count})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Selector Acción */}
+            <div className="col-span-4 sm:col-span-4 relative">
+              <select
+                data-testid="select-catalog-action"
+                aria-label="Acción para el catálogo"
+                value={selectedAction}
+                onChange={(e) => setSelectedAction(e.target.value)}
+                className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate"
+              >
+                {getCatalogActions(activeTab).map((act) => (
+                  <option key={act.key} value={act.key}>
+                    {act.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Botón Ejecutar Acción */}
+            <div className="col-span-3 sm:col-span-3 flex justify-end">
+              <button
+                type="button"
+                data-testid="btn-execute-catalog-action"
+                onClick={() => handleExecuteCatalogAction()}
+                className={`w-full justify-center inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer truncate ${
+                  selectedAction === 'clear_catalog'
+                    ? 'bg-red-600 hover:bg-red-700 text-white border border-red-700'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
+                title={selectedAction === 'clear_catalog' ? 'Vaciar todo el catálogo seleccionado' : 'Ejecutar acción seleccionada'}
+              >
+                {selectedAction === 'clear_catalog' ? (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Vaciar</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Ejecutar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Fila 3: Buscador Visible y Compacto */}
+          {activeTab !== 'import_export' && (
+            <div className="flex items-center gap-2 pt-0.5">
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  data-testid="input-catalog-search"
+                  aria-label="Buscar en el catálogo"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={searchPlaceholder[activeTab] || 'Buscar en este fichero...'}
+                  className="w-full pl-8 pr-7 py-1 rounded-lg border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                />
+                {search.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-catalog-search"
+                    onClick={() => setSearch('')}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                    title="Limpiar búsqueda"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div
+                data-testid="catalog-search-count"
+                className="text-[11px] font-semibold text-slate-500 shrink-0 whitespace-nowrap bg-slate-100 px-2 py-1 rounded-md"
+              >
+                {getCurrentFilteredCount()} / {getCurrentTotalCount()}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <>
           <ScreenHeaderBar
@@ -1078,36 +1664,7 @@ export const MasterDataAndUsersModule: React.FC<{
 
           {/* Pestañas de catálogos y ficheros */}
           <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs overflow-x-auto mobile-scroll-container">
-            {[
-              { key: 'customers', label: `Clientes (${customers.length})`, icon: Building2 },
-              {
-                key: 'addresses',
-                label: `Domicilios (${addresses.length})`,
-                icon: Building2,
-              },
-              { key: 'articles', label: `Artículos (${articles.length})`, icon: Package },
-              { key: 'suppliers', label: `Proveedores (${suppliers.length})`, icon: Truck },
-              {
-                key: 'review_types',
-                label: `Tipos Revisión (${reviewTypes.length})`,
-                icon: CalendarClock,
-              },
-              {
-                key: 'work_orders',
-                label: `Partes de Trabajo (${workOrders.length})`,
-                icon: ClipboardList,
-              },
-              {
-                key: 'reviews',
-                label: `Revisiones (${installationReviews.length})`,
-                icon: CalendarClock,
-              },
-              {
-                key: 'import_export',
-                label: 'Importar / Exportar Ficheros',
-                icon: FileSpreadsheet,
-              },
-            ].map((tab) => {
+            {catalogOptions.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.key;
               return (
@@ -1119,6 +1676,8 @@ export const MasterDataAndUsersModule: React.FC<{
                     setActiveTab(tab.key as typeof activeTab);
                     setShowCreateModal(false);
                     setEditingId(null);
+                    const acts = getCatalogActions(tab.key);
+                    setSelectedAction(acts[0]?.key || 'export_excel');
                   }}
                   className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 ${
                     active
@@ -1127,7 +1686,7 @@ export const MasterDataAndUsersModule: React.FC<{
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
+                  <span>{tab.label} ({tab.key === 'import_export' ? '⚙️' : tab.count})</span>
                 </button>
               );
             })}
@@ -1139,48 +1698,74 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 1. LISTADO DE CLIENTES */}
       {activeTab === 'customers' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Clientes:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Clientes:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadImportTemplateExcel('customers')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
+                  title="Descargar archivo Excel con plantilla oficial de clientes (incluye código postal, población y provincia)"
+                >
+                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+                </button>
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
+                  <Upload className="w-3.5 h-3.5" /> Importar Clientes (Excel)
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                    data-testid="input-import-customers-excel-desktop"
+                    onChange={handleCustomerFileImport}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleExportCustomersPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF oficial de clientes con filtros aplicados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCustomers}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  title="Exportar catálogo completo de clientes a Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Clientes (Excel)
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-customers-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('customers')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de clientes"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => downloadImportTemplateExcel('customers')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
-                title="Descargar archivo Excel con plantilla oficial de clientes (incluye código postal, población y provincia)"
-              >
-                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-              </button>
-              <button
-                type="button"
-                onClick={handleExportCustomersPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF oficial de clientes con filtros aplicados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportCustomers}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                title="Exportar catálogo completo de clientes a Excel"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Clientes (Excel)
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-          {customers
-            .filter(
-              (c) =>
-                !q ||
-                c.name.toLowerCase().includes(q) ||
-                c.code.toLowerCase().includes(q) ||
-                c.tax_id.toLowerCase().includes(q)
-            )
-            .map((c) => (
+          {customers.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              <Building2 className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">No hay clientes en el catálogo</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Puedes registrar un nuevo cliente con «+ Nuevo Cliente» o importarlos desde Excel.
+              </p>
+            </div>
+          ) : filteredCustomers.length === 0 && nq ? (
+            renderEmptySearchBox(customers.length)
+          ) : (
+            filteredCustomers.map((c) => (
               <div
                 key={c.id}
                 className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -1281,7 +1866,7 @@ export const MasterDataAndUsersModule: React.FC<{
                   )}
                 </div>
               </div>
-            ))}
+            )))}
           </div>
         </div>
       )}
@@ -1289,32 +1874,56 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 2. LISTADO DE DOMICILIOS / INSTALACIONES */}
       {activeTab === 'addresses' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Domicilios:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Domicilios:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportAddressesPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF oficial de domicilios e instalaciones con filtros aplicados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportAddressesExcel}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  title="Exportar domicilios e instalaciones a Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Domicilios (Excel)
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-addresses-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('addresses')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de domicilios"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleExportAddressesPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF oficial de domicilios e instalaciones con filtros aplicados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportAddressesExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                title="Exportar domicilios e instalaciones a Excel"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Domicilios (Excel)
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-          {addresses.map((a) => {
+          {addresses.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              <Building2 className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">No hay domicilios en el catálogo</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Puedes registrar un domicilio con «+ Nuevo Domicilio / Instalación».
+              </p>
+            </div>
+          ) : filteredAddresses.length === 0 && nq ? (
+            renderEmptySearchBox(addresses.length)
+          ) : (
+            filteredAddresses.map((a) => {
             const cust = customers.find((c) => c.id === a.customer_id);
             return (
               <div key={a.id} className="p-4 flex items-center justify-between gap-3">
@@ -1384,7 +1993,7 @@ export const MasterDataAndUsersModule: React.FC<{
                 </div>
               </div>
             );
-          })}
+          }))}
           </div>
         </div>
       )}
@@ -1392,69 +2001,59 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 3. LISTADO DE ARTÍCULOS */}
       {activeTab === 'articles' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Artículos:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => downloadImportTemplateExcel('articles')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
-                title="Descargar archivo Excel con plantilla oficial de artículos coincidente con la ficha (código, unidad, nombre, precio compra, precio venta y proveedor habitual)"
-              >
-                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-              </button>
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
-                <Upload className="w-3.5 h-3.5" /> Importar Artículos (Excel)
-                <input
-                  type="file"
-                  accept=".xlsx, .xls, .csv"
-                  className="hidden"
-                  data-testid="input-import-articles-excel"
-                  onChange={handleArticleFileImport}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleExportArticlesPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF oficial de artículos con tarifas y existencias"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportArticles}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
-              </button>
-              {currentUser.role === 'admin' && articles.length > 0 && (
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Artículos:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  data-testid="btn-clear-articles-catalog"
-                  onClick={() => {
-                    requestDeleteConfirmation({
-                      recordName: `Catálogo de artículos (${articles.length} artículos)`,
-                      consequence:
-                        'Se vaciará completamente el catálogo actual de artículos para que puedas importar tus artículos reales limpios desde Excel sin mezclas ni duplicados.',
-                      requireReason: false,
-                      onConfirm: () => {
-                        backend.clearAllArticles();
-                        notifySuccessGreen('Catálogo de artículos vaciado correctamente.');
-                        refresh();
-                      },
-                    });
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                  title="Vaciar todo el catálogo de artículos"
+                  onClick={() => downloadImportTemplateExcel('articles')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
+                  title="Descargar archivo Excel con plantilla oficial de artículos coincidente con la ficha (código, unidad, nombre, precio compra, precio venta y proveedor habitual)"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
                 </button>
-              )}
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
+                  <Upload className="w-3.5 h-3.5" /> Importar Artículos (Excel)
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                    data-testid="input-import-articles-excel"
+                    onChange={handleArticleFileImport}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleExportArticlesPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF oficial de artículos con tarifas y existencias"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportArticles}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-articles-catalog"
+                    onClick={() => handleOpenEmptyCatalogModal('articles')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de artículos"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
           {articles.length === 0 ? (
@@ -1465,12 +2064,10 @@ export const MasterDataAndUsersModule: React.FC<{
                 Puedes dar de alta un artículo con «+ Nuevo Artículo» o pulsar en «Importar Artículos (Excel)» para cargar tu catálogo real.
               </p>
             </div>
+          ) : filteredArticles.length === 0 && nq ? (
+            renderEmptySearchBox(articles.length)
           ) : (
-            articles
-            .filter(
-              (a) => !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q)
-            )
-            .map((a) => (
+            filteredArticles.map((a) => (
               <div key={a.id} className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <div className="font-bold text-slate-900">
@@ -1567,57 +2164,73 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 4. LISTADO DE PROVEEDORES */}
       {activeTab === 'suppliers' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Proveedores:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Proveedores:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadImportTemplateExcel('suppliers')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold"
+                  title="Descargar archivo Excel con plantilla oficial de proveedores"
+                >
+                  <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
+                </button>
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
+                  <Upload className="w-3.5 h-3.5" /> Importar Proveedores (Excel)
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                    data-testid="input-import-suppliers-excel"
+                    onChange={handleSupplierFileImport}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleExportSuppliersPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF oficial de proveedores homologados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportSuppliers}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-suppliers-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('suppliers')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de proveedores"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => downloadImportTemplateExcel('suppliers')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold"
-                title="Descargar archivo Excel con plantilla oficial de proveedores"
-              >
-                <FileDown className="w-3.5 h-3.5" /> Descargar Plantilla Excel
-              </button>
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs">
-                <Upload className="w-3.5 h-3.5" /> Importar Proveedores (Excel)
-                <input
-                  type="file"
-                  accept=".xlsx, .xls, .csv"
-                  className="hidden"
-                  data-testid="input-import-suppliers-excel"
-                  onChange={handleSupplierFileImport}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleExportSuppliersPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF oficial de proveedores homologados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportSuppliers}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Exportar a Excel
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-            {suppliers
-              .filter(
-                (s) =>
-                  !q ||
-                  s.name.toLowerCase().includes(q) ||
-                  (s.tax_id && s.tax_id.toLowerCase().includes(q)) ||
-                  (s.contact_person && s.contact_person.toLowerCase().includes(q))
-              )
-              .map((s) => (
+            {suppliers.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <Truck className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-sm text-slate-700">No hay proveedores en el catálogo</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Puedes registrar un nuevo proveedor con «+ Nuevo Proveedor».
+                </p>
+              </div>
+            ) : filteredSuppliers.length === 0 && nq ? (
+              renderEmptySearchBox(suppliers.length)
+            ) : (
+              filteredSuppliers.map((s) => (
                 <div key={s.id} className="p-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="font-bold text-slate-900">
@@ -1704,18 +2317,7 @@ export const MasterDataAndUsersModule: React.FC<{
                     )}
                   </div>
                 </div>
-              ))}
-            {suppliers.filter(
-              (s) =>
-                !q ||
-                s.name.toLowerCase().includes(q) ||
-                (s.tax_id && s.tax_id.toLowerCase().includes(q)) ||
-                (s.contact_person && s.contact_person.toLowerCase().includes(q))
-            ).length === 0 && (
-              <div className="p-6 text-center text-slate-500">
-                No hay proveedores {q ? 'que coincidan con la búsqueda' : 'registrados aún'}.
-              </div>
-            )}
+              )))}
           </div>
         </div>
       )}
@@ -1723,29 +2325,42 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 5. LISTADO DE TIPOS DE REVISIÓN */}
       {activeTab === 'review_types' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Tipos de Revisión:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Tipos de Revisión:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportReviewTypesPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF de tipos de revisión homologados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportReviewTypesExcel}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  title="Exportar tipos de revisión a Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar a Excel
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-review-types-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('review_types')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de tipos de revisión"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleExportReviewTypesPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF de tipos de revisión homologados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado (PDF)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportReviewTypesExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                title="Exportar tipos de revisión a Excel"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar a Excel
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain mobile-scroll-container">
           {reviewTypes.length === 0 ? (
@@ -1756,8 +2371,10 @@ export const MasterDataAndUsersModule: React.FC<{
                 Pulsa en «+ Nuevo Tipo de Revisión» para registrar los tipos de revisión reales de Fontanería Roma.
               </p>
             </div>
+          ) : filteredReviewTypes.length === 0 && nq ? (
+            renderEmptySearchBox(reviewTypes.length)
           ) : (
-            reviewTypes.map((rt) => (
+            filteredReviewTypes.map((rt) => (
             <div key={rt.id} className="p-4 flex items-center justify-between gap-3">
               <div>
                 <div className="font-bold text-slate-900">{rt.name}</div>
@@ -1827,43 +2444,55 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 7. LISTADO DE PARTES DE TRABAJO */}
       {activeTab === 'work_orders' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Partes de Trabajo:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Partes de Trabajo:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="btn-export-work-orders-pdf"
+                  onClick={handleExportWorkOrdersPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF de partes de trabajo reflejando los filtros aplicados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Partes (PDF)
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-export-work-orders-excel"
+                  onClick={handleExportWorkOrdersExcel}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  title="Exportar partes de trabajo a archivo Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Partes (Excel)
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-work-orders-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('work_orders')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de partes de trabajo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                data-testid="btn-export-work-orders-pdf"
-                onClick={handleExportWorkOrdersPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF de partes de trabajo reflejando los filtros aplicados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Partes (PDF)
-              </button>
-              <button
-                type="button"
-                data-testid="btn-export-work-orders-excel"
-                onClick={handleExportWorkOrdersExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                title="Exportar partes de trabajo a archivo Excel (.xlsx)"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Partes (Excel)
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-            {workOrders
-              .filter(
-                (w) =>
-                  !q ||
-                  w.code.toLowerCase().includes(q) ||
-                  w.snapshot_customer_name.toLowerCase().includes(q) ||
-                  (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
-                  (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
-              )
-              .map((w) => (
+            {workOrders.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <ClipboardList className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-sm text-slate-700">No hay partes de trabajo registrados</p>
+              </div>
+            ) : filteredWorkOrders.length === 0 && nq ? (
+              renderEmptySearchBox(workOrders.length)
+            ) : (
+              filteredWorkOrders.map((w) => (
                 <div key={w.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="space-y-1">
                     <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
@@ -1885,20 +2514,8 @@ export const MasterDataAndUsersModule: React.FC<{
                     </span>
                   </div>
                 </div>
-              ))}
-            {workOrders.filter(
-              (w) =>
-                !q ||
-                w.code.toLowerCase().includes(q) ||
-                w.snapshot_customer_name.toLowerCase().includes(q) ||
-                (w.planned_work && w.planned_work.toLowerCase().includes(q)) ||
-                (w.snapshot_city && w.snapshot_city.toLowerCase().includes(q))
-            ).length === 0 && (
-              <div className="p-8 text-center text-slate-500">
-                <ClipboardList className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                <p className="font-semibold text-sm text-slate-700">No hay partes de trabajo que coincidan con la búsqueda</p>
-              </div>
-            )}
+              )))}
+
           </div>
         </div>
       )}
@@ -1906,45 +2523,55 @@ export const MasterDataAndUsersModule: React.FC<{
       {/* 8. LISTADO DE REVISIONES PERIÓDICAS */}
       {activeTab === 'reviews' && (
         <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Acciones con Revisiones:</span>
+          {!isMobile && (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 bg-white rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Acciones con Revisiones:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="btn-export-reviews-pdf"
+                  onClick={handleExportReviewsPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                  title="Generar y descargar listado PDF oficial de revisiones periódicas reflejando filtros aplicados"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Revisiones (PDF)
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-export-reviews-excel"
+                  onClick={handleExportReviewsExcel}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  title="Exportar revisiones periódicas a archivo Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Revisiones (Excel)
+                </button>
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    data-testid="btn-clear-reviews-catalog-desktop"
+                    onClick={() => handleOpenEmptyCatalogModal('reviews')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-semibold cursor-pointer"
+                    title="Vaciar todo el catálogo de revisiones"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Vaciar Catálogo
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                data-testid="btn-export-reviews-pdf"
-                onClick={handleExportReviewsPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                title="Generar y descargar listado PDF oficial de revisiones periódicas reflejando filtros aplicados"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" /> Descargar Listado Revisiones (PDF)
-              </button>
-              <button
-                type="button"
-                data-testid="btn-export-reviews-excel"
-                onClick={handleExportReviewsExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                title="Exportar revisiones periódicas a archivo Excel (.xlsx)"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportar Revisiones (Excel)
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs overflow-y-auto overscroll-contain">
-            {installationReviews
-              .filter((r) => {
-                const cust = customers.find((c) => c.id === r.customer_id);
-                const rt = reviewTypes.find((t) => t.id === r.review_type_id);
-                return (
-                  !q ||
-                  (cust && cust.name.toLowerCase().includes(q)) ||
-                  (rt && rt.name.toLowerCase().includes(q)) ||
-                  r.status.toLowerCase().includes(q)
-                );
-              })
-              .map((r) => {
+            {installationReviews.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <CalendarClock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-sm text-slate-700">No hay revisiones registradas en el catálogo</p>
+              </div>
+            ) : filteredReviews.length === 0 && nq ? (
+              renderEmptySearchBox(installationReviews.length)
+            ) : (
+              filteredReviews.map((r) => {
                 const cust = customers.find((c) => c.id === r.customer_id);
                 const rt = reviewTypes.find((t) => t.id === r.review_type_id);
                 return (
@@ -1965,22 +2592,8 @@ export const MasterDataAndUsersModule: React.FC<{
                     </div>
                   </div>
                 );
-              })}
-            {installationReviews.filter((r) => {
-              const cust = customers.find((c) => c.id === r.customer_id);
-              const rt = reviewTypes.find((t) => t.id === r.review_type_id);
-              return (
-                !q ||
-                (cust && cust.name.toLowerCase().includes(q)) ||
-                (rt && rt.name.toLowerCase().includes(q)) ||
-                r.status.toLowerCase().includes(q)
-              );
-            }).length === 0 && (
-              <div className="p-8 text-center text-slate-500">
-                <CalendarClock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                <p className="font-semibold text-sm text-slate-700">No hay revisiones registradas que coincidan con la búsqueda</p>
-              </div>
-            )}
+              }))}
+
           </div>
         </div>
       )}
@@ -3793,6 +4406,179 @@ export const MasterDataAndUsersModule: React.FC<{
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Hidden file inputs for Excel imports */}
+      <input
+        ref={articleFileInputRef}
+        type="file"
+        accept=".xlsx, .xls, .csv"
+        className="hidden"
+        data-testid="input-import-articles-excel-hidden"
+        onChange={handleArticleFileImport}
+      />
+      <input
+        ref={supplierFileInputRef}
+        type="file"
+        accept=".xlsx, .xls, .csv"
+        className="hidden"
+        data-testid="input-import-suppliers-excel-hidden"
+        onChange={handleSupplierFileImport}
+      />
+      <input
+        ref={customerFileInputRef}
+        type="file"
+        accept=".xlsx, .xls, .csv"
+        className="hidden"
+        data-testid="input-import-customers-excel-hidden"
+        onChange={handleCustomerFileImport}
+      />
+
+      {/* Modal de dos confirmaciones en rojo para Vaciar Catálogo */}
+      {emptyCatalogModal && (
+        <div
+          data-testid="modal-empty-catalog-backdrop"
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+        >
+          {emptyCatalogModal.step === 1 ? (
+            <div
+              data-testid="modal-empty-catalog-step-1"
+              className="bg-red-700 text-white rounded-2xl p-5 sm:p-6 max-w-lg w-full shadow-2xl border-2 border-red-500 space-y-4 animate-in fade-in"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-red-800/80 text-white shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] uppercase tracking-wider font-extrabold text-red-200">
+                    Confirmación 1 de 2 · Alcance y Dependencias
+                  </div>
+                  <h3 className="text-lg font-black leading-tight text-white mt-0.5">
+                    ¿Vaciar catálogo de {emptyCatalogModal.catalogName}?
+                  </h3>
+                </div>
+              </div>
+
+              <div className="bg-red-800/60 rounded-xl p-3.5 border border-red-400/40 text-xs space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-bold text-red-100">Registros afectados:</span>
+                  <span className="font-black px-2 py-0.5 rounded bg-red-900 text-white text-sm">
+                    {emptyCatalogModal.totalRecords} {emptyCatalogModal.totalRecords === 1 ? 'registro' : 'registros'}
+                  </span>
+                </div>
+                <p className="text-red-100 leading-relaxed font-medium">
+                  {emptyCatalogModal.scopeDescription}
+                </p>
+                <p className="text-[11px] text-red-200 font-semibold">
+                  ⚠️ El vaciado afectará a TODOS los registros del fichero, independientemente de que tengas una búsqueda o filtros activos.
+                </p>
+              </div>
+
+              {emptyCatalogModal.consequences.length > 0 && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="font-bold text-red-100">Consecuencias en datos asociados:</div>
+                  <ul className="list-disc list-inside space-y-1 text-red-100/90 text-[11px] bg-red-800/40 p-2.5 rounded-lg border border-red-500/30">
+                    {emptyCatalogModal.consequences.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="text-[11px] bg-red-900/60 p-2.5 rounded-lg border border-red-400/30 text-red-200 leading-relaxed">
+                <strong>Nota sobre copias de seguridad:</strong> Las exportaciones a Excel/PDF descargadas localmente o las copias de seguridad de infraestructura no se alteran, pero los datos operativos de la plataforma se vaciarán permanentemente.
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-red-500/40">
+                <button
+                  type="button"
+                  data-testid="btn-empty-catalog-cancel"
+                  onClick={() => setEmptyCatalogModal(null)}
+                  className="px-4 py-2 rounded-xl bg-red-800 hover:bg-red-900 text-white text-xs font-bold border border-red-400/50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-empty-catalog-continue"
+                  onClick={() => setEmptyCatalogModal((prev) => (prev ? { ...prev, step: 2 } : null))}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-red-50 text-red-800 text-xs font-black shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>Continuar</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              data-testid="modal-empty-catalog-step-2"
+              className="bg-red-950 text-white rounded-2xl p-5 sm:p-6 max-w-lg w-full shadow-2xl border-2 border-red-500 space-y-4 animate-in fade-in"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-red-900 text-red-200 shrink-0">
+                  <Trash2 className="w-6 h-6 text-red-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] uppercase tracking-wider font-extrabold text-red-300">
+                    Confirmación 2 de 2 · Advertencia Irreversible
+                  </div>
+                  <h3 className="text-lg font-black leading-tight text-white mt-0.5">
+                    Eliminación definitiva de {emptyCatalogModal.catalogName}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="bg-red-900/80 rounded-xl p-4 border border-red-700 text-xs space-y-3">
+                <div className="p-3 bg-red-900 rounded-lg border border-red-600 font-bold text-red-100 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0" />
+                  <span>¡ESTA ACCIÓN ES TOTALMENTE IRREVERSIBLE!</span>
+                </div>
+                <p className="text-red-200 leading-relaxed">
+                  Vas a vaciar definitivamente el catálogo de <strong>{emptyCatalogModal.catalogName}</strong> ({emptyCatalogModal.totalRecords} registros).
+                </p>
+                <p className="text-red-200 leading-relaxed text-[11px]">
+                  Los datos se suprimirán en el servidor central y se distribuirán lápidas de borrado a todos los dispositivos móviles y tabletas para evitar que los registros reaparezcan.
+                </p>
+              </div>
+
+              {emptyCatalogModal.errorMessage && (
+                <div className="p-3 bg-red-900 border border-red-500 rounded-xl text-xs text-white">
+                  <strong>Error:</strong> {emptyCatalogModal.errorMessage}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-red-800">
+                <button
+                  type="button"
+                  data-testid="btn-empty-catalog-cancel-step2"
+                  disabled={emptyCatalogModal.isProcessing}
+                  onClick={() => setEmptyCatalogModal(null)}
+                  className="px-4 py-2 rounded-xl bg-red-900 hover:bg-red-800 text-white text-xs font-bold border border-red-700 cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-empty-catalog-confirm-step2"
+                  disabled={emptyCatalogModal.isProcessing}
+                  onClick={handleConfirmEmptyCatalogFinal}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-50 border border-red-400"
+                >
+                  {emptyCatalogModal.isProcessing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Vaciando en servidor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Vaciar definitivamente</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

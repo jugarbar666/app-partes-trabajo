@@ -231,22 +231,382 @@ export class InstallationBackendEngine {
   }
 
   public clearAllArticles(): void {
+    this.clearCatalog('articles');
+  }
+
+  public getCatalogStatsAndDependencies(catalog: string): {
+    name: string;
+    count: number;
+    description: string;
+    consequences: string[];
+    warnings: string[];
+  } {
+    switch (catalog) {
+      case 'articles': {
+        const count = (this.state.articles || []).length;
+        return {
+          name: 'Artículos',
+          count,
+          description: 'Vaciado íntegro de la lista de artículos, tarifas y precios de compra/venta.',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} artículos registrados en el catálogo.`,
+            'Los partes de trabajo existentes conservan sus líneas de material con el nombre, unidad y precio guardados en el momento de su uso.',
+            'Las solicitudes de cesta de compra desvincularán el artículo pero mantendrán su nombre como referencia.',
+            'Se registrarán identificadores de tumba (tombstones) para sincronizar la eliminación con todos los dispositivos y la base central de Supabase.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'customers': {
+        const count = (this.state.customers || []).length;
+        const linkedAddrs = (this.state.customer_addresses || []).length;
+        const linkedWos = (this.state.work_orders || []).filter((w) => w.customer_id).length;
+        const linkedRevs = (this.state.installation_reviews || []).filter((r) => r.customer_id).length;
+        return {
+          name: 'Clientes',
+          count,
+          description: 'Eliminación completa de todos los clientes de la base de datos.',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} clientes registrados.`,
+            `Se eliminarán en cascada todos los domicilios/instalaciones asociados (${linkedAddrs} domicilios).`,
+            linkedWos > 0
+              ? `${linkedWos} partes de trabajo desvincularán su cliente asignado conservando sus trabajos y datos técnicos.`
+              : 'No hay partes de trabajo que dependan de clientes.',
+            linkedRevs > 0
+              ? `${linkedRevs} revisiones desvincularán su cliente asignado.`
+              : 'No hay revisiones asociadas a clientes.',
+            'Se sincronizarán tumbas de eliminación con todos los dispositivos para evitar que reaparezcan.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'addresses': {
+        const count = (this.state.customer_addresses || []).length;
+        const linkedWos = (this.state.work_orders || []).filter((w) => w.customer_address_id).length;
+        return {
+          name: 'Domicilios / Instalaciones',
+          count,
+          description: 'Eliminación íntegra de las direcciones e instalaciones de clientes.',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} domicilios e instalaciones registradas.`,
+            linkedWos > 0
+              ? `${linkedWos} partes de trabajo desvincularán su dirección de instalación asociada.`
+              : 'No hay partes de trabajo vinculados a direcciones.',
+            'Los clientes mantendrán sus fichas maestras pero sin direcciones asociadas.',
+            'Se sincronizarán tumbas de eliminación con todos los dispositivos.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'suppliers': {
+        const count = (this.state.suppliers || []).length;
+        const linkedArts = (this.state.articles || []).filter((a) => a.supplier_id).length;
+        return {
+          name: 'Proveedores',
+          count,
+          description: 'Eliminación completa del catálogo de proveedores habituales.',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} proveedores registrados.`,
+            linkedArts > 0
+              ? `${linkedArts} artículos desvincularán su proveedor habitual quedando sin proveedor asignado.`
+              : 'No hay artículos vinculados a proveedores.',
+            'Se sincronizarán tumbas de eliminación con todos los dispositivos.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'review_types': {
+        const count = (this.state.review_types || []).length;
+        const linkedRevs = (this.state.installation_reviews || []).filter((r) => r.review_type_id).length;
+        return {
+          name: 'Tipos de Revisión',
+          count,
+          description: 'Eliminación completa de los tipos y plantillas de revisión periódica.',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} tipos de revisión del catálogo.`,
+            linkedRevs > 0
+              ? `${linkedRevs} revisiones periódicas desvincularán el tipo de revisión asignado.`
+              : 'No hay revisiones que dependan de tipos de revisión.',
+            'Se sincronizarán tumbas de eliminación con todos los dispositivos.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'work_orders': {
+        const count = (this.state.work_orders || []).length;
+        return {
+          name: 'Partes de Trabajo',
+          count,
+          description: 'Eliminación total de todos los partes de trabajo (activos y archivados).',
+          consequences: [
+            `Se eliminarán permanentemente los ${count} partes de trabajo registrados.`,
+            'Se purgarán todas las asignaciones a operarios, materiales añadidos, anotaciones de mano de obra, fotos y firmas asociadas a los partes.',
+            'Se registrarán tumbas de eliminación para garantizar la coherencia en todos los dispositivos conectados.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      case 'reviews': {
+        const count = (this.state.installation_reviews || []).length;
+        const occCount = (this.state.review_occurrences || []).length;
+        return {
+          name: 'Revisiones de Instalación',
+          count,
+          description: 'Eliminación completa de las revisiones periódicas y sus ocurrencias planificadas.',
+          consequences: [
+            `Se eliminarán permanentemente las ${count} revisiones de instalación y sus ${occCount} ocurrencias programadas.`,
+            'Se limpiará la bandeja de avisos pendientes de revisión.',
+            'Se registrarán tumbas de eliminación para evitar recreaciones automáticas.',
+          ],
+          warnings: count === 0 ? ['El catálogo ya está vacío (0 registros).'] : [],
+        };
+      }
+      default:
+        return {
+          name: catalog,
+          count: 0,
+          description: '',
+          consequences: [],
+          warnings: ['Catálogo no reconocido.'],
+        };
+    }
+  }
+
+  public clearCatalog(
+    catalog: 'articles' | 'customers' | 'addresses' | 'suppliers' | 'review_types' | 'work_orders' | 'reviews'
+  ): { catalog: string; catalogName: string; deletedCount: number; cascadedCount?: number } {
     this.assertOnline();
     const admin = this.requireAdmin();
-    const deletedCount = (this.state.articles || []).length;
-    if (!Array.isArray((this.state as any).deleted_article_ids)) {
-      (this.state as any).deleted_article_ids = [];
+
+    switch (catalog) {
+      case 'articles': {
+        const deletedCount = (this.state.articles || []).length;
+        if (!Array.isArray((this.state as any).deleted_article_ids)) {
+          (this.state as any).deleted_article_ids = [];
+        }
+        for (const a of this.state.articles || []) {
+          if (a?.id) (this.state as any).deleted_article_ids.push(a.id);
+        }
+        this.state.articles = [];
+        // Los registros de compra pendientes conservan article_id como histórico o snapshot
+        (this.state as any)._romaArticlesClearedRealDataV1 = true;
+        (this.state as any)._romaArticlesPurgedByUserV2 = true;
+        this.recordAudit(admin, 'maestros', 'article', 'all', 'VACIAR_CATALOGO_ARTICULOS', {
+          deleted_count: deletedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Artículos', deletedCount };
+      }
+
+      case 'customers': {
+        const deletedCount = (this.state.customers || []).length;
+        if (!Array.isArray((this.state as any).deleted_customer_ids)) {
+          (this.state as any).deleted_customer_ids = [];
+        }
+        for (const c of this.state.customers || []) {
+          if (c?.id) (this.state as any).deleted_customer_ids.push(c.id);
+        }
+        this.state.customers = [];
+
+        const cascadedCount = (this.state.customer_addresses || []).length;
+        if (!Array.isArray((this.state as any).deleted_customer_address_ids)) {
+          (this.state as any).deleted_customer_address_ids = [];
+        }
+        for (const addr of this.state.customer_addresses || []) {
+          if (addr?.id) (this.state as any).deleted_customer_address_ids.push(addr.id);
+        }
+        this.state.customer_addresses = [];
+
+        if (Array.isArray(this.state.work_orders)) {
+          this.state.work_orders = this.state.work_orders.map((wo) =>
+            wo.customer_id || wo.customer_address_id
+              ? { ...wo, customer_id: '', customer_address_id: '' }
+              : wo
+          );
+        }
+        if (Array.isArray(this.state.installation_reviews)) {
+          this.state.installation_reviews = this.state.installation_reviews.map((r) =>
+            r.customer_id || r.customer_address_id
+              ? { ...r, customer_id: '', customer_address_id: '' }
+              : r
+          );
+        }
+
+        this.recordAudit(admin, 'maestros', 'customer', 'all', 'VACIAR_CATALOGO_CLIENTES', {
+          deleted_count: deletedCount,
+          cascaded_addresses: cascadedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Clientes', deletedCount, cascadedCount };
+      }
+
+      case 'addresses': {
+        const deletedCount = (this.state.customer_addresses || []).length;
+        if (!Array.isArray((this.state as any).deleted_customer_address_ids)) {
+          (this.state as any).deleted_customer_address_ids = [];
+        }
+        for (const addr of this.state.customer_addresses || []) {
+          if (addr?.id) (this.state as any).deleted_customer_address_ids.push(addr.id);
+        }
+        this.state.customer_addresses = [];
+
+        if (Array.isArray(this.state.work_orders)) {
+          this.state.work_orders = this.state.work_orders.map((wo) =>
+            wo.customer_address_id ? { ...wo, customer_address_id: '' } : wo
+          );
+        }
+        if (Array.isArray(this.state.installation_reviews)) {
+          this.state.installation_reviews = this.state.installation_reviews.map((r) =>
+            r.customer_address_id ? { ...r, customer_address_id: '' } : r
+          );
+        }
+
+        this.recordAudit(admin, 'maestros', 'customer_address', 'all', 'VACIAR_CATALOGO_DOMICILIOS', {
+          deleted_count: deletedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Domicilios', deletedCount };
+      }
+
+      case 'suppliers': {
+        const deletedCount = (this.state.suppliers || []).length;
+        if (!Array.isArray((this.state as any).deleted_supplier_ids)) {
+          (this.state as any).deleted_supplier_ids = [];
+        }
+        for (const s of this.state.suppliers || []) {
+          if (s?.id) (this.state as any).deleted_supplier_ids.push(s.id);
+        }
+        this.state.suppliers = [];
+
+        if (Array.isArray(this.state.articles)) {
+          this.state.articles = this.state.articles.map((a) =>
+            a.supplier_id ? { ...a, supplier_id: null } : a
+          );
+        }
+
+        this.recordAudit(admin, 'maestros', 'supplier', 'all', 'VACIAR_CATALOGO_PROVEEDORES', {
+          deleted_count: deletedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Proveedores', deletedCount };
+      }
+
+      case 'review_types': {
+        const deletedCount = (this.state.review_types || []).length;
+        if (!Array.isArray((this.state as any).deleted_review_type_ids)) {
+          (this.state as any).deleted_review_type_ids = [];
+        }
+        for (const rt of this.state.review_types || []) {
+          if (rt?.id) (this.state as any).deleted_review_type_ids.push(rt.id);
+        }
+        this.state.review_types = [];
+
+        if (Array.isArray(this.state.installation_reviews)) {
+          this.state.installation_reviews = this.state.installation_reviews.map((r) =>
+            r.review_type_id ? { ...r, review_type_id: '' } : r
+          );
+        }
+
+        this.recordAudit(admin, 'maestros', 'review_type', 'all', 'VACIAR_CATALOGO_TIPOS_REVISION', {
+          deleted_count: deletedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Tipos de Revisión', deletedCount };
+      }
+
+      case 'work_orders': {
+        const deletedCount = (this.state.work_orders || []).length;
+        if (!Array.isArray((this.state as any).deleted_work_order_ids)) {
+          (this.state as any).deleted_work_order_ids = [];
+        }
+        for (const wo of this.state.work_orders || []) {
+          if (wo?.id) (this.state as any).deleted_work_order_ids.push(wo.id);
+        }
+        this.state.work_orders = [];
+
+        if (!Array.isArray((this.state as any).deleted_work_order_assignment_ids)) {
+          (this.state as any).deleted_work_order_assignment_ids = [];
+        }
+        for (const a of this.state.work_order_assignments || []) {
+          if (a?.id) (this.state as any).deleted_work_order_assignment_ids.push(a.id);
+        }
+        this.state.work_order_assignments = [];
+
+        if (!Array.isArray((this.state as any).deleted_work_material_ids)) {
+          (this.state as any).deleted_work_material_ids = [];
+        }
+        for (const m of this.state.work_materials || []) {
+          if (m?.id) (this.state as any).deleted_work_material_ids.push(m.id);
+        }
+        this.state.work_materials = [];
+
+        if (!Array.isArray((this.state as any).deleted_work_entry_ids)) {
+          (this.state as any).deleted_work_entry_ids = [];
+        }
+        for (const e of this.state.work_entries || []) {
+          if (e?.id) (this.state as any).deleted_work_entry_ids.push(e.id);
+        }
+        this.state.work_entries = [];
+
+        if (!Array.isArray((this.state as any).deleted_work_session_ids)) {
+          (this.state as any).deleted_work_session_ids = [];
+        }
+        for (const s of this.state.work_sessions || []) {
+          if (s?.id) (this.state as any).deleted_work_session_ids.push(s.id);
+        }
+        this.state.work_sessions = [];
+
+        this.state.work_order_admin = [];
+        this.state.work_files = [];
+        this.state.work_signatures = [];
+        this.state.work_order_events = [];
+
+        this.recordAudit(admin, 'partes', 'work_order', 'all', 'VACIAR_CATALOGO_PARTES_TRABAJO', {
+          deleted_count: deletedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Partes de Trabajo', deletedCount };
+      }
+
+      case 'reviews': {
+        const deletedCount = (this.state.installation_reviews || []).length;
+        if (!Array.isArray((this.state as any).deleted_installation_review_ids)) {
+          (this.state as any).deleted_installation_review_ids = [];
+        }
+        for (const ir of this.state.installation_reviews || []) {
+          if (ir?.id) (this.state as any).deleted_installation_review_ids.push(ir.id);
+        }
+        this.state.installation_reviews = [];
+
+        const cascadedCount = (this.state.review_occurrences || []).length;
+        if (!Array.isArray((this.state as any).deleted_review_occurrence_ids)) {
+          (this.state as any).deleted_review_occurrence_ids = [];
+        }
+        for (const ro of this.state.review_occurrences || []) {
+          if (ro?.id) (this.state as any).deleted_review_occurrence_ids.push(ro.id);
+        }
+        this.state.review_occurrences = [];
+
+        if (Array.isArray(this.state.notification_outbox)) {
+          this.state.notification_outbox = this.state.notification_outbox.filter(
+            (n) => !n.installation_review_id && !n.review_occurrence_id
+          );
+        }
+
+        (this.state as any)._romaReviewsClearedRealDataV1 = true;
+        (this.state as any)._romaReviewsPurgedByUserV2 = true;
+
+        this.recordAudit(admin, 'revisiones', 'installation_review', 'all', 'VACIAR_CATALOGO_REVISIONES', {
+          deleted_count: deletedCount,
+          cascaded_occurrences: cascadedCount,
+        });
+        this.persist();
+        return { catalog, catalogName: 'Revisiones', deletedCount, cascadedCount };
+      }
+
+      default:
+        throw new Error(`Catálogo no soportado para vaciado: ${catalog}`);
     }
-    for (const a of this.state.articles || []) {
-      if (a?.id) (this.state as any).deleted_article_ids.push(a.id);
-    }
-    this.state.articles = [];
-    (this.state as any)._romaArticlesClearedRealDataV1 = true;
-    (this.state as any)._romaArticlesPurgedByUserV2 = true;
-    this.recordAudit(admin, 'maestros', 'article', 'all', 'VACIAR_CATALOGO_ARTICULOS', {
-      deleted_count: deletedCount,
-    });
-    this.persist();
   }
 
   public purgeOfficialRomaReviews(): void {
