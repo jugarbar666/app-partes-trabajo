@@ -1,5 +1,5 @@
 {
-  "version": "1.9.6",
-  "releasedAt": "2026-11-03T17:45:00.000Z",
-  "notes": "Corrección de oscilación y reversión de partes pendientes de programar: blindaje de resolución de conflictos de asignación y fecha en sincronización en tiempo real, guardado inmediato en Supabase y persistencia robusta"
+  "version": "1.9.7",
+  "releasedAt": "2026-11-04T08:40:00.000Z",
+  "notes": "Unificación del modelo de selección de fecha y hora mediante ventana emergente de ruedas azul y blanca en creación y programación de partes de trabajo para escritorio y móvil"
 }

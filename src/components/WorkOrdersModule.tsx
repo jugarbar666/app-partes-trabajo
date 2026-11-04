@@ -641,6 +641,9 @@ export const WorkOrderCreateModal: React.FC<{
                 value={scheduledAt}
                 onChange={setScheduledAt}
                 testId="input-wo-scheduled-at"
+                placeholder="Pendiente de programar (pulsa para establecer)"
+                title="Establecer fecha y hora"
+                subtitle="Alta de nuevo parte de trabajo"
               />
               <p className="text-[10px] text-slate-500 mt-1">
                 Dejar vacío para guardar como «Pendiente de programar».

@@ -690,7 +690,7 @@ describe('Verificación de Pantallas, Colores Obligatorios y Controles Persisten
       // Pulsar botón Aceptar
       const acceptBtn = container.querySelector('[data-testid="test-dtp-accept-btn"]') as HTMLButtonElement;
       expect(acceptBtn).toBeTruthy();
-      expect(acceptBtn.textContent).toContain('Aceptar');
+      expect(acceptBtn.textContent).toMatch(/Establecer|Aceptar/);
 
       await act(async () => {
         acceptBtn.click();
