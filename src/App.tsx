@@ -749,6 +749,29 @@ const MainApplicationContent: React.FC = () => {
   const [routeStack, setRouteStack] = useState<ActiveRoute[]>(['dashboard']);
   const currentRoute = routeStack[routeStack.length - 1] || 'dashboard';
 
+  // Sincronización continua de la clase de modo móvil / tableta en document.documentElement
+  useEffect(() => {
+    const syncDeviceClass = () => {
+      const isMob = isMobileDeviceOrViewport();
+      if (typeof document !== 'undefined' && document.documentElement) {
+        if (isMob) {
+          document.documentElement.classList.add('app-tablet-or-mobile-mode');
+          document.documentElement.classList.remove('app-desktop-mode');
+        } else {
+          document.documentElement.classList.remove('app-tablet-or-mobile-mode');
+          document.documentElement.classList.add('app-desktop-mode');
+        }
+      }
+    };
+    syncDeviceClass();
+    window.addEventListener('resize', syncDeviceClass);
+    window.addEventListener('orientationchange', syncDeviceClass);
+    return () => {
+      window.removeEventListener('resize', syncDeviceClass);
+      window.removeEventListener('orientationchange', syncDeviceClass);
+    };
+  }, []);
+
   const navigateTo = (next: ActiveRoute) => {
     // Redirección móvil admin: 'work_orders_list' queda cubierta por 'Inicio / Partes de trabajo'
     if (next === 'work_orders_list' && isMobileDeviceOrViewport() && isAdmin) {
@@ -2066,6 +2089,15 @@ const MainApplicationContent: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden flex bg-[#f4f6fa] text-slate-900">
+      {/* Telón de fondo oscuro para cerrar el menú móvil/tableta al tocar fuera */}
+      {mobileMenuOpen && (
+        <div
+          data-testid="mobile-menu-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs transition-opacity cursor-pointer md:hidden"
+        />
+      )}
+
       {/* =====================================================================
           BARRA LATERAL IZQUIERDA OSCURA A TODA ALTURA (SIEMPRE VISIBLE EN ESCRITORIO)
           En móvil permanece recogida y se abre con su botón (Regla 5)
@@ -2535,6 +2567,54 @@ const MainApplicationContent: React.FC = () => {
                   >
                     <span>📐 Móvil Compacto</span>
                     <span className="text-[10px] text-slate-400">360×740</span>
+                  </a>
+                  <div className="border-t border-slate-100 my-1"></div>
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase text-slate-400">
+                    Tablets (iPad y Android)
+                  </div>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'tablet-ipad-port', 'width=800,height=1060,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>📱 iPad Vertical</span>
+                    <span className="text-[10px] text-slate-400">768×1024</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'tablet-ipad-land', 'width=1060,height=800,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>📱 iPad Horizontal</span>
+                    <span className="text-[10px] text-slate-400">1024×768</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'tablet-android-port', 'width=830,height=1320,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>🤖 Tablet Vert.</span>
+                    <span className="text-[10px] text-slate-400">800×1280</span>
+                  </a>
+                  <a
+                    href="/movil.html"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.open('/movil.html', 'tablet-android-land', 'width=1320,height=830,resizable=yes');
+                    }}
+                    className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>🤖 Tablet Horiz.</span>
+                    <span className="text-[10px] text-slate-400">1280×800</span>
                   </a>
                 </div>
               </div>

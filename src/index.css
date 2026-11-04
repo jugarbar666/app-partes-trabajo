@@ -69,3 +69,72 @@ html, body {
 .mobile-scroll-container::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+/* ==========================================================================
+   Adaptación integral para iPads y tabletas Android (orientación vertical y horizontal)
+   Garantiza que la interfaz móvil se visualice al 100% en pantallas de tableta.
+   ========================================================================== */
+html.app-tablet-or-mobile-mode {
+  font-size: 16px !important;
+}
+
+html.app-tablet-or-mobile-mode .md\:hidden {
+  display: block !important;
+}
+
+html.app-tablet-or-mobile-mode button.md\:hidden,
+html.app-tablet-or-mobile-mode a.md\:hidden {
+  display: inline-flex !important;
+}
+
+html.app-tablet-or-mobile-mode span.md\:hidden {
+  display: inline !important;
+}
+
+html.app-tablet-or-mobile-mode .hidden.md\:block,
+html.app-tablet-or-mobile-mode .hidden.md\:flex,
+html.app-tablet-or-mobile-mode .hidden.md\:grid,
+html.app-tablet-or-mobile-mode .hidden.md\:inline {
+  display: none !important;
+}
+
+/* Ocultar barra lateral fija de escritorio en tabletas; solo visible como cajón deslizante z-50 */
+html.app-tablet-or-mobile-mode aside[data-testid="sidebar-navigation"]:not(.z-50) {
+  display: none !important;
+}
+
+html.app-tablet-or-mobile-mode aside[data-testid="sidebar-navigation"].z-50 {
+  display: flex !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 50 !important;
+}
+
+/* Barra inferior de acciones fija a todo lo ancho en tabletas */
+html.app-tablet-or-mobile-mode [data-testid="persistent-mobile-action-bar"] {
+  left: 0 !important;
+}
+
+/* Contenedores móviles centrados y con ancho máximo armónico en tabletas panorámicas */
+html.app-tablet-or-mobile-mode [data-testid="admin-mobile-home-view"],
+html.app-tablet-or-mobile-mode [data-testid="operator-home-view"],
+html.app-tablet-or-mobile-mode [data-testid="archived-work-orders-mobile-list"] {
+  max-width: 56rem !important; /* 896px = max-w-4xl */
+  margin-left: auto !important;
+  margin-right: auto !important;
+  width: 100% !important;
+}
+
+/* Buscador colapsable en cabeceras de pantallas */
+html.app-tablet-or-mobile-mode [data-testid="btn-toggle-screen-header-search"] {
+  display: inline-flex !important;
+}
+
+html.app-tablet-or-mobile-mode [data-testid="screen-header-mobile-search-dropdown"] {
+  display: block !important;
+}
+
+html.app-tablet-or-mobile-mode [data-testid="mobile-menu-backdrop"] {
+  display: block !important;
+}

@@ -122,20 +122,127 @@ export function isInstalledDesktopApp(): boolean {
  * Determina si la aplicación se está ejecutando o visualizando en versión móvil
  * (teléfono físico, viewport móvil < 768px o simulador móvil).
  */
+/**
+ * Determina si el dispositivo actual es un iPad (incluyendo iPadOS 13+ con User Agent tipo Mac).
+ */
+export function isIpadDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = window.navigator?.userAgent || '';
+  const platform = window.navigator?.platform || '';
+  const maxTouchPoints = window.navigator?.maxTouchPoints || 0;
+
+  // 1. User Agent explícito de iPad
+  if (/iPad/i.test(ua)) return true;
+
+  // 2. iPadOS 13+ en Safari reporta MacIntel / Macintosh pero tiene pantalla multitáctil (maxTouchPoints > 1)
+  if ((platform === 'MacIntel' || /Macintosh/i.test(ua)) && maxTouchPoints > 1) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Determina si el dispositivo actual es un teléfono o tableta Android.
+ */
+export function isAndroidDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = window.navigator?.userAgent || '';
+  return /Android/i.test(ua);
+}
+
+/**
+ * Determina si el dispositivo actual es cualquier tipo de tableta (iPad, tableta Android, Silk, Kindle, etc.).
+ */
+export function isTabletDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isIpadDevice()) return true;
+  const ua = window.navigator?.userAgent || '';
+  if (/Tablet|PlayBook|Silk|Kindle/i.test(ua)) return true;
+  if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return true;
+  return false;
+}
+
+/**
+ * Determina si la aplicación se está ejecutando o visualizando en versión móvil o tableta
+ * (teléfonos físicos, tabletas Android, iPads en vertical u horizontal, viewport < 768px o simulador).
+ *
+ * REQUISITO ESTRICTO:
+ * Las tabletas Android y los iPad (tanto en orientación vertical como horizontal)
+ * deben utilizar exactamente el mismo diseño, menús, pantallas y funcionamiento que la versión móvil.
+ */
 export function isMobileDeviceOrViewport(): boolean {
+  if (typeof (globalThis as any).__IS_TABLET_VIEW__ !== 'undefined') {
+    return Boolean((globalThis as any).__IS_TABLET_VIEW__);
+  }
   if (typeof (globalThis as any).__IS_MOBILE_VIEW__ !== 'undefined') {
     return Boolean((globalThis as any).__IS_MOBILE_VIEW__);
   }
   if (typeof window === 'undefined') return false;
 
-  // 1. Verificación de pantalla móvil estándar (breakpoint md de Tailwind = 768px)
-  if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches) {
+  // 1. Forzado explícito mediante parámetros URL (para pruebas, iframes o simulador)
+  const search = window.location?.search || '';
+  if (search) {
+    try {
+      const params = new URLSearchParams(search);
+      if (params.get('desktop') === '1' || params.get('device') === 'desktop' || params.get('preview') === 'desktop') {
+        return false;
+      }
+      if (
+        params.get('mobile') === '1' ||
+        params.get('tablet') === '1' ||
+        params.get('device') === 'tablet' ||
+        params.get('device') === 'mobile' ||
+        params.get('preview') === 'tablet' ||
+        params.get('preview') === 'mobile'
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignorar error de parsing en tests
+    }
+  }
+
+  // 2. iPads (cualquier orientación vertical u horizontal)
+  if (isIpadDevice()) {
     return true;
   }
 
-  // 2. Dispositivo móvil o tableta por User Agent
+  // 3. Dispositivos Android (tabletas y teléfonos en cualquier orientación)
+  if (isAndroidDevice()) {
+    return true;
+  }
+
+  // 4. Otras tabletas genéricas
+  if (isTabletDevice()) {
+    return true;
+  }
+
+  // 5. Otros agentes móviles conocidos (iPhone, iPod, etc.)
   const ua = window.navigator?.userAgent || '';
-  if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua)) {
+  if (/webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua)) {
+    return true;
+  }
+  if (Boolean((window.navigator as any)?.userAgentData?.mobile)) {
+    return true;
+  }
+
+  // 6. Pantallas táctiles de formato tableta (hasta 1366px de ancho, p. ej. iPad Pro)
+  const maxTouchPoints = window.navigator?.maxTouchPoints || 0;
+  const isTouchDevice = maxTouchPoints > 0 || ('ontouchstart' in window);
+  if (isTouchDevice && !/Windows NT/i.test(ua)) {
+    const minDim = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+    const maxDim = Math.max(window.innerWidth || 0, window.innerHeight || 0);
+    if (minDim <= 1024 && maxDim <= 1366) {
+      return true;
+    }
+  }
+
+  // 7. Verificación de viewport estrecho en ordenadores de sobremesa (breakpoint md = 768px)
+  if (typeof window.innerWidth === 'number' && window.innerWidth < 768) {
+    return true;
+  }
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches) {
     return true;
   }
 

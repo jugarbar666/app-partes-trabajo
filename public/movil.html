@@ -113,6 +113,19 @@
       <button id="btn-small" class="size-btn" onclick="setSize(360, 740, 'btn-small')">
         Compacto (360×740)
       </button>
+      <div class="divider"></div>
+      <button id="btn-ipad-port" class="size-btn" onclick="setSize(768, 1024, 'btn-ipad-port', true)">
+        iPad Vert. (768×1024)
+      </button>
+      <button id="btn-ipad-land" class="size-btn" onclick="setSize(1024, 768, 'btn-ipad-land', true)">
+        iPad Horiz. (1024×768)
+      </button>
+      <button id="btn-tab-port" class="size-btn" onclick="setSize(800, 1280, 'btn-tab-port', true)">
+        Tablet Vert. (800×1280)
+      </button>
+      <button id="btn-tab-land" class="size-btn" onclick="setSize(1280, 800, 'btn-tab-land', true)">
+        Tablet Horiz. (1280×800)
+      </button>
       <a href="/">Volver a Escritorio</a>
     </div>
 
@@ -122,12 +135,21 @@
     </div>
 
     <script>
-      function setSize(w, h, btnId) {
+      function setSize(w, h, btnId, isTablet) {
         const frame = document.getElementById('frame');
+        const notch = document.querySelector('.phone-notch');
         frame.style.width = (w + 24) + 'px';
         frame.style.height = (h + 24) + 'px';
+        if (isTablet || w >= 768) {
+          frame.style.borderRadius = '24px';
+          if (notch) notch.style.display = 'none';
+        } else {
+          frame.style.borderRadius = '46px';
+          if (notch) notch.style.display = 'block';
+        }
         document.querySelectorAll('.toolbar .size-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(btnId).classList.add('active');
+        const btn = document.getElementById(btnId);
+        if (btn) btn.classList.add('active');
       }
 
       function setUser(roleOrEmail, btn) {
