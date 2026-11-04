@@ -23,6 +23,9 @@ import {
   User,
   Download,
   AlertTriangle,
+  ArrowLeft,
+  RefreshCw,
+  ChevronRight,
 } from 'lucide-react';
 import { InstallationBackendEngine } from '../services/backendEngine';
 import { appBackHandler } from '../services/appBackHandler';
@@ -72,14 +75,19 @@ export const ReviewsAndNotificationsModule: React.FC<{
   const addresses = useMemo(() => backend.getCustomerAddresses(undefined, true), [backend, tick]);
   const reviewTypes = useMemo(() => backend.getReviewTypes(true), [backend, tick]);
 
-  // Filtros obligatorios del apartado 10: próximas, vencidas, realizadas, cliente, municipio e intervalo de fechas
-  const [statusFilter, setStatusFilter] = useState<'all' | 'proximas' | 'vencidas' | 'realizadas'>(
-    'all'
-  );
+  // Filtros principales y buscador
+  const [statusFilter, setStatusFilter] = useState<'all' | 'proximas' | 'vencidas' | 'realizadas'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // Controles de interfaz compacta
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [pageSize, setPageSize] = useState<number | 'all'>(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Alta y Modificación de revisión periódica
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -103,41 +111,163 @@ export const ReviewsAndNotificationsModule: React.FC<{
   const [rescheduleDueDateInput, setRescheduleDueDateInput] = useState('');
   const [rescheduleNotesInput, setRescheduleNotesInput] = useState('');
 
+  // Registro de retroceso para cerrar modales en móviles/tablets
+  useEffect(() => {
+    if (showReviewModal) {
+      return appBackHandler.register('review-edit-modal', () => {
+        setShowReviewModal(false);
+        setEditingReviewId(null);
+      }, 30);
+    }
+  }, [showReviewModal]);
+
+  useEffect(() => {
+    if (rescheduleOccModal.open) {
+      return appBackHandler.register('review-reschedule-modal', () => {
+        setRescheduleOccModal((prev) => ({ ...prev, open: false }));
+      }, 30);
+    }
+  }, [rescheduleOccModal.open]);
+
   const availableAddressesForReview = useMemo(() => {
     return addresses.filter((a) => a.customer_id === reviewCustomerId);
   }, [addresses, reviewCustomerId]);
 
-  const filteredOccurrences = occurrences
-    .map((occ) => {
-      const rev = reviews.find((r) => r.id === occ.installation_review_id);
-      const cust = customers.find((c) => c.id === rev?.customer_id);
-      const addr = addresses.find((a) => a.id === rev?.customer_address_id);
-      const rType = reviewTypes.find((rt) => rt.id === rev?.review_type_id);
-      return { occ, rev, cust, addr, rType };
-    })
-    .filter((item) => {
-      if (!item.rev) return false;
-      if (statusFilter === 'realizadas' && item.occ.status !== 'realizada') return false;
-      if (statusFilter === 'vencidas') {
-        if (item.occ.status === 'realizada' || item.occ.status === 'cancelada') return false;
-        if (item.occ.due_date >= todayLocal) return false;
+  // Estadísticas e indicadores compactos de estado
+  const stats = useMemo(() => {
+    let total = 0;
+    let caducadas = 0;
+    let urgentes = 0;
+    let proximas = 0;
+    let realizadas = 0;
+
+    for (const occ of occurrences) {
+      if (!reviews.some((r) => r.id === occ.installation_review_id)) continue;
+      total++;
+      if (occ.status === 'realizada') {
+        realizadas++;
+      } else if (occ.status !== 'cancelada') {
+        const alertInfo = getReviewAlertInfo(occ.due_date, todayLocal);
+        if (alertInfo.isOverdue) caducadas++;
+        else if (alertInfo.isUrgentWeek) urgentes++;
+        else if (alertInfo.isWarningMonth) proximas++;
       }
-      if (statusFilter === 'proximas') {
-        if (item.occ.status === 'realizada' || item.occ.status === 'cancelada') return false;
-        if (item.occ.due_date < todayLocal) return false;
-      }
-      if (customerFilter && item.rev.customer_id !== customerFilter) return false;
-      if (
-        cityFilter &&
-        !(item.addr?.city || '').toLowerCase().includes(cityFilter.trim().toLowerCase())
-      ) {
-        return false;
-      }
-      if (dateFrom && item.occ.due_date < dateFrom) return false;
-      if (dateTo && item.occ.due_date > dateTo) return false;
-      return true;
-    })
-    .sort((a, b) => a.occ.due_date.localeCompare(b.occ.due_date));
+    }
+
+    return { total, caducadas, urgentes, proximas, realizadas };
+  }, [occurrences, reviews, todayLocal]);
+
+  // Recuento de filtros avanzados activos
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (customerFilter) count++;
+    if (cityFilter.trim()) count++;
+    if (dateFrom) count++;
+    if (dateTo) count++;
+    return count;
+  }, [customerFilter, cityFilter, dateFrom, dateTo]);
+
+  const hasAnyActiveFilter = useMemo(() => {
+    return Boolean(
+      statusFilter !== 'all' ||
+      searchTerm.trim() ||
+      customerFilter ||
+      cityFilter.trim() ||
+      dateFrom ||
+      dateTo
+    );
+  }, [statusFilter, searchTerm, customerFilter, cityFilter, dateFrom, dateTo]);
+
+  const handleClearAllFilters = () => {
+    setStatusFilter('all');
+    setSearchTerm('');
+    setCustomerFilter('');
+    setCityFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setCurrentPage(1);
+  };
+
+  const normalizeText = (text: string) => {
+    return (text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
+
+  // Filtrado reactivo en tiempo real
+  const filteredOccurrences = useMemo(() => {
+    const sTerm = normalizeText(searchTerm);
+    return occurrences
+      .map((occ) => {
+        const rev = reviews.find((r) => r.id === occ.installation_review_id);
+        const cust = customers.find((c) => c.id === rev?.customer_id);
+        const addr = addresses.find((a) => a.id === rev?.customer_address_id);
+        const rType = reviewTypes.find((rt) => rt.id === rev?.review_type_id);
+        return { occ, rev, cust, addr, rType };
+      })
+      .filter((item) => {
+        if (!item.rev) return false;
+        if (statusFilter === 'realizadas' && item.occ.status !== 'realizada') return false;
+        if (statusFilter === 'vencidas') {
+          if (item.occ.status === 'realizada' || item.occ.status === 'cancelada') return false;
+          if (item.occ.due_date >= todayLocal) return false;
+        }
+        if (statusFilter === 'proximas') {
+          if (item.occ.status === 'realizada' || item.occ.status === 'cancelada') return false;
+          if (item.occ.due_date < todayLocal) return false;
+        }
+        if (customerFilter && item.rev.customer_id !== customerFilter) return false;
+        if (
+          cityFilter &&
+          !normalizeText(item.addr?.city || '').includes(normalizeText(cityFilter))
+        ) {
+          return false;
+        }
+        if (dateFrom && item.occ.due_date < dateFrom) return false;
+        if (dateTo && item.occ.due_date > dateTo) return false;
+
+        // Búsqueda en múltiples campos relevantes
+        if (sTerm) {
+          const cName = normalizeText(item.cust?.name || '');
+          const rName = normalizeText(item.rType?.name || '');
+          const addrLine = normalizeText(item.addr?.address_line || '');
+          const alias = normalizeText(item.addr?.alias || '');
+          const city = normalizeText(item.addr?.city || '');
+          const notes = normalizeText(item.occ.notes || item.rev?.notes || '');
+          const woCode = normalizeText(item.occ.linked_work_order_id || '');
+          const dueDateFormatted = normalizeText(formatDateES(item.occ.due_date));
+
+          const matches =
+            cName.includes(sTerm) ||
+            rName.includes(sTerm) ||
+            addrLine.includes(sTerm) ||
+            alias.includes(sTerm) ||
+            city.includes(sTerm) ||
+            notes.includes(sTerm) ||
+            woCode.includes(sTerm) ||
+            dueDateFormatted.includes(sTerm) ||
+            item.occ.due_date.includes(sTerm);
+
+          if (!matches) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.occ.due_date.localeCompare(b.occ.due_date));
+  }, [occurrences, reviews, customers, addresses, reviewTypes, statusFilter, customerFilter, cityFilter, dateFrom, dateTo, searchTerm, todayLocal]);
+
+  // Paginación
+  const totalOccurrencesCount = filteredOccurrences.length;
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalOccurrencesCount / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedOccurrences = useMemo(() => {
+    if (pageSize === 'all') return filteredOccurrences;
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filteredOccurrences.slice(start, start + pageSize);
+  }, [filteredOccurrences, pageSize, safeCurrentPage]);
 
   const handleOpenCreateReview = () => {
     setEditingReviewId(null);
@@ -238,304 +368,628 @@ export const ReviewsAndNotificationsModule: React.FC<{
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
-      <div className="shrink-0 bg-[#f4f6fa]">
-        <ScreenHeaderBar
-          title="Revisiones Periódicas de Instalaciones y Avisos Automáticos"
-          subtitle="Control de vencimientos, generación de partes vinculados y cola de avisos por correo (1 mes, 1 semana, mismo día)"
-          onBack={onBack}
-          actions={
-            <div className="flex flex-wrap gap-2">
+    <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+      {/* 1. Cabecera ultra-compacta con acciones principales y desplegable «Más acciones» */}
+      <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-2 sm:p-2.5 shadow-2xs space-y-2">
+        <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2">
+          {/* Volver + Título + Recuento */}
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <button
+              type="button"
+              data-testid="btn-reviews-back"
+              onClick={onBack}
+              className="p-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 shrink-0 cursor-pointer"
+              title="Volver"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <h2 className="font-black text-sm text-slate-900 truncate">
+                Revisiones periódicas y avisos
+              </h2>
+              <p className="text-[11px] text-slate-500 hidden sm:block">
+                Control de vencimientos de climatización y avisos automáticos
+              </p>
+            </div>
+          </div>
+
+          {/* Barra de controles: Buscador + Selector Situación + Botón Filtros + Botón Nuevo + Más acciones */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 flex-1 min-w-0 justify-end">
+            {/* Buscador visible y accesible en tiempo real */}
+            <div className="relative flex-1 min-w-[130px] max-w-xs">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                data-testid="input-review-search"
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                placeholder="Buscar cliente, instalación, municipio..."
+                className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  data-testid="btn-clear-review-search"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                  title="Limpiar búsqueda"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Selector rápido de Situación */}
+            <div className="relative shrink-0 min-w-[110px]">
+              <select
+                data-testid="select-review-status-filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value as any); setCurrentPage(1); }}
+                className="w-full appearance-none pl-2 pr-6 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer truncate"
+              >
+                <option value="all">Todas ({stats.total})</option>
+                <option value="proximas">Próximas ({stats.proximas + stats.urgentes})</option>
+                <option value="vencidas">Caducadas ({stats.caducadas})</option>
+                <option value="realizadas">Realizadas ({stats.realizadas})</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Botón Plegable de Filtros Adicionales */}
+            <button
+              type="button"
+              data-testid="btn-toggle-filters"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer shrink-0 ${
+                activeFiltersCount > 0 || showAdvancedFilters
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs'
+                  : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+              }`}
+              title="Mostrar filtros adicionales (cliente, municipio, fechas)"
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Filtros</span>
+              {activeFiltersCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-600 text-white font-extrabold">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </button>
+
+            {/* Botón Principal: + Nueva Revisión */}
+            <button
+              type="button"
+              data-testid="btn-create-review"
+              onClick={handleOpenCreateReview}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 shadow-2xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Nueva Revisión</span>
+              <span className="sm:hidden">Nueva</span>
+            </button>
+
+            {/* Desplegable «Más acciones» */}
+            <div className="relative shrink-0">
               <button
                 type="button"
-                onClick={() => {
-                  const res = backend.processNotificationQueue();
-                  notifySuccessGreen(
-                    `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
-                  );
-                  refresh();
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold"
+                data-testid="btn-more-actions"
+                onClick={() => setShowMoreActions(!showMoreActions)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                title="Más acciones y utilidades"
               >
-                <Send className="w-3.5 h-3.5" /> Ejecutar Tarea Programada de Avisos Ahora
+                <span>Acciones</span>
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
+
+              {showMoreActions && (
+                <div
+                  className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+                  onMouseLeave={() => setShowMoreActions(false)}
+                >
+                  <button
+                    type="button"
+                    data-testid="btn-process-notification-queue"
+                    onClick={() => {
+                      setShowMoreActions(false);
+                      const res = backend.processNotificationQueue();
+                      notifySuccessGreen(
+                        `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
+                      );
+                      refresh();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition text-blue-700 font-semibold cursor-pointer"
+                  >
+                    <Send className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div>
+                      <div>Ejecutar Cola de Avisos Ahora</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Envía correos programados pendientes</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreActions(false);
+                      refresh();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium border-t border-slate-100 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4 text-slate-500 shrink-0" />
+                    <div>
+                      <div>Actualizar Listado</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Recarga revisiones y estado actual</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Resumen Compacto / Indicadores de Estado (KPIs interactivos) */}
+        <div className="pt-0.5 flex flex-wrap items-center gap-1.5 text-xs">
+          <button
+            type="button"
+            data-testid="chip-stat-all"
+            onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+            }`}
+          >
+            <span>Total</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200/80 text-slate-800">{stats.total}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="chip-stat-caducadas"
+            onClick={() => { setStatusFilter(statusFilter === 'vencidas' ? 'all' : 'vencidas'); setCurrentPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              statusFilter === 'vencidas'
+                ? 'bg-black text-white border-black ring-2 ring-black/20 shadow-2xs'
+                : 'bg-black/90 hover:bg-black text-white border-black'
+            }`}
+          >
+            <span>⛔ Caducadas</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white">{stats.caducadas}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="chip-stat-urgentes"
+            onClick={() => { setStatusFilter(statusFilter === 'proximas' ? 'all' : 'proximas'); setCurrentPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              statusFilter === 'proximas'
+                ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-600/20 shadow-2xs'
+                : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+            }`}
+          >
+            <span>🚨 Urgentes (≤7d)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-200/80 text-red-900">{stats.urgentes}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="chip-stat-proximas"
+            onClick={() => { setStatusFilter(statusFilter === 'proximas' ? 'all' : 'proximas'); setCurrentPage(1); }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200 cursor-pointer"
+          >
+            <span>⚠️ Próximas (≤30d)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 text-amber-950">{stats.proximas}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="chip-stat-realizadas"
+            onClick={() => { setStatusFilter(statusFilter === 'realizadas' ? 'all' : 'realizadas'); setCurrentPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              statusFilter === 'realizadas'
+                ? 'bg-emerald-700 text-white border-emerald-800 ring-2 ring-emerald-600/20 shadow-2xs'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+            }`}
+          >
+            <span>✓ Realizadas</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-200 text-emerald-950">{stats.realizadas}</span>
+          </button>
+        </div>
+
+        {/* 3. Filtros adicionales plegables */}
+        {showAdvancedFilters && (
+          <div data-testid="panel-advanced-filters" className="pt-2 border-t border-slate-100 space-y-2 animate-in fade-in duration-100 text-xs">
+            <div className="flex items-center justify-between pb-1">
+              <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
+                Filtros adicionales
+              </span>
               <button
                 type="button"
-                onClick={handleOpenCreateReview}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                onClick={() => setShowAdvancedFilters(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" /> Nueva Revisión Periódica
+                ✕ Cerrar
               </button>
             </div>
-          }
-        />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Cliente</label>
+                <select
+                  data-testid="select-filter-customer"
+                  value={customerFilter}
+                  onChange={(e) => { setCustomerFilter(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                >
+                  <option value="">Todos los clientes</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Municipio</label>
+                <input
+                  type="text"
+                  data-testid="input-filter-city"
+                  value={cityFilter}
+                  onChange={(e) => { setCityFilter(e.target.value); setCurrentPage(1); }}
+                  placeholder="Ej. Ciudad Real, Miguelturra..."
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Desde fecha</label>
+                <input
+                  type="date"
+                  data-testid="input-filter-date-from"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Hasta fecha</label>
+                <input
+                  type="date"
+                  data-testid="input-filter-date-to"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. Chips de filtros activos */}
+        {hasAnyActiveFilter && (
+          <div data-testid="active-filters-chips" className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-100 text-xs">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtros:</span>
+            {statusFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
+                Estado: {statusFilter === 'proximas' ? 'Próximas' : statusFilter === 'vencidas' ? 'Caducadas/Vencidas' : 'Realizadas'}
+                <button type="button" onClick={() => setStatusFilter('all')} className="hover:text-blue-950 font-bold ml-0.5">×</button>
+              </span>
+            )}
+            {searchTerm.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
+                Texto: «{searchTerm}»
+                <button type="button" onClick={() => setSearchTerm('')} className="hover:text-blue-950 font-bold ml-0.5">×</button>
+              </span>
+            )}
+            {customerFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
+                Cliente: {customers.find((c) => c.id === customerFilter)?.name || customerFilter}
+                <button type="button" onClick={() => setCustomerFilter('')} className="hover:text-blue-950 font-bold ml-0.5">×</button>
+              </span>
+            )}
+            {cityFilter.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
+                Municipio: {cityFilter}
+                <button type="button" onClick={() => setCityFilter('')} className="hover:text-blue-950 font-bold ml-0.5">×</button>
+              </span>
+            )}
+            {(dateFrom || dateTo) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
+                Fechas: {dateFrom ? formatDateES(dateFrom) : 'Inicio'} → {dateTo ? formatDateES(dateTo) : 'Fin'}
+                <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="hover:text-blue-950 font-bold ml-0.5">×</button>
+              </span>
+            )}
+            <button
+              type="button"
+              data-testid="btn-clear-all-filters"
+              onClick={handleClearAllFilters}
+              className="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer ml-1"
+            >
+              Limpiar todos
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Filtros obligatorios */}
-      <div className="shrink-0 bg-white rounded-xl border border-slate-200 p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">Situación</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="w-full px-2.5 py-1.5 rounded border border-slate-300 bg-white"
-          >
-            <option value="all">Todas (Próximas, Vencidas y Realizadas)</option>
-            <option value="proximas">Próximas (en plazo)</option>
-            <option value="vencidas">Vencidas (pendientes fuera de fecha)</option>
-            <option value="realizadas">Realizadas (histórico completado)</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">Cliente</label>
-          <select
-            value={customerFilter}
-            onChange={(e) => setCustomerFilter(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded border border-slate-300 bg-white"
-          >
-            <option value="">Todos los clientes</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">Municipio</label>
-          <input
-            type="text"
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            placeholder="Ej. Ciudad Real, Miguelturra, Puertollano..."
-            className="w-full px-2.5 py-1.5 rounded border border-slate-300"
-          />
-        </div>
-
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">Desde fecha</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded border border-slate-300"
-          />
-        </div>
-
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">Hasta fecha</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded border border-slate-300"
-          />
-        </div>
-      </div>
-
-      {/* Leyenda explicativa de las señales de alerta de revisiones */}
-      <div className="shrink-0 bg-slate-50 rounded-xl border border-slate-200 p-2.5 flex flex-wrap items-center gap-4 text-xs">
-        <span className="font-extrabold text-slate-800">Señales de Alerta:</span>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black text-white font-extrabold text-[11px] shadow-2xs">
-          ⛔ Alerta Negra: Caducada (vencimiento superado)
-        </span>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600 text-white font-extrabold text-[11px] shadow-2xs">
-          🚨 Alerta Roja: Queda 1 semana o menos (urgente)
-        </span>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-extrabold text-[11px] shadow-2xs">
-          ⚠️ Alerta Naranja: Queda 1 mes o menos (próxima)
-        </span>
-      </div>
-
-      {/* Listado cronológico de vencimientos y ejecuciones */}
-      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
-        <div className="shrink-0 px-4 py-3 bg-slate-900 text-white text-xs font-bold flex items-center justify-between">
+      {/* 5. Listado de Revisiones: Alta densidad, elegante y legible */}
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden shadow-2xs">
+        {/* Encabezado del listado con recuento */}
+        <div className="shrink-0 px-3.5 py-2.5 bg-slate-900 text-white text-xs font-bold flex items-center justify-between">
           <span className="flex items-center gap-2">
             <CalendarClock className="w-4 h-4 text-blue-400" />
-            Vencimientos e Historial de Revisiones ({filteredOccurrences.length})
+            <span>Vencimientos e Historial de Revisiones ({totalOccurrencesCount})</span>
           </span>
-          <span>Ordenado por próximo vencimiento ascendente</span>
+          <span className="text-[11px] text-slate-300 hidden sm:inline">
+            Ordenado por próximo vencimiento ascendente
+          </span>
         </div>
 
-        <div className="flex-1 min-h-0 divide-y divide-slate-200 overflow-y-auto overscroll-contain">
-          {filteredOccurrences.map(({ occ, rev, cust, addr, rType }) => {
-            const isDone = occ.status === 'realizada';
-            const alertInfo = getReviewAlertInfo(occ.due_date, todayLocal);
-            const sched = calculateReviewNoticeSchedule(occ.due_date);
+        {/* Filas de revisiones */}
+        <div className="flex-1 min-h-0 divide-y divide-slate-100 overflow-y-auto overscroll-contain">
+          {totalOccurrencesCount === 0 ? (
+            <div data-testid="review-empty-state" className="p-8 text-center text-slate-500">
+              <CalendarClock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-semibold text-sm text-slate-700">No hay revisiones que coincidan con los filtros</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                Prueba a modificar la búsqueda o limpiar los filtros activos para ver todas las revisiones ({occurrences.length}).
+              </p>
+              {hasAnyActiveFilter && (
+                <button
+                  type="button"
+                  onClick={handleClearAllFilters}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  Limpiar todos los filtros
+                </button>
+              )}
+            </div>
+          ) : (
+            paginatedOccurrences.map(({ occ, rev, cust, addr, rType }) => {
+              const isDone = occ.status === 'realizada';
+              const alertInfo = getReviewAlertInfo(occ.due_date, todayLocal);
+              const sched = calculateReviewNoticeSchedule(occ.due_date);
 
-            return (
-              <div
-                key={occ.id}
-                data-testid={`review-row-${occ.id}`}
-                className={`p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs transition ${
-                  isDone ? 'bg-white' : alertInfo.borderCardClass
-                }`}
-              >
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {isDone ? (
-                      <span className="px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        ✓ Realizada
+              return (
+                <div
+                  key={occ.id}
+                  data-testid={`review-row-${occ.id}`}
+                  className={`p-3 sm:p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 text-xs transition hover:bg-slate-50/80 ${
+                    isDone ? 'bg-white' : alertInfo.borderCardClass
+                  }`}
+                >
+                  {/* Información principal de la revisión */}
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isDone ? (
+                        <span className="px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px]">
+                          ✓ Realizada
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black tracking-wide border shadow-2xs ${alertInfo.badgeClass}`}
+                          data-testid={`review-alert-badge-${occ.id}`}
+                        >
+                          {alertInfo.label}
+                        </span>
+                      )}
+
+                      <strong className={`text-xs sm:text-sm ${isDone ? 'text-slate-900' : alertInfo.textClass}`}>
+                        Vencimiento: {formatDateES(occ.due_date)}
+                      </strong>
+
+                      <span className="text-slate-700 font-bold truncate">
+                        — {rType?.name || 'Revisión periódica'}
                       </span>
-                    ) : (
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black tracking-wide border shadow-2xs ${alertInfo.badgeClass}`}
-                        data-testid={`review-alert-badge-${occ.id}`}
+
+                      {rType?.suggested_price_cents ? (
+                        <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          Tarifa: {formatCentsToEUR(rType.suggested_price_cents)}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="text-slate-700 truncate">
+                      <strong>Cliente:</strong> {cust?.name || 'Sin cliente asignado'} · <strong>Instalación:</strong>{' '}
+                      {addr?.alias ? `${addr.alias} — ` : ''}{addr?.address_line || 'Sin dirección'} ({addr?.city || '—'})
+                    </div>
+
+                    <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>Avisos calculados: 1m ({formatDateES(sched.oneMonthBefore)}) · 1s ({formatDateES(sched.oneWeekBefore)}) · Mismo día ({formatDateES(sched.sameDay)})</span>
+                      {occ.linked_work_order_id && (
+                        <span className="text-blue-700 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                          Parte {occ.linked_work_order_id}
+                        </span>
+                      )}
+                      {(occ.notes || rev?.notes) && (
+                        <span className="text-slate-600 italic">
+                          · «{occ.notes || rev?.notes}»
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Botones de acción compactos */}
+                  <div className="flex flex-wrap items-center gap-1.5 shrink-0 pt-1 lg:pt-0">
+                    {occ.status !== 'realizada' && !occ.linked_work_order_id && rev && (
+                      <button
+                        type="button"
+                        data-testid={`btn-create-wo-from-review-${occ.id}`}
+                        onClick={() =>
+                          onOpenCreateWorkOrderFromReview({
+                            customerId: rev.customer_id,
+                            addressId: rev.customer_address_id,
+                            plannedWork: `${rType?.name || 'Revisión periódica'} — Vencimiento ${formatDateES(
+                              occ.due_date
+                            )}`,
+                            scheduledAt: `${occ.due_date}T09:00`,
+                            occurrenceId: occ.id,
+                            amountCents: rType?.suggested_price_cents ?? null,
+                          })
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
+                        title="Crear automáticamente un parte de trabajo vinculado a este vencimiento"
                       >
-                        {alertInfo.label}
-                      </span>
+                        + Generar Parte
+                      </button>
                     )}
 
-                    <strong className={`text-sm ${isDone ? 'text-slate-900' : alertInfo.textClass}`}>
-                      Vencimiento: {formatDateES(occ.due_date)}
-                    </strong>
-                    <span className="text-slate-600 font-semibold">
-                      — {rType?.name} ({formatCentsToEUR(rType?.suggested_price_cents)})
-                    </span>
-                  </div>
-                  <div className="text-slate-700">
-                    <strong>Cliente:</strong> {cust?.name} · <strong>Instalación:</strong>{' '}
-                    {addr?.alias} ({addr?.address_line}, {addr?.city})
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Hitos de aviso calculados: 1 mes antes ({formatDateES(sched.oneMonthBefore)}) · 1 semana antes ({formatDateES(sched.oneWeekBefore)}) · Mismo día ({formatDateES(sched.sameDay)})
-                    {occ.linked_work_order_id && (
-                      <span className="ml-2 text-blue-700 font-semibold">
-                        [Vinculado a Parte {occ.linked_work_order_id}]
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  {occ.status !== 'realizada' && (
-                    <button
-                      type="button"
-                      data-testid={`btn-reschedule-review-${occ.id}`}
-                      onClick={() => {
-                        setRescheduleOccModal({
-                          open: true,
-                          occurrenceId: occ.id,
-                          revName: `${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}`,
-                          currentDueDate: occ.due_date,
-                          linkedWoCode: occ.linked_work_order_id,
-                          notes: occ.notes || '',
-                        });
-                        setRescheduleDueDateInput(occ.due_date);
-                        setRescheduleNotesInput(occ.notes || '');
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs"
-                      title="Reprogramar fecha de vencimiento de este aviso"
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Reprogramar</span>
-                    </button>
-                  )}
-
-                  {rev && (
-                    <button
-                      type="button"
-                      data-testid={`btn-edit-review-${rev.id}`}
-                      onClick={() => {
-                        setEditingReviewId(rev.id);
-                        setReviewCustomerId(rev.customer_id);
-                        setReviewAddressId(rev.customer_address_id);
-                        setReviewTypeId(rev.review_type_id);
-                        setReviewNextDate(rev.next_review_date);
-                        setReviewNotes(rev.notes || '');
-                        setReviewStatus(rev.status);
-                        setShowReviewModal(true);
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs"
-                      title="Modificar los datos de la revisión periódica"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Modificar</span>
-                    </button>
-                  )}
-
-                  {rev && (
-                    <button
-                      type="button"
-                      data-testid={`btn-delete-review-${rev.id}`}
-                      onClick={() => {
-                        requestDeleteConfirmation({
-                          recordName: `Mantenimiento «${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}»`,
-                          consequence:
-                            'Se eliminará este plan de mantenimiento periódico y todos sus vencimientos asociados. Esta acción puede influir en alguna acción o listado.',
-                          requireReason: false,
-                          onConfirm: () => {
-                            backend.deleteInstallationReview(rev.id);
-                            refresh();
-                          },
-                        });
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs"
-                      title="Borrar mantenimiento periódico definitivamente"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Borrar</span>
-                    </button>
-                  )}
-
-                  {occ.status !== 'realizada' && !occ.linked_work_order_id && rev && (
-                    <button
-                      type="button"
-                      data-testid={`btn-create-wo-from-review-${occ.id}`}
-                      onClick={() =>
-                        onOpenCreateWorkOrderFromReview({
-                          customerId: rev.customer_id,
-                          addressId: rev.customer_address_id,
-                          plannedWork: `${rType?.name || 'Revisión periódica'} — Vencimiento ${formatDateES(
-                            occ.due_date
-                          )}`,
-                          scheduledAt: `${occ.due_date}T09:00`,
-                          occurrenceId: occ.id,
-                          amountCents: rType?.suggested_price_cents ?? null,
-                        })
-                      }
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                    >
-                      + Generar Parte desde Revisión
-                    </button>
-                  )}
-
-                  {occ.status !== 'realizada' && (
-                    <button
-                      type="button"
-                      data-testid={`btn-complete-review-${occ.id}`}
-                      onClick={() => {
-                        requestSaveConfirmation({
-                          title: 'Confirmar Realización de Vencimiento y Programar Siguiente',
-                          changes: [
-                            { label: 'Revisión', value: rType?.name || '' },
-                            { label: 'Vencimiento completado', value: formatDateES(occ.due_date) },
-                            {
-                              label: 'Comportamiento',
-                              value:
-                                'Se marcará este vencimiento en el histórico y se calculará la siguiente fecha según periodicidad.',
+                    {occ.status !== 'realizada' && (
+                      <button
+                        type="button"
+                        data-testid={`btn-complete-review-${occ.id}`}
+                        onClick={() => {
+                          requestSaveConfirmation({
+                            title: 'Confirmar Realización de Vencimiento y Programar Siguiente',
+                            changes: [
+                              { label: 'Revisión', value: rType?.name || '' },
+                              { label: 'Vencimiento completado', value: formatDateES(occ.due_date) },
+                              {
+                                label: 'Comportamiento',
+                                value:
+                                  'Se marcará este vencimiento en el histórico y se calculará la siguiente fecha según periodicidad.',
+                              },
+                            ],
+                            onConfirm: () => {
+                              backend.completeReviewOccurrenceAndScheduleNext({
+                                occurrence_id: occ.id,
+                                completed_date: todayLocal,
+                              });
+                              refresh();
                             },
-                          ],
-                          onConfirm: () => {
-                            backend.completeReviewOccurrenceAndScheduleNext({
-                              occurrence_id: occ.id,
-                              completed_date: todayLocal,
-                            });
-                            refresh();
-                          },
-                        });
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                    >
-                      Confirmar Realización y Siguiente Fecha
-                    </button>
-                  )}
+                          });
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
+                        title="Marcar vencimiento como completado y programar siguiente revisión"
+                      >
+                        ✓ Completar
+                      </button>
+                    )}
+
+                    {occ.status !== 'realizada' && (
+                      <button
+                        type="button"
+                        data-testid={`btn-reschedule-review-${occ.id}`}
+                        onClick={() => {
+                          setRescheduleOccModal({
+                            open: true,
+                            occurrenceId: occ.id,
+                            revName: `${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}`,
+                            currentDueDate: occ.due_date,
+                            linkedWoCode: occ.linked_work_order_id,
+                            notes: occ.notes || '',
+                          });
+                          setRescheduleDueDateInput(occ.due_date);
+                          setRescheduleNotesInput(occ.notes || '');
+                        }}
+                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs shrink-0"
+                        title="Reprogramar fecha de vencimiento"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Reprogramar</span>
+                      </button>
+                    )}
+
+                    {rev && (
+                      <button
+                        type="button"
+                        data-testid={`btn-edit-review-${rev.id}`}
+                        onClick={() => {
+                          setEditingReviewId(rev.id);
+                          setReviewCustomerId(rev.customer_id);
+                          setReviewAddressId(rev.customer_address_id);
+                          setReviewTypeId(rev.review_type_id);
+                          setReviewNextDate(rev.next_review_date);
+                          setReviewNotes(rev.notes || '');
+                          setReviewStatus(rev.status);
+                          setShowReviewModal(true);
+                        }}
+                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs shrink-0"
+                        title="Modificar los datos de la revisión periódica"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Modificar</span>
+                      </button>
+                    )}
+
+                    {rev && (
+                      <button
+                        type="button"
+                        data-testid={`btn-delete-review-${rev.id}`}
+                        onClick={() => {
+                          requestDeleteConfirmation({
+                            recordName: `Mantenimiento «${cust?.name || 'Cliente'} — ${rType?.name || 'Revisión'}»`,
+                            consequence:
+                              'Se eliminará este plan de mantenimiento periódico y todos sus vencimientos asociados. Esta acción puede influir en alguna acción o listado.',
+                            requireReason: false,
+                            onConfirm: () => {
+                              backend.deleteInstallationReview(rev.id);
+                              refresh();
+                            },
+                          });
+                        }}
+                        className="px-2 py-1 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 font-semibold inline-flex items-center gap-1 shadow-2xs cursor-pointer text-xs shrink-0"
+                        title="Borrar mantenimiento periódico definitivamente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Borrar</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
+        </div>
+
+        {/* 6. Barra de paginación */}
+        <div className="shrink-0 px-3 py-2 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span>
+              Mostrando {totalOccurrencesCount === 0 ? 0 : (safeCurrentPage - 1) * (pageSize === 'all' ? totalOccurrencesCount : pageSize) + 1} a {pageSize === 'all' ? totalOccurrencesCount : Math.min(safeCurrentPage * pageSize, totalOccurrencesCount)} de {totalOccurrencesCount} revisiones
+            </span>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1">
+              <span>Filas:</span>
+              <select
+                data-testid="select-review-page-size"
+                value={pageSize}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                  setPageSize(val as any);
+                  setCurrentPage(1);
+                }}
+                className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-xs cursor-pointer font-medium"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value="all">Todas</option>
+              </select>
+            </div>
+          </div>
+
+          {pageSize !== 'all' && totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                data-testid="btn-review-page-prev"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Anterior
+              </button>
+              <span className="px-2 text-xs font-bold text-slate-700">
+                Pág. {safeCurrentPage} de {totalPages}
+              </span>
+              <button
+                type="button"
+                data-testid="btn-review-page-next"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
