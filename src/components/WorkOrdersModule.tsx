@@ -1055,7 +1055,7 @@ const WorkOrderDetailLoadedView: React.FC<{
   // Asegurar que al entrar al parte siempre se posicione al principio (cabecera superior) en móvil y escritorio
   useEffect(() => {
     const forceScrollToTop = () => {
-      if (topDetailRef.current) {
+      if (topDetailRef.current && typeof topDetailRef.current.scrollIntoView === 'function') {
         topDetailRef.current.scrollIntoView({ behavior: 'instant', block: 'start' });
         let p = topDetailRef.current.parentElement;
         while (p) {

@@ -4,6 +4,13 @@ import { createRoot } from 'react-dom/client';
 import { defaultBackend } from '../services/backendEngine';
 import App from '../App';
 
+function typeIntoInput(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 describe('Apartado Inicio móvil del Administrador: Selector desplegable compacto de estados', () => {
   beforeEach(() => {
     defaultBackend.resetToDemoSeed();
@@ -323,6 +330,143 @@ describe('Apartado Inicio móvil del Administrador: Selector desplegable compact
       // Debe permitir consultar el detalle del parte archivado
       const consultBtn = archivedCard?.querySelector('button');
       expect(consultBtn?.textContent).toContain('Consultar');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('en «Inicio / Partes de trabajo» el buscador es desplegable desde un botón compacto y se cierra al localizar el parte', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(App));
+      });
+
+      const mobileHomeView = container.querySelector('[data-testid="admin-mobile-home-view"]');
+      expect(mobileHomeView).toBeTruthy();
+
+      // 1. Inicialmente no ocupa cabecera: el panel desplegable no está abierto
+      expect(container.querySelector('[data-testid="admin-mobile-search-dropdown"]')).toBeNull();
+
+      // 2. Existe el botón compacto «Buscar»
+      const toggleSearchBtn = container.querySelector(
+        '[data-testid="btn-toggle-admin-mobile-search"]'
+      ) as HTMLButtonElement;
+      expect(toggleSearchBtn).toBeTruthy();
+      expect(toggleSearchBtn.textContent).toContain('Buscar');
+
+      // 3. Al pulsar el botón, se abre el buscador desplegable
+      await act(async () => {
+        toggleSearchBtn.click();
+      });
+
+      const dropdown = container.querySelector(
+        '[data-testid="admin-mobile-search-dropdown"]'
+      );
+      expect(dropdown).toBeTruthy();
+
+      // 4. Escribir texto de búsqueda (busca por cualquier campo, ej: cliente o trabajo)
+      const input = container.querySelector(
+        '[data-testid="input-admin-mobile-search"]'
+      ) as HTMLInputElement;
+      expect(input).toBeTruthy();
+
+      await act(async () => {
+        typeIntoInput(input, 'caldera');
+      });
+
+      // El resultado de búsqueda aparece en la lista rápida del desplegable
+      const resultItem = container.querySelector(
+        '[data-testid^="admin-mobile-search-result-"]'
+      ) as HTMLButtonElement;
+      expect(resultItem).toBeTruthy();
+
+      // 5. Al pulsar sobre el parte localizado en los resultados:
+      // Se debe cerrar el buscador desplegable inmediatamente y navegar al detalle
+      await act(async () => {
+        resultItem.click();
+      });
+
+      // El buscador desplegable debe haberse cerrado («se cierre cuando haya localizado el parte»)
+      expect(container.querySelector('[data-testid="admin-mobile-search-dropdown"]')).toBeNull();
+      // Y se abre la pantalla de detalle del parte
+      expect(container.querySelector('[data-testid="work-order-detail-top-container"]')).toBeTruthy();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it('en «Partes archivados» el buscador es desplegable desde un botón compacto y se cierra al localizar el parte', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    // Cerramos y archivamos el parte 'wo-3'
+    defaultBackend.closeWorkOrder('wo-3');
+    defaultBackend.archiveWorkOrder('wo-3');
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(App));
+      });
+
+      // Navegar a partes archivados
+      const navButtons = Array.from(container.querySelectorAll('button'));
+      const archivedNavBtn = navButtons.find((b) =>
+        (b.textContent || '').toLowerCase().includes('partes archivados')
+      );
+      await act(async () => {
+        archivedNavBtn?.click();
+      });
+
+      // 1. Debe existir el botón de búsqueda móvil en la cabecera
+      const toggleBtn = container.querySelector(
+        '[data-testid="btn-toggle-screen-header-search"]'
+      ) as HTMLButtonElement;
+      expect(toggleBtn).toBeTruthy();
+
+      // 2. Al pulsar el botón, se abre el buscador desplegable
+      await act(async () => {
+        toggleBtn.click();
+      });
+
+      const searchDropdown = container.querySelector(
+        '[data-testid="screen-header-mobile-search-dropdown"]'
+      );
+      expect(searchDropdown).toBeTruthy();
+
+      // 3. Buscar por cualquier campo (código, cliente, etc.)
+      const input = container.querySelector(
+        '[data-testid="input-screen-header-mobile-search"]'
+      ) as HTMLInputElement;
+      expect(input).toBeTruthy();
+
+      await act(async () => {
+        typeIntoInput(input, 'PT-2026-0003');
+      });
+
+      // Debe aparecer el resultado en la lista rápida
+      const quickItem = container.querySelector(
+        '[data-testid="quick-result-item-wo-3"]'
+      ) as HTMLButtonElement;
+      expect(quickItem).toBeTruthy();
+
+      // 4. Al pulsar el parte localizado, se cierra el buscador y se abre el detalle
+      await act(async () => {
+        quickItem.click();
+      });
+
+      expect(container.querySelector('[data-testid="screen-header-mobile-search-dropdown"]')).toBeNull();
+      expect(container.querySelector('[data-testid="work-order-detail-top-container"]')).toBeTruthy();
     } finally {
       await act(async () => {
         root.unmount();

@@ -17,6 +17,7 @@ import {
   Wifi,
   WifiOff,
   Archive,
+  Search,
   Trash2,
   Calendar,
   RefreshCw,
@@ -45,6 +46,7 @@ import { UserProfile } from './types/domain';
 
 export const DEVICE_LOGGED_USER_ID_KEY = 'agy_roma_device_logged_user_id';
 import { WorkOrder, WorkOrderAssignment } from './types/domain';
+import { matchesWorkOrderQuery } from './utils/workOrderSearch';
 import {
   DateTimePickerField,
   PhoneActionLinks,
@@ -868,6 +870,10 @@ const MainApplicationContent: React.FC = () => {
     'pendientes' | 'no_programado' | 'pendientes_programar' | 'no_iniciado' | 'en_curso' | 'reabierto' | 'terminado' | 'cerrado' | 'todos'
   >('pendientes');
   const [adminMobileShowDashboard, setAdminMobileShowDashboard] = useState(false);
+  const [adminMobileSearch, setAdminMobileSearch] = useState('');
+  const [adminMobileSearchOpen, setAdminMobileSearchOpen] = useState(false);
+  const [archivedMobileSearchOpen, setArchivedMobileSearchOpen] = useState(false);
+  const adminMobileSearchInputRef = useRef<HTMLInputElement>(null);
 
   // Control de versión instalada en el dispositivo y aviso de nueva versión disponible
   const [installedVersion, setInstalledVersionState] = useState<string>(() =>
@@ -2799,14 +2805,39 @@ const MainApplicationContent: React.FC = () => {
                                     {headerSubtitle}
                                   </p>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setCreateWoModalProps({ open: true })}
-                                  className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Plus className="w-4 h-4" />
-                                  <span>Nuevo</span>
-                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {/* Botón compacto de búsqueda: no satura la cabecera cuando está cerrado */}
+                                  <button
+                                    type="button"
+                                    data-testid="btn-toggle-admin-mobile-search"
+                                    onClick={() => {
+                                      setAdminMobileSearchOpen((prev) => !prev);
+                                      if (!adminMobileSearchOpen) {
+                                        setTimeout(() => adminMobileSearchInputRef.current?.focus(), 50);
+                                      }
+                                    }}
+                                    className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                      adminMobileSearch.trim() || adminMobileSearchOpen
+                                        ? 'bg-blue-50 border-blue-300 text-blue-700'
+                                        : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+                                    }`}
+                                    title="Buscar partes por cualquier campo"
+                                  >
+                                    <Search className="w-4 h-4" />
+                                    <span>Buscar</span>
+                                    {adminMobileSearch.trim() && (
+                                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCreateWoModalProps({ open: true })}
+                                    className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                    <span>Nuevo</span>
+                                  </button>
+                                </div>
                               </div>
 
                               {/* Desplegable compacto único «Estado del parte» con color dinámico del estado seleccionado */}
@@ -2912,20 +2943,191 @@ const MainApplicationContent: React.FC = () => {
                                   </div>
                                 );
                               })()}
+
+                              {/* PANEL DE BÚSQUEDA DESPLEGABLE COMPACTO: se despliega con el botón y se cierra al localizar el parte */}
+                              {adminMobileSearchOpen && (
+                                <div
+                                  data-testid="admin-mobile-search-dropdown"
+                                  className="pt-2 border-t border-slate-100 space-y-2 animate-fadeIn"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                        <Search className="w-4 h-4" />
+                                      </div>
+                                      <input
+                                        ref={adminMobileSearchInputRef}
+                                        type="search"
+                                        data-testid="input-admin-mobile-search"
+                                        value={adminMobileSearch}
+                                        onChange={(e) => setAdminMobileSearch(e.target.value)}
+                                        placeholder="Buscar por cliente, dirección, operario, trabajo, código..."
+                                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                                        autoFocus
+                                      />
+                                      {adminMobileSearch && (
+                                        <button
+                                          type="button"
+                                          data-testid="btn-clear-admin-mobile-search"
+                                          onClick={() => setAdminMobileSearch('')}
+                                          className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                                          title="Borrar texto"
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      data-testid="btn-close-admin-mobile-search"
+                                      onClick={() => setAdminMobileSearchOpen(false)}
+                                      className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold cursor-pointer shrink-0"
+                                    >
+                                      Cerrar
+                                    </button>
+                                  </div>
+
+                                  {/* Resultados inmediatos desplegables */}
+                                  {adminMobileSearch.trim() && (() => {
+                                    const matchesInSearch = listToDisplay.filter((w) =>
+                                      matchesWorkOrderQuery(w, adminMobileSearch, assignments, getUserName)
+                                    );
+                                    return (
+                                      <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                                        <div className="flex items-center justify-between text-[11px] text-slate-600 px-0.5">
+                                          <span>
+                                            {matchesInSearch.length === 0
+                                              ? 'Sin coincidencias'
+                                              : `${matchesInSearch.length} parte(s) encontrado(s)`}
+                                          </span>
+                                          {adminMobileSearch.trim() && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setAdminMobileSearch('')}
+                                              className="text-blue-600 hover:underline font-bold text-[11px]"
+                                            >
+                                              Limpiar búsqueda
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {matchesInSearch.length > 0 && (
+                                          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 bg-slate-50/70 rounded-xl border border-slate-200 p-1.5">
+                                            {matchesInSearch.slice(0, 15).map((wo) => (
+                                              <button
+                                                key={wo.id}
+                                                type="button"
+                                                data-testid={`admin-mobile-search-result-${wo.id}`}
+                                                onClick={() => {
+                                                  // LOCALIZADO EL PARTE: cerrar buscador desplegable y abrir detalle
+                                                  setAdminMobileSearchOpen(false);
+                                                  setSelectedWorkOrderId(wo.id);
+                                                  navigateTo('work_order_detail');
+                                                }}
+                                                className="w-full text-left p-2 rounded-lg bg-white hover:bg-blue-50 border border-slate-100 transition flex flex-col gap-0.5 cursor-pointer shadow-2xs"
+                                              >
+                                                <div className="flex items-center justify-between gap-1">
+                                                  <span className="font-mono font-bold text-[11px] text-blue-700">{wo.code}</span>
+                                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                                                    {wo.status}
+                                                  </span>
+                                                </div>
+                                                <div className="font-bold text-xs text-slate-900 truncate">
+                                                  {wo.snapshot_customer_name}
+                                                </div>
+                                                <div className="text-[11px] text-slate-500 truncate">
+                                                  📍 {wo.snapshot_address_line || wo.snapshot_city || 'Sin dirección'}
+                                                </div>
+                                                <div className="text-[11px] text-slate-600 line-clamp-1 italic">
+                                                  "{wo.planned_work}"
+                                                </div>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+
+                              {/* Chip compacto en cabecera cuando el buscador está cerrado pero hay filtro activo */}
+                              {!adminMobileSearchOpen && adminMobileSearch.trim() && (
+                                <div className="pt-2 border-t border-slate-100">
+                                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs text-blue-900 shadow-2xs">
+                                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                      <Search className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                      <span className="truncate">
+                                        Filtro activo: <strong>"{adminMobileSearch}"</strong>
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdminMobileSearchOpen(true)}
+                                        className="text-blue-700 font-bold hover:underline cursor-pointer"
+                                      >
+                                        Modificar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdminMobileSearch('')}
+                                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                                        title="Quitar filtro"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* TARJETAS DE PARTES MÓVILES (FORMATO EXACTO ACTUAL CONSERVADO) */}
-                          {listToDisplay.length === 0 ? (
-                            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs space-y-1">
-                              <p className="font-bold text-slate-700">{emptyMessage}</p>
-                              <p className="text-slate-400 text-[11px]">
-                                Selecciona otro estado en el desplegable o crea un nuevo parte.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="space-y-3.5">
-                              {listToDisplay.map((wo, idx) => (
+                          {/* TARJETAS DE PARTES MÓVILES (FILTRADAS POR ESTADO Y POR BÚSQUEDA UNIVERSAL) */}
+                          {(() => {
+                            const filteredMobileWorkOrders = listToDisplay.filter((wo) =>
+                              matchesWorkOrderQuery(wo, adminMobileSearch, assignments, getUserName)
+                            );
+
+                            if (listToDisplay.length === 0) {
+                              return (
+                                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs space-y-1">
+                                  <p className="font-bold text-slate-700">{emptyMessage}</p>
+                                  <p className="text-slate-400 text-[11px]">
+                                    Selecciona otro estado en el desplegable o crea un nuevo parte.
+                                  </p>
+                                </div>
+                              );
+                            }
+
+                            if (filteredMobileWorkOrders.length === 0) {
+                              return (
+                                <div
+                                  data-testid="admin-mobile-search-empty"
+                                  className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs space-y-2"
+                                >
+                                  <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                                  <p className="font-bold text-slate-700">
+                                    No se encontraron partes de trabajo que coincidan con «{adminMobileSearch}».
+                                  </p>
+                                  <p className="text-slate-400 text-[11px]">
+                                    Prueba con otro término de búsqueda o limpia el buscador.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminMobileSearch('')}
+                                    className="mt-2 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition inline-block text-xs cursor-pointer"
+                                  >
+                                    Borrar búsqueda
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="space-y-3.5">
+                                {filteredMobileWorkOrders.map((wo, idx) => (
                                 <WorkOrderMobileCard
                                   key={wo.id}
                                   wo={wo}
@@ -2952,11 +3154,12 @@ const MainApplicationContent: React.FC = () => {
                                 />
                               ))}
                             </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                          );
+                        })()}
+                      </>
+                    );
+                  })()}
+                </div>
 
                   {/* VISTA ESCRITORIO DE ADMINISTRADOR (hidden md:block): PANEL DE CONTROL COMPLETO */}
                   <div className="hidden md:block space-y-3">
@@ -3928,6 +4131,11 @@ const MainApplicationContent: React.FC = () => {
                   onBack={navigateBack}
                   searchTerm={woSearch}
                   onSearchChange={setWoSearch}
+                  searchPlaceholder={
+                    currentRoute === 'archived_work_orders'
+                      ? 'Buscar en partes archivados por cualquier campo...'
+                      : 'Buscar en este apartado...'
+                  }
                   availableColumns={[
                     { key: 'code', label: 'Número de Parte' },
                     { key: 'customer', label: 'Cliente' },
@@ -3940,6 +4148,29 @@ const MainApplicationContent: React.FC = () => {
                   ]}
                   visibleColumns={visibleWoColumns}
                   onToggleColumn={handleToggleWoColumn}
+                  collapsibleSearchOnMobile={currentRoute === 'archived_work_orders'}
+                  mobileSearchOpen={archivedMobileSearchOpen}
+                  onMobileSearchOpenChange={setArchivedMobileSearchOpen}
+                  quickResults={
+                    currentRoute === 'archived_work_orders'
+                      ? archivedWorkOrders
+                          .filter((w) => matchesWorkOrderQuery(w, woSearch, assignments, getUserName))
+                          .map((w) => ({
+                            id: w.id,
+                            code: w.code,
+                            title: w.snapshot_customer_name,
+                            subtitle: w.snapshot_address_line || w.snapshot_city,
+                            badge: '■ Archivado',
+                            details: w.planned_work,
+                          }))
+                      : undefined
+                  }
+                  onSelectQuickResult={(id) => {
+                    // LOCALIZADO EL PARTE: cerrar buscador desplegable y abrir detalle
+                    setArchivedMobileSearchOpen(false);
+                    setSelectedWorkOrderId(id);
+                    navigateTo('work_order_detail');
+                  }}
                 />
 
                 {currentRoute === 'work_orders_list' && (
@@ -4173,50 +4404,80 @@ const MainApplicationContent: React.FC = () => {
               {/* 2. Vista móvil para partes archivados (block md:hidden): tarjetas homogéneas que reutilizan WorkOrderMobileCard */}
               {currentRoute === 'archived_work_orders' && (
                 <div className="block md:hidden p-3 space-y-3.5" data-testid="archived-work-orders-mobile-list">
-                  {archivedWorkOrders
-                    .filter((w) => {
-                      if (!woSearch.trim()) return true;
-                      const query = woSearch.toLowerCase();
-                      if (w.code.toLowerCase().includes(query)) return true;
-                      if (w.snapshot_customer_name.toLowerCase().includes(query)) return true;
-                      if (w.planned_work.toLowerCase().includes(query)) return true;
-                      if ((w.snapshot_address_line || '').toLowerCase().includes(query)) return true;
-                      if ((w.snapshot_city || '').toLowerCase().includes(query)) return true;
-                      return false;
-                    })
-                    .length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs">
-                      No hay partes archivados que coincidan con la búsqueda.
-                    </div>
-                  ) : (
-                    archivedWorkOrders
-                      .filter((w) => {
-                        if (!woSearch.trim()) return true;
-                        const query = woSearch.toLowerCase();
-                        if (w.code.toLowerCase().includes(query)) return true;
-                        if (w.snapshot_customer_name.toLowerCase().includes(query)) return true;
-                        if (w.planned_work.toLowerCase().includes(query)) return true;
-                        if ((w.snapshot_address_line || '').toLowerCase().includes(query)) return true;
-                        if ((w.snapshot_city || '').toLowerCase().includes(query)) return true;
-                        return false;
-                      })
-                      .map((wo, idx) => (
-                        <WorkOrderMobileCard
-                          key={wo.id}
-                          wo={wo}
-                          cardIndex={idx}
-                          tz={tz}
-                          assignments={assignments}
-                          getUserName={getUserName}
-                          isAdmin={isAdmin}
-                          onOpenDetail={(id) => {
-                            setSelectedWorkOrderId(id);
-                            navigateTo('work_order_detail');
-                          }}
-                          onReschedule={() => {}}
-                        />
-                      ))
-                  )}
+                  {(() => {
+                    const filteredArchived = archivedWorkOrders.filter((w) =>
+                      matchesWorkOrderQuery(w, woSearch, assignments, getUserName)
+                    );
+
+                    if (archivedWorkOrders.length === 0) {
+                      return (
+                        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs">
+                          No hay partes archivados registrados.
+                        </div>
+                      );
+                    }
+
+                    if (filteredArchived.length === 0) {
+                      return (
+                        <div
+                          data-testid="archived-mobile-search-no-results"
+                          className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 shadow-2xs space-y-2"
+                        >
+                          <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                          <p className="font-bold text-slate-700">
+                            No hay partes archivados que coincidan con «{woSearch}».
+                          </p>
+                          <p className="text-slate-400 text-[11px]">
+                            Prueba con otro término de búsqueda o limpia el buscador.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setWoSearch('')}
+                            className="mt-2 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition inline-block text-xs cursor-pointer"
+                          >
+                            Borrar búsqueda
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <>
+                        {woSearch.trim() && (
+                          <div className="flex items-center justify-between text-xs text-slate-600 px-3 py-1.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                            <span>
+                              Encontrados: <strong className="text-slate-900">{filteredArchived.length}</strong> de {archivedWorkOrders.length} archivados
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setWoSearch('')}
+                              className="text-blue-600 hover:underline font-bold"
+                            >
+                              Limpiar
+                            </button>
+                          </div>
+                        )}
+                        {filteredArchived.map((wo, idx) => (
+                          <WorkOrderMobileCard
+                            key={wo.id}
+                            wo={wo}
+                            cardIndex={idx}
+                            tz={tz}
+                            assignments={assignments}
+                            getUserName={getUserName}
+                            isAdmin={isAdmin}
+                            onOpenDetail={(id) => {
+                              // LOCALIZADO EL PARTE: cerrar buscador desplegable si estaba abierto
+                              setArchivedMobileSearchOpen(false);
+                              setSelectedWorkOrderId(id);
+                              navigateTo('work_order_detail');
+                            }}
+                            onReschedule={() => {}}
+                          />
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>

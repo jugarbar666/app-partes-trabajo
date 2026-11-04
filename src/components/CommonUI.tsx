@@ -967,6 +967,18 @@ export const ScreenHeaderBar: React.FC<{
   visibleColumns?: string[];
   onToggleColumn?: (key: string) => void;
   actions?: React.ReactNode;
+  collapsibleSearchOnMobile?: boolean;
+  mobileSearchOpen?: boolean;
+  onMobileSearchOpenChange?: (open: boolean) => void;
+  quickResults?: Array<{
+    id: string;
+    code: string;
+    title: string;
+    subtitle?: string;
+    badge?: string;
+    details?: string;
+  }>;
+  onSelectQuickResult?: (id: string) => void;
 }> = ({
   title,
   subtitle,
@@ -978,8 +990,34 @@ export const ScreenHeaderBar: React.FC<{
   visibleColumns,
   onToggleColumn,
   actions,
+  collapsibleSearchOnMobile = false,
+  mobileSearchOpen: controlledMobileSearchOpen,
+  onMobileSearchOpenChange,
+  quickResults,
+  onSelectQuickResult,
 }) => {
   const [colMenuOpen, setColMenuOpen] = useState(false);
+  const [internalMobileSearchOpen, setInternalMobileSearchOpen] = useState(false);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+
+  const isMobileSearchOpen =
+    controlledMobileSearchOpen !== undefined
+      ? controlledMobileSearchOpen
+      : internalMobileSearchOpen;
+
+  const setMobileSearchOpen = (open: boolean) => {
+    if (onMobileSearchOpenChange) {
+      onMobileSearchOpenChange(open);
+    } else {
+      setInternalMobileSearchOpen(open);
+    }
+  };
+
+  useEffect(() => {
+    if (isMobileSearchOpen && mobileInputRef.current) {
+      mobileInputRef.current.focus();
+    }
+  }, [isMobileSearchOpen]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3 mb-4">
@@ -999,6 +1037,32 @@ export const ScreenHeaderBar: React.FC<{
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Botón compacto de búsqueda para móvil (cuando collapsibleSearchOnMobile está activo) */}
+          {collapsibleSearchOnMobile && onSearchChange && (
+            <button
+              type="button"
+              data-testid="btn-toggle-screen-header-search"
+              onClick={() => {
+                setMobileSearchOpen(!isMobileSearchOpen);
+                if (!isMobileSearchOpen) {
+                  setTimeout(() => mobileInputRef.current?.focus(), 50);
+                }
+              }}
+              className={`md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition ${
+                (searchTerm && searchTerm.trim()) || isMobileSearchOpen
+                  ? 'bg-blue-50 border-blue-300 text-blue-700'
+                  : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+              }`}
+              title="Buscar partes por cualquier campo"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Buscar</span>
+              {searchTerm && searchTerm.trim() && (
+                <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+              )}
+            </button>
+          )}
+
           {availableColumns && visibleColumns && onToggleColumn && (
             <div className="relative">
               <button
@@ -1038,16 +1102,194 @@ export const ScreenHeaderBar: React.FC<{
         </div>
       </div>
 
-      {onSearchChange && (
-        <div className="relative">
+      {/* Buscador de escritorio o buscador fijo cuando no es colapsable en móvil */}
+      {onSearchChange && !collapsibleSearchOnMobile && (
+        <div className="relative flex items-center">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <Search className="w-4 h-4" />
+          </div>
           <input
             type="search"
             value={searchTerm || ''}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Borrar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Buscador responsivo (cuando collapsibleSearchOnMobile está activo) */}
+      {onSearchChange && collapsibleSearchOnMobile && (
+        <>
+          {/* 1. Versión de escritorio siempre fija y visible */}
+          <div className="hidden md:flex relative items-center">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <Search className="w-4 h-4" />
+            </div>
+            <input
+              type="search"
+              value={searchTerm || ''}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => onSearchChange('')}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Borrar búsqueda"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* 2. Versión móvil desplegable que no ocupa espacio vertical cuando está cerrada */}
+          {isMobileSearchOpen && (
+            <div
+              data-testid="screen-header-mobile-search-dropdown"
+              className="block md:hidden p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 shadow-inner"
+            >
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <input
+                    ref={mobileInputRef}
+                    type="search"
+                    data-testid="input-screen-header-mobile-search"
+                    value={searchTerm || ''}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 bg-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    autoFocus
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => onSearchChange('')}
+                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="Borrar texto"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  data-testid="btn-close-screen-header-mobile-search"
+                  onClick={() => setMobileSearchOpen(false)}
+                  className="px-2.5 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold cursor-pointer shrink-0"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              {/* Lista rápida de resultados directos (se cierra al seleccionar el parte localizado) */}
+              {searchTerm && searchTerm.trim() && quickResults && (
+                <div className="space-y-1.5 pt-1 border-t border-slate-200/80">
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 px-0.5">
+                    <span>
+                      {quickResults.length === 0
+                        ? 'Sin coincidencias'
+                        : `${quickResults.length} parte(s) encontrado(s)`}
+                    </span>
+                    {searchTerm.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => onSearchChange('')}
+                        className="text-blue-600 hover:underline font-bold text-[11px]"
+                      >
+                        Limpiar búsqueda
+                      </button>
+                    )}
+                  </div>
+
+                  {quickResults.length > 0 && onSelectQuickResult && (
+                    <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 bg-white rounded-lg border border-slate-200 p-1.5">
+                      {quickResults.slice(0, 15).map((res) => (
+                        <button
+                          key={res.id}
+                          type="button"
+                          data-testid={`quick-result-item-${res.id}`}
+                          onClick={() => {
+                            // LOCALIZADO EL PARTE: se cierra el buscador desplegable
+                            setMobileSearchOpen(false);
+                            onSelectQuickResult(res.id);
+                          }}
+                          className="w-full text-left p-2 rounded-md hover:bg-blue-50 transition flex flex-col gap-0.5 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-mono font-bold text-[11px] text-blue-700">{res.code}</span>
+                            {res.badge && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                                {res.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-bold text-xs text-slate-900 truncate">
+                            {res.title}
+                          </div>
+                          {res.subtitle && (
+                            <div className="text-[11px] text-slate-500 truncate">
+                              📍 {res.subtitle}
+                            </div>
+                          )}
+                          {res.details && (
+                            <div className="text-[11px] text-slate-600 line-clamp-1 italic">
+                              "{res.details}"
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. Chip compacto en móvil cuando está cerrado pero hay filtro activo */}
+          {!isMobileSearchOpen && searchTerm && searchTerm.trim() && (
+            <div className="block md:hidden flex items-center justify-between bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs text-blue-900 shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                <Search className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">
+                  Filtro activo: <strong>"{searchTerm}"</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileSearchOpen(true)}
+                  className="text-blue-700 font-bold hover:underline cursor-pointer"
+                >
+                  Modificar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSearchChange('')}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title="Quitar filtro"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
