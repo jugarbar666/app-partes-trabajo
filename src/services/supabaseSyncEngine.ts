@@ -535,7 +535,14 @@ export class SupabaseRealtimeSyncService {
   private pushDebounceTimer: any = null;
   private isPushing = false;
   private pendingPush = false;
+  private isPulling = false;
   private statusListeners: Set<(state: SyncEngineState) => void> = new Set();
+  private localBroadcastChannel: BroadcastChannel | null = null;
+  private heartbeatTimer: any = null;
+  private reconnectTimer: any = null;
+  private reconnectAttempts = 0;
+  private lastRemoteVersion: number = 0;
+
   private state: SyncEngineState = {
     status: isRemoteSupabaseConfigured ? 'syncing' : 'disabled',
     lastSyncedAt: null,
@@ -543,11 +550,52 @@ export class SupabaseRealtimeSyncService {
     errorMessage: null,
   };
 
-  constructor() {
-    this.deviceId = getOrCreateDeviceId();
+  constructor(customDeviceId?: string) {
+    this.deviceId = customDeviceId || getOrCreateDeviceId();
+
+    // 1. Canal local ultrarrápido entre pestañas y ventanas del mismo navegador (< 2ms)
+    if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.localBroadcastChannel = new BroadcastChannel('fontaneria_roma_local_sync');
+        this.localBroadcastChannel.onmessage = (event) => {
+          const payload = event.data;
+          if (payload && payload.senderId !== this.deviceId && payload.state) {
+            this.handleIncomingRemoteState(payload.state as DatabaseState, 'local_broadcast');
+          }
+        };
+      } catch (e) {
+        console.warn('[Sync] BroadcastChannel no disponible:', e);
+      }
+    }
+
+    // 2. Escucha de eventos de red y ciclo de vida de la ventana
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => this.handleNetworkChange(true));
       window.addEventListener('offline', () => this.handleNetworkChange(false));
+
+      // Sincronización inmediata al volver el usuario a la aplicación o pestaña activa
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            this.handleAppForegroundResume();
+          } else {
+            this.adjustHeartbeatFrequency(false);
+          }
+        });
+      }
+      window.addEventListener('focus', () => {
+        this.handleAppForegroundResume();
+      });
+
+      // Fallback cross-window vía storage
+      window.addEventListener('storage', (e) => {
+        if (this.backend && e.key === (this.backend as any).storageKey && e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            this.handleIncomingRemoteState(parsed, 'storage_event');
+          } catch {}
+        }
+      });
     }
   }
 
@@ -578,6 +626,12 @@ export class SupabaseRealtimeSyncService {
   public async initialize(backend: InstallationBackendEngine): Promise<void> {
     this.backend = backend;
 
+    // Escuchar mutaciones locales de este dispositivo para propagarlas inmediatamente
+    this.backend.onSyncPush(() => {
+      this.dispatchImmediateLocalBroadcast();
+      this.schedulePushToSupabase();
+    });
+
     if (!supabaseClient || !isRemoteSupabaseConfigured) {
       console.info('[SupabaseSync] Modo local activo (Supabase no configurado o deshabilitado).');
       this.updateState({ status: 'disabled' });
@@ -598,16 +652,15 @@ export class SupabaseRealtimeSyncService {
       // 2. Suscripción al canal en tiempo real (WebSockets)
       this.setupRealtimeSubscription();
 
-      // 3. Escuchar mutaciones locales de este dispositivo para propagarlas a Supabase
-      this.backend.onSyncPush(() => {
-        this.schedulePushToSupabase();
-      });
+      // 3. Iniciar latido adaptativo de sincronización periódica
+      this.startAdaptiveHeartbeat();
 
       this.updateState({ status: 'connected', lastSyncedAt: new Date() });
       console.log('[SupabaseSync] Sincronización en tiempo real inicializada correctamente.');
     } catch (err: any) {
       console.warn('[SupabaseSync] Error durante la inicialización:', err);
       this.updateState({ status: 'error', errorMessage: err?.message || 'Error de conexión' });
+      this.startAdaptiveHeartbeat();
     }
   }
 
@@ -617,6 +670,7 @@ export class SupabaseRealtimeSyncService {
     } else {
       this.updateState({ status: 'syncing' });
       if (this.backend) {
+        this.setupRealtimeSubscription();
         this.pullInitialState().then(() => {
           this.updateState({ status: 'connected', lastSyncedAt: new Date() });
           if (this.pendingPush) {
@@ -624,6 +678,95 @@ export class SupabaseRealtimeSyncService {
           }
         });
       }
+    }
+  }
+
+  /**
+   * Se ejecuta de forma inmediata cuando el usuario vuelve a la app o primer plano
+   * (pantalla desbloqueada en móvil, cambio de pestaña, foco de ventana).
+   */
+  public async handleAppForegroundResume(): Promise<void> {
+    this.adjustHeartbeatFrequency(true);
+    if (!this.backend || !isRemoteSupabaseConfigured) return;
+
+    // Verificar si el canal de realtime sigue activo; si no, re-suscribir
+    const isChannelActive = this.channel && (this.channel.state === 'joined' || this.channel.state === 'joining');
+    if (!isChannelActive) {
+      this.setupRealtimeSubscription();
+    }
+
+    // Pull rápido en segundo plano para reflejar de inmediato cualquier cambio
+    await this.pullInitialState();
+  }
+
+  /**
+   * Mantiene un latido periódico adaptativo para garantizar convergencia total
+   * incluso si un paquete WebSocket se pierde por mala cobertura móvil.
+   */
+  private startAdaptiveHeartbeat(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.adjustHeartbeatFrequency(true);
+  }
+
+  private adjustHeartbeatFrequency(isActive: boolean): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (!isRemoteSupabaseConfigured) return;
+
+    // Frecuencia: 6 segundos si la app está en primer plano y visible; 30 segundos si está oculta
+    const intervalMs = isActive ? 6000 : 30000;
+    this.heartbeatTimer = setInterval(() => {
+    if (this.heartbeatTimer?.unref) this.heartbeatTimer.unref();
+      this.checkRemoteUpdatesSilently().catch(() => {});
+    }, intervalMs);
+  }
+
+  /**
+   * Comprueba de manera ultraligera si hay actualizaciones en el servidor
+   * comparando únicamente la versión o fecha para no saturar ancho de banda.
+   */
+  public async checkRemoteUpdatesSilently(): Promise<void> {
+    if (!supabaseClient || !this.backend || this.isPulling || this.isPushing) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    try {
+      this.isPulling = true;
+      const { data, error } = await supabaseClient
+        .from('app_sync_state')
+        .select('installation_id, version, updated_at, updated_by')
+        .eq('installation_id', SYNC_INSTALLATION_ID)
+        .maybeSingle();
+
+      if (error || !data) return;
+
+      const remoteVer = Number(data.version) || 0;
+      const remoteSender = data.updated_by;
+
+      // Si el servidor tiene una versión más nueva que no provino de este dispositivo, descargar estado completo
+      if (remoteSender !== this.deviceId && (remoteVer > this.lastRemoteVersion || !this.lastRemoteVersion)) {
+        await this.pullInitialState();
+      }
+    } catch (err) {
+      // Ignorar errores transitorios de red silenciosamente
+    } finally {
+      this.isPulling = false;
+    }
+  }
+
+  /**
+   * Emite de forma instantánea (< 2ms) el estado actual a otras pestañas/ventanas
+   * en este mismo dispositivo o navegador.
+   */
+  private dispatchImmediateLocalBroadcast(): void {
+    if (!this.backend || !this.localBroadcastChannel) return;
+    try {
+      const state = this.backend.exportFullSnapshot();
+      this.localBroadcastChannel.postMessage({
+        senderId: this.deviceId,
+        timestamp: Date.now(),
+        state,
+      });
+    } catch (err) {
+      // Ignore broadcast channel errors
     }
   }
 
@@ -646,11 +789,14 @@ export class SupabaseRealtimeSyncService {
       }
 
       if (data && data.state) {
+        if (data.version) {
+          this.lastRemoteVersion = Math.max(this.lastRemoteVersion, Number(data.version));
+        }
         // Fusionar datos remotos con locales
         const localSnapshot = this.backend.exportFullSnapshot();
         const merged = mergeDatabaseStates(localSnapshot, data.state as DatabaseState);
         this.backend.applyRemoteSyncState(merged);
-        this.updateState({ lastSyncedAt: new Date(), status: 'connected' });
+        this.updateState({ lastSyncedAt: new Date(), status: 'connected', errorMessage: null });
         console.log('[SupabaseSync] Base de datos sincronizada con Supabase en tiempo real.');
       } else {
         // Primera ejecución: la tabla de Supabase está vacía. Subir el estado inicial oficial.
@@ -669,8 +815,25 @@ export class SupabaseRealtimeSyncService {
   private setupRealtimeSubscription(): void {
     if (!supabaseClient) return;
 
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    // Limpiar cualquier canal previo existente con el mismo topic
     if (this.channel) {
-      supabaseClient.removeChannel(this.channel);
+      try {
+        supabaseClient.removeChannel(this.channel);
+      } catch {}
+      this.channel = null;
+    }
+    if (supabaseClient && typeof (supabaseClient as any).getChannels === 'function') {
+      const activeChannels = (supabaseClient as any).getChannels() || [];
+      for (const ch of activeChannels) {
+        if (ch && (ch as any).topic === 'realtime:fontaneria_roma_realtime_sync') {
+          try { supabaseClient.removeChannel(ch); } catch {}
+        }
+      }
     }
 
     this.channel = supabaseClient.channel('fontaneria_roma_realtime_sync', {
@@ -691,47 +854,76 @@ export class SupabaseRealtimeSyncService {
       (payload: any) => {
         if (payload?.new && payload.new.state) {
           const sender = payload.new.updated_by;
+          if (payload.new.version) {
+            this.lastRemoteVersion = Math.max(this.lastRemoteVersion, Number(payload.new.version));
+          }
           if (sender !== this.deviceId) {
-            this.handleIncomingRemoteState(payload.new.state as DatabaseState);
+            this.handleIncomingRemoteState(payload.new.state as DatabaseState, 'postgres_changes');
           }
         }
       }
     );
 
-    // 2. Escuchar difusión P2P de baja latencia (< 50ms) vía Broadcast
+    // 2. Escuchar difusión P2P de ultrabaja latencia (< 50ms) vía Broadcast
     this.channel.on('broadcast', { event: 'realtime_db_mutation' }, ({ payload }: any) => {
       if (payload && payload.senderId !== this.deviceId && payload.state) {
-        this.handleIncomingRemoteState(payload.state as DatabaseState);
+        if (payload.version) {
+          this.lastRemoteVersion = Math.max(this.lastRemoteVersion, Number(payload.version));
+        }
+        this.handleIncomingRemoteState(payload.state as DatabaseState, 'supabase_broadcast');
       }
     });
 
     this.channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
-        this.updateState({ status: 'connected' });
+        this.reconnectAttempts = 0;
+        this.updateState({ status: 'connected', errorMessage: null });
         console.log('[Supabase Realtime] Canal suscrito y activo.');
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn(`[Supabase Realtime] Estado de canal: ${status}`);
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.warn(`[Supabase Realtime] Estado de canal: ${status}. Programando reconexión.`);
+        this.handleRealtimeDisconnect();
       }
     });
+  }
+
+  private handleRealtimeDisconnect(): void {
+    if (this.reconnectTimer) return;
+    this.updateState({ status: 'syncing' });
+    this.reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 8000);
+    this.reconnectTimer = setTimeout(() => {
+    if (this.reconnectTimer?.unref) this.reconnectTimer.unref();
+      this.reconnectTimer = null;
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        this.setupRealtimeSubscription();
+        this.pullInitialState().catch(() => {});
+      }
+    }, delay);
   }
 
   /**
    * Aplica un estado recibido desde otro dispositivo de forma no destructiva.
    */
-  private handleIncomingRemoteState(remoteState: DatabaseState): void {
+  private handleIncomingRemoteState(remoteState: DatabaseState, source = 'unknown'): void {
     if (!this.backend || !remoteState) return;
 
-    console.log('[Supabase Realtime] Cambio recibido en directo desde otro dispositivo.');
+    console.log(`[Supabase Realtime] Cambio recibido en directo desde otro dispositivo vía ${source}.`);
     const localSnapshot = this.backend.exportFullSnapshot();
     const merged = mergeDatabaseStates(localSnapshot, remoteState);
     this.backend.applyRemoteSyncState(merged);
-    this.updateState({ lastSyncedAt: new Date(), status: 'connected' });
+    this.updateState({ lastSyncedAt: new Date(), status: 'connected', errorMessage: null });
   }
 
   /**
-   * Programa una subida diferida (debounce) a Supabase tras cambios locales.
+   * Programa una subida de cambios locales:
+   * 1. Emisión instantánea (< 2ms) a pestañas locales vía BroadcastChannel.
+   * 2. Emisión instantánea (< 50ms) a otros dispositivos vía Supabase Realtime Broadcast.
+   * 3. Persistencia en PostgreSQL con debounce de 300ms para agrupar ráfagas.
    */
   private schedulePushToSupabase(): void {
+    // 1. Difusión local inmediata
+    this.dispatchImmediateLocalBroadcast();
+
     if (!supabaseClient || !isRemoteSupabaseConfigured) return;
 
     if (this.pushDebounceTimer) {
@@ -740,16 +932,19 @@ export class SupabaseRealtimeSyncService {
 
     this.updateState({ status: 'syncing' });
 
-    // Emisión inmediata vía Broadcast para otros dispositivos conectados (< 50ms)
+    // 2. Emisión inmediata vía WebSocket Realtime Broadcast (0ms delay)
     if (this.channel && this.backend) {
       try {
         const state = sanitizeStateForCloudSync(this.backend.exportFullSnapshot());
+        const version = Date.now();
+        this.lastRemoteVersion = Math.max(this.lastRemoteVersion, version);
         this.channel.send({
           type: 'broadcast',
           event: 'realtime_db_mutation',
           payload: {
             senderId: this.deviceId,
-            timestamp: Date.now(),
+            timestamp: version,
+            version,
             state,
           },
         });
@@ -758,10 +953,11 @@ export class SupabaseRealtimeSyncService {
       }
     }
 
-    // Persistencia en tabla PostgreSQL con debounce de 350ms para agrupar ráfagas
+    // 3. Persistencia en tabla PostgreSQL con debounce de 300ms para agrupar ráfagas
     this.pushDebounceTimer = setTimeout(() => {
+    if (this.pushDebounceTimer?.unref) this.pushDebounceTimer.unref();
       this.pushStateToSupabase();
-    }, 350);
+    }, 300);
   }
 
   /**
@@ -780,11 +976,12 @@ export class SupabaseRealtimeSyncService {
 
     try {
       const currentState = sanitizeStateForCloudSync(this.backend.exportFullSnapshot());
-      const currentUser = this.backend.getCurrentUser();
+      const version = Date.now();
+      this.lastRemoteVersion = Math.max(this.lastRemoteVersion, version);
 
       const { error } = await supabaseClient.from('app_sync_state').upsert({
         installation_id: SYNC_INSTALLATION_ID,
-        version: Date.now(),
+        version,
         state: currentState,
         updated_at: new Date().toISOString(),
         updated_by: this.deviceId,
@@ -859,6 +1056,25 @@ export class SupabaseRealtimeSyncService {
     }
 
     throw new Error('No se encontró ninguna instantánea en la base de datos de la nube.');
+  }
+
+  public destroy(): void {
+    if (this.pushDebounceTimer) clearTimeout(this.pushDebounceTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.localBroadcastChannel) {
+      try {
+        this.localBroadcastChannel.close();
+      } catch {}
+      this.localBroadcastChannel = null;
+    }
+    if (this.channel && supabaseClient) {
+      try {
+        supabaseClient.removeChannel(this.channel);
+      } catch {}
+      this.channel = null;
+    }
+    this.statusListeners.clear();
   }
 }
 
