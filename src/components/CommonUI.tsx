@@ -708,14 +708,18 @@ export const SearchableSelect: React.FC<{
 
   // Cierre al hacer clic fuera del componente
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         setSearchTerm('');
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
   }, []);
 
   const handleSelectOption = (optValue: string) => {
@@ -1007,8 +1011,34 @@ export const ScreenHeaderBar: React.FC<{
   onSelectQuickResult,
 }) => {
   const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
   const [internalMobileSearchOpen, setInternalMobileSearchOpen] = useState(false);
   const mobileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cierre robusto del menú de columnas al pulsar fuera o presionar Escape
+  useEffect(() => {
+    if (!colMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setColMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setColMenuOpen(false);
+    };
+    let timer: any = null;
+    timer = setTimeout(() => {
+      document.addEventListener('click', handleOutsideClick);
+      document.addEventListener('touchend', handleOutsideClick);
+    }, 50);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('touchend', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [colMenuOpen]);
 
   const isMobileSearchOpen =
     controlledMobileSearchOpen !== undefined
@@ -1074,11 +1104,13 @@ export const ScreenHeaderBar: React.FC<{
           )}
 
           {availableColumns && visibleColumns && onToggleColumn && (
-            <div className="relative">
+            <div className="relative" ref={colMenuRef}>
               <button
                 type="button"
                 onClick={() => setColMenuOpen((o) => !o)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium cursor-pointer"
+                aria-haspopup="true"
+                aria-expanded={colMenuOpen}
               >
                 <Columns className="w-4 h-4" /> Campos visibles ({visibleColumns.length})
               </button>

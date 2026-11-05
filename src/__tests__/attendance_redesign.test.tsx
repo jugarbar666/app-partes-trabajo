@@ -216,24 +216,28 @@ describe('Gestión de Fichajes: Retirada de móvil/tablets y rediseño compacto 
       // Acciones principales visibles
       const btnAdd = container.querySelector('[data-testid="btn-add-attendance"]');
       const btnPdf = container.querySelector('[data-testid="btn-download-attendance-pdf"]');
-      const btnMore = container.querySelector('[data-testid="btn-more-actions"]') as HTMLButtonElement;
+      const selectMore = container.querySelector('[data-testid="btn-more-actions"]') as HTMLSelectElement;
 
       expect(btnAdd).toBeTruthy();
       expect(btnPdf).toBeTruthy();
-      expect(btnMore).toBeTruthy();
+      expect(selectMore).toBeTruthy();
+      expect(selectMore.tagName.toLowerCase()).toBe('select');
 
-      // Abrir «Más acciones»
+      const optAutoResolve = container.querySelector('[data-testid="btn-auto-resolve-attendance"]');
+      const optCorrections = container.querySelector('[data-testid="btn-open-corrections-modal"]');
+      const optInfo = container.querySelector('[data-testid="btn-open-schedule-info-modal"]');
+
+      expect(optAutoResolve).toBeTruthy();
+      expect(optCorrections).toBeTruthy();
+      expect(optInfo).toBeTruthy();
+
+      // Formato desplegable select idéntico a Catálogos y ficheros: permanece fijo y ejecuta la acción al seleccionar
       await act(async () => {
-        btnMore.click();
+        selectMore.value = 'corrections';
+        selectMore.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      const btnAutoResolve = container.querySelector('[data-testid="btn-auto-resolve-attendance"]');
-      const btnCorrections = container.querySelector('[data-testid="btn-open-corrections-modal"]');
-      const btnInfo = container.querySelector('[data-testid="btn-open-schedule-info-modal"]');
-
-      expect(btnAutoResolve).toBeTruthy();
-      expect(btnCorrections).toBeTruthy();
-      expect(btnInfo).toBeTruthy();
+      expect(container.textContent).toContain('Historial de Correcciones Administrativas');
     });
 
     it('permite búsqueda en tiempo real sin importar mayúsculas ni tildes con botón de borrado', async () => {

@@ -1,5 +1,5 @@
 {
-  "version": "1.9.7",
-  "releasedAt": "2026-11-04T08:40:00.000Z",
-  "notes": "Unificación del modelo de selección de fecha y hora mediante ventana emergente de ruedas azul y blanca en creación y programación de partes de trabajo para escritorio y móvil"
+  "version": "1.9.8",
+  "releasedAt": "2026-11-05T08:12:00.000Z",
+  "notes": "Rediseño compacto de Catálogos y ficheros con desplegables nativos de fichero y acción, buscador insensible a tildes/mayúsculas; vaciado seguro de cualquier catálogo con doble confirmación roja; rediseño de Revisiones periódicas; fijación del desplegable Más acciones en Fichajes; blindaje y recuperación de importes oficiales de compra y venta de artículos."
 }

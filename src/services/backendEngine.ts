@@ -51,6 +51,7 @@ import { isInstalledDesktopApp } from '../config/branchConfig';
 import { createDemoSeedState, createCleanDatabaseState, DatabaseState } from './seedData';
 import { populateCiudadRealDemoData } from './demoDatasetCiudadReal';
 import { populateRomaOfficialDemoData } from './romaOfficialDemoGenerator';
+import { OFFICIAL_ROMA_ARTICLE_PRICES } from './officialArticlesCatalog';
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1916,6 +1917,15 @@ export class InstallationBackendEngine {
       .filter((a) => (user.role === 'admin' && includeInactive ? true : a.is_active))
       .map((a) => {
         const clone: Article = { ...a };
+        const official = OFFICIAL_ROMA_ARTICLE_PRICES[a.code?.toUpperCase()];
+        if (official) {
+          if (clone.purchase_price_cents === null || clone.purchase_price_cents === undefined) {
+            clone.purchase_price_cents = official.purchase_price_cents;
+          }
+          if (clone.sale_price_cents === null || clone.sale_price_cents === undefined) {
+            clone.sale_price_cents = official.sale_price_cents;
+          }
+        }
         // El precio de compra se trata como dato administrativo reservado
         if (user.role !== 'admin') {
           delete clone.purchase_price_cents;

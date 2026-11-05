@@ -207,7 +207,7 @@ export const ImportExportModule: React.FC<{
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
       setWorkbookRef(wb);
       setFileName(file.name);
       setSheetNames(wb.SheetNames);

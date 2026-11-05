@@ -174,7 +174,7 @@ export const MasterDataAndUsersModule: React.FC<{
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
       const firstSheet = wb.SheetNames[0];
       if (!firstSheet) {
         notifyError('El archivo Excel no contiene ninguna hoja.');
@@ -475,7 +475,7 @@ export const MasterDataAndUsersModule: React.FC<{
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
       const firstSheet = wb.SheetNames[0];
       if (!firstSheet) {
         notifyError('El archivo Excel no contiene ninguna hoja.');
@@ -604,7 +604,7 @@ export const MasterDataAndUsersModule: React.FC<{
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
       const firstSheet = wb.SheetNames[0];
       if (!firstSheet) {
         notifyError('El archivo Excel no contiene ninguna hoja.');

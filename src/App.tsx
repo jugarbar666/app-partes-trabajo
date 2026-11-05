@@ -2370,6 +2370,7 @@ const MainApplicationContent: React.FC = () => {
 
               <button
                 type="button"
+                data-testid="nav-archived-btn"
                 onClick={() => navigateTo('archived_work_orders')}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'archived_work_orders'
@@ -2383,6 +2384,7 @@ const MainApplicationContent: React.FC = () => {
 
               <button
                 type="button"
+                data-testid="nav-reviews-btn"
                 onClick={() => navigateTo('reviews')}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'reviews'
@@ -2398,7 +2400,8 @@ const MainApplicationContent: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => navigateTo('shopping')}
+            data-testid="nav-shopping-btn"
+                onClick={() => navigateTo('shopping')}
             className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition ${
               currentRoute === 'shopping'
                 ? 'bg-blue-600 text-white font-semibold shadow-sm'
@@ -2444,6 +2447,7 @@ const MainApplicationContent: React.FC = () => {
                   setMasterInitialTab('customers');
                   navigateTo('masters');
                 }}
+                data-testid="nav-masters-btn"
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
                   currentRoute === 'masters' && masterInitialTab !== 'users'
                     ? 'bg-blue-600 text-white font-semibold shadow-sm'
@@ -2700,7 +2704,7 @@ const MainApplicationContent: React.FC = () => {
                 >
                   📱 Vista Móvil <ChevronDown className="w-3 h-3 opacity-60" />
                 </a>
-                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 hidden group-hover:block hover:block text-xs">
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 hidden group-hover:block hover:block text-xs before:content-[''] before:absolute before:-top-3 before:left-0 before:right-0 before:h-3">
                   <div className="px-3 py-1 text-[10px] font-bold uppercase text-slate-400">
                     Versiones Móviles (Pruebas)
                   </div>
@@ -4985,7 +4989,7 @@ const MainApplicationContent: React.FC = () => {
           {/* 7. FICHAJE Y CONTROL HORARIO (Gestión de fichajes solo en escritorio) */}
           {currentRoute === 'attendance' && !isMobileDeviceOrViewport() && (
             <AttendanceAndReportsModule
-              key={tick}
+
               backend={backend}
               onBack={navigateBack}
               onRefresh={refresh}

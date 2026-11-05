@@ -140,18 +140,20 @@ describe('Rediseño de Pantallas de Revisiones Periódicas (Móvil, Tablet y Esc
     const createBtn = container.querySelector('[data-testid="btn-create-review"]');
     expect(createBtn).toBeTruthy();
 
-    // Desplegable «Más acciones»
-    const moreActionsBtn = container.querySelector('[data-testid="btn-more-actions"]') as HTMLButtonElement;
-    expect(moreActionsBtn).toBeTruthy();
+    // Desplegable «Más acciones» (Formato select nativo idéntico a Catálogos y ficheros)
+    const moreActionsSelect = container.querySelector('[data-testid="btn-more-actions"]') as HTMLSelectElement;
+    expect(moreActionsSelect).toBeTruthy();
+    expect(moreActionsSelect.tagName.toLowerCase()).toBe('select');
 
-    // Abrir Más acciones
+    const processQueueOpt = container.querySelector('[data-testid="btn-process-notification-queue"]');
+    expect(processQueueOpt).toBeTruthy();
+    expect(processQueueOpt?.textContent).toContain('Ejecutar Cola de Avisos Ahora');
+
+    // Ejecución al seleccionar la opción
     await act(async () => {
-      moreActionsBtn.click();
+      moreActionsSelect.value = 'process_queue';
+      moreActionsSelect.dispatchEvent(new Event('change', { bubbles: true }));
     });
-
-    const processQueueBtn = container.querySelector('[data-testid="btn-process-notification-queue"]');
-    expect(processQueueBtn).toBeTruthy();
-    expect(processQueueBtn?.textContent).toContain('Ejecutar Cola de Avisos Ahora');
   });
 
   it('2. el buscador localiza revisiones con coincidencias parciales ignorando mayúsculas y tildes', async () => {

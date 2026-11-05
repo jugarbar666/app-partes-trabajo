@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   CalendarClock,
   Calendar,
@@ -86,8 +86,43 @@ export const ReviewsAndNotificationsModule: React.FC<{
   // Controles de interfaz compacta
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const moreActionsRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState<number | 'all'>(25);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Cierre robusto y estable del desplegable de Más acciones
+  useEffect(() => {
+    if (!showMoreActions) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (moreActionsRef.current && !moreActionsRef.current.contains(e.target as Node)) {
+        setShowMoreActions(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowMoreActions(false);
+      }
+    };
+
+    let timer: any = null;
+    const bindListeners = () => {
+      document.addEventListener('click', handleOutsideClick);
+      document.addEventListener('touchend', handleOutsideClick);
+    };
+
+    // Margen de 50ms para evitar que el mismo click o touch que abre el desplegable lo cierre inmediatamente
+    timer = setTimeout(bindListeners, 50);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('touchend', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showMoreActions]);
 
   // Alta y Modificación de revisión periódica
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -468,59 +503,33 @@ export const ReviewsAndNotificationsModule: React.FC<{
               <span className="sm:hidden">Nueva</span>
             </button>
 
-            {/* Desplegable «Más acciones» */}
+            {/* Desplegable «Acciones» (Formato select nativo idéntico a Catálogos y ficheros: permanece fijo y no se cierra hasta seleccionar una opción) */}
             <div className="relative shrink-0">
-              <button
-                type="button"
+              <select
                 data-testid="btn-more-actions"
-                onClick={() => setShowMoreActions(!showMoreActions)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
-                title="Más acciones y utilidades"
+                aria-label="Más acciones de revisiones"
+                defaultValue=""
+                onChange={(e) => {
+                  const act = e.target.value;
+                  if (!act) return;
+                  if (act === 'process_queue') {
+                    const res = backend.processNotificationQueue();
+                    notifySuccessGreen(
+                      `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
+                    );
+                    refresh();
+                  } else if (act === 'refresh') {
+                    refresh();
+                  }
+                  e.target.value = '';
+                }}
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs hover:bg-slate-50 transition"
               >
-                <span>Acciones</span>
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-
-              {showMoreActions && (
-                <div
-                  className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
-                  onMouseLeave={() => setShowMoreActions(false)}
-                >
-                  <button
-                    type="button"
-                    data-testid="btn-process-notification-queue"
-                    onClick={() => {
-                      setShowMoreActions(false);
-                      const res = backend.processNotificationQueue();
-                      notifySuccessGreen(
-                        `Cola de avisos procesada: ${res.sent} enviados, ${res.skippedRecovery} omitidos por recuperación.`
-                      );
-                      refresh();
-                    }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition text-blue-700 font-semibold cursor-pointer"
-                  >
-                    <Send className="w-4 h-4 text-blue-600 shrink-0" />
-                    <div>
-                      <div>Ejecutar Cola de Avisos Ahora</div>
-                      <div className="text-[10px] text-slate-500 font-normal">Envía correos programados pendientes</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreActions(false);
-                      refresh();
-                    }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium border-t border-slate-100 cursor-pointer"
-                  >
-                    <RefreshCw className="w-4 h-4 text-slate-500 shrink-0" />
-                    <div>
-                      <div>Actualizar Listado</div>
-                      <div className="text-[10px] text-slate-500 font-normal">Recarga revisiones y estado actual</div>
-                    </div>
-                  </button>
-                </div>
-              )}
+                <option value="" disabled>Acciones</option>
+                <option value="process_queue" data-testid="btn-process-notification-queue">✉️ Ejecutar Cola de Avisos Ahora</option>
+                <option value="refresh">🔄 Actualizar Listado</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
         </div>
@@ -1904,6 +1913,41 @@ export const AttendanceAndReportsModule: React.FC<{
   const [datePreset, setDatePreset] = useState<'this_month' | 'today' | 'this_week' | 'last_month' | 'all' | 'custom'>('this_month');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const moreActionsRef = useRef<HTMLDivElement>(null);
+
+  // Cierre robusto y estable del desplegable de Más acciones en Gestión de Fichajes
+  useEffect(() => {
+    if (!showMoreActions) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (moreActionsRef.current && !moreActionsRef.current.contains(e.target as Node)) {
+        setShowMoreActions(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowMoreActions(false);
+      }
+    };
+
+    let timer: any = null;
+    const bindListeners = () => {
+      document.addEventListener('click', handleOutsideClick);
+      document.addEventListener('touchend', handleOutsideClick);
+    };
+
+    // Margen de 50ms para evitar que el mismo click o touch que abre el desplegable lo cierre inmediatamente
+    timer = setTimeout(bindListeners, 50);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('touchend', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showMoreActions]);
   const [showScheduleInfoModal, setShowScheduleInfoModal] = useState(false);
   const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
 
@@ -2256,70 +2300,28 @@ export const AttendanceAndReportsModule: React.FC<{
                 <span className="sm:hidden">PDF</span>
               </button>
 
-              {/* Desplegable «Más acciones» */}
+              {/* Desplegable «Más acciones» (Formato select nativo idéntico a Catálogos y ficheros: permanece fijo y no se cierra hasta seleccionar una opción) */}
               <div className="relative">
-                <button
-                  type="button"
+                <select
                   data-testid="btn-more-actions"
-                  onClick={() => setShowMoreActions(!showMoreActions)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                  aria-label="Más acciones"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const act = e.target.value;
+                    if (!act) return;
+                    if (act === 'auto_resolve') handleRunAutoResolveAttendance();
+                    else if (act === 'corrections') setShowCorrectionsModal(true);
+                    else if (act === 'schedule_info') setShowScheduleInfoModal(true);
+                    e.target.value = '';
+                  }}
+                  className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs hover:bg-slate-50 transition"
                 >
-                  <span>Más acciones</span>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-
-                {showMoreActions && (
-                  <div
-                    className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
-                    onMouseLeave={() => setShowMoreActions(false)}
-                  >
-                    <button
-                      type="button"
-                      data-testid="btn-auto-resolve-attendance"
-                      onClick={() => {
-                        setShowMoreActions(false);
-                        handleRunAutoResolveAttendance();
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition text-indigo-700 font-semibold cursor-pointer"
-                    >
-                      <Check className="w-4 h-4 text-indigo-600 shrink-0" />
-                      <div>
-                        <div>Cierre Automático Ahora</div>
-                        <div className="text-[10px] text-slate-500 font-normal">Aplica horario individual a jornadas</div>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="btn-open-corrections-modal"
-                      onClick={() => {
-                        setShowMoreActions(false);
-                        setShowCorrectionsModal(true);
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium cursor-pointer"
-                    >
-                      <History className="w-4 h-4 text-slate-500 shrink-0" />
-                      <div>
-                        <div>Historial de Correcciones ({corrections.length})</div>
-                        <div className="text-[10px] text-slate-500 font-normal">Auditoría con motivo inmutable</div>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="btn-open-schedule-info-modal"
-                      onClick={() => {
-                        setShowMoreActions(false);
-                        setShowScheduleInfoModal(true);
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition font-medium border-t border-slate-100 cursor-pointer"
-                    >
-                      <Info className="w-4 h-4 text-blue-500 shrink-0" />
-                      <div>
-                        <div>Información de Horarios</div>
-                        <div className="text-[10px] text-slate-500 font-normal">Configuración y reglas de jornada</div>
-                      </div>
-                    </button>
-                  </div>
-                )}
+                  <option value="" disabled>Más acciones</option>
+                  <option value="auto_resolve" data-testid="btn-auto-resolve-attendance">⚡ Cierre Automático Ahora</option>
+                  <option value="corrections" data-testid="btn-open-corrections-modal">📜 Historial de Correcciones ({corrections.length})</option>
+                  <option value="schedule_info" data-testid="btn-open-schedule-info-modal">ℹ️ Información de Horarios</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </>
           )}
@@ -2776,6 +2778,7 @@ export const AttendanceAndReportsModule: React.FC<{
               <button
                 type="button"
                 onClick={() => setShowScheduleInfoModal(false)}
+                data-testid="btn-close-schedule-info"
                 className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
               >
                 Entendido

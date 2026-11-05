@@ -27,6 +27,7 @@ import {
   sanitizeSpreadsheetCell,
 } from './formatters';
 import { InstallationBackendEngine } from '../services/backendEngine';
+import { OFFICIAL_ROMA_ARTICLE_PRICES } from '../services/officialArticlesCatalog';
 
 // =============================================================================
 // 1. EXPORTACIÓN SEGURA A EXCEL (.xlsx) RESPETANDO COLUMNAS, FILTROS Y PERMISOS
@@ -546,6 +547,106 @@ export function isSampleRecordRow(
  * a las cabeceras oficiales de la plantilla descargable y evitando falsos positivos
  * (por ejemplo, impidiendo que 'Codigo_Articulo' sea asignado al nombre por coincidencia parcial).
  */
+
+export function extractValueFromRaw(
+  raw: Record<string, unknown>,
+  sourceColumn: string,
+  targetField: string
+): string {
+  if (!raw) return '';
+
+  // 1. Coincidencia directa por clave exacta
+  if (sourceColumn && raw[sourceColumn] !== undefined && raw[sourceColumn] !== null) {
+    const s = String(raw[sourceColumn]).trim();
+    if (s !== '') return s;
+  }
+
+  const norm = (s: string) =>
+    (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+
+  const targetNorm = norm(targetField);
+  const sourceNorm = norm(sourceColumn);
+
+  // 2. Coincidencia por clave normalizada (elimina espacios extras, guiones bajos, mayúsculas/minúsculas y acentos)
+  for (const [k, v] of Object.entries(raw)) {
+    if (v === undefined || v === null) continue;
+    const s = String(v).trim();
+    if (s === '') continue;
+    const kNorm = norm(k);
+    if (kNorm === sourceNorm || kNorm === targetNorm) {
+      return s;
+    }
+  }
+
+  // 3. Coincidencias semánticas refinadas para importes monetarios
+  if (targetField === 'purchase_price') {
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s === '') continue;
+      const kNorm = norm(k);
+      if (kNorm.includes('compra') || kNorm.includes('coste') || kNorm.includes('costo')) {
+        return s;
+      }
+    }
+  }
+
+  if (targetField === 'sale_price') {
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s === '') continue;
+      const kNorm = norm(k);
+      if (kNorm.includes('venta') || kNorm.includes('pvp') || kNorm.includes('tarifa')) {
+        return s;
+      }
+    }
+  }
+
+  // 4. Coincidencias semánticas para nombre y código
+  if (targetField === 'name') {
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s === '') continue;
+      const kNorm = norm(k);
+      if ((kNorm.includes('nombre') || kNorm.includes('descrip') || kNorm.includes('articulo')) && !kNorm.includes('codigo')) {
+        return s;
+      }
+    }
+  }
+
+  if (targetField === 'code') {
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s === '') continue;
+      const kNorm = norm(k);
+      if (kNorm.includes('codigo') || kNorm.includes('referencia') || kNorm === 'cod') {
+        return s;
+      }
+    }
+  }
+
+  if (targetField === 'supplier') {
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s === '') continue;
+      const kNorm = norm(k);
+      if (kNorm.includes('proveedor') || kNorm.includes('distribuidor')) {
+        return s;
+      }
+    }
+  }
+
+  return '';
+}
+
 export function buildDefaultEntityMapping(
   entityType: 'customers' | 'suppliers' | 'articles' | 'reviews' | 'work_orders' | 'attendance',
   headers: string[]
@@ -987,18 +1088,33 @@ export function executeValidatedImport(params: {
         const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
         const artCode = (row.mapped.code || row.mapped.codigo || row.mapped.codigo_articulo || '').trim();
 
+        const existingArticleSync = row.isDuplicate && row.existingId ? params.backend.getArticles(true).find((a) => a.id === row.existingId) : null;
+        const officialRefSync = OFFICIAL_ROMA_ARTICLE_PRICES[artCode.toUpperCase()];
+        let buyPriceSync = row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
+          ? parseEurosToCents(row.mapped.purchase_price)
+          : null;
+        if (buyPriceSync === null && officialRefSync?.purchase_price_cents !== null && officialRefSync?.purchase_price_cents !== undefined) {
+          buyPriceSync = officialRefSync.purchase_price_cents;
+        } else if (buyPriceSync === null && existingArticleSync?.purchase_price_cents !== null && existingArticleSync?.purchase_price_cents !== undefined) {
+          buyPriceSync = existingArticleSync.purchase_price_cents;
+        }
+        let salePriceSync = row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
+          ? parseEurosToCents(row.mapped.sale_price)
+          : null;
+        if (salePriceSync === null && officialRefSync?.sale_price_cents !== null && officialRefSync?.sale_price_cents !== undefined) {
+          salePriceSync = officialRefSync.sale_price_cents;
+        } else if (salePriceSync === null && existingArticleSync?.sale_price_cents !== null && existingArticleSync?.sale_price_cents !== undefined) {
+          salePriceSync = existingArticleSync.sale_price_cents;
+        }
+
         params.backend.saveArticle({
           id: row.isDuplicate ? row.existingId : undefined,
           code: artCode,
           name: artName,
           description: row.mapped.description || '',
           supplier_id: matchedSupplier ? matchedSupplier.id : null,
-          purchase_price_cents: row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
-            ? parseEurosToCents(row.mapped.purchase_price)
-            : null,
-          sale_price_cents: row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
-            ? parseEurosToCents(row.mapped.sale_price)
-            : null,
+          purchase_price_cents: buyPriceSync,
+          sale_price_cents: salePriceSync,
           unit: row.mapped.unit || row.mapped.unidad_medida || 'ud',
           is_active: true,
         });
@@ -1229,12 +1345,25 @@ export async function executeValidatedImportAsync(params: {
             const artName = row.mapped.name || row.mapped.nombre || row.mapped.nombre_articulo || '';
             const artCode = (row.mapped.code || row.mapped.codigo || row.mapped.codigo_articulo || '').trim();
 
-            const buyPrice = row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
+            const existingArticle = row.isDuplicate && row.existingId ? params.backend.getArticles(true).find((a) => a.id === row.existingId) : null;
+            const officialRef = OFFICIAL_ROMA_ARTICLE_PRICES[artCode.toUpperCase()];
+            let buyPrice = row.mapped.purchase_price && row.mapped.purchase_price.trim() !== ''
               ? parseEurosToCents(row.mapped.purchase_price)
               : null;
-            const salePrice = row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
+            if (buyPrice === null && officialRef?.purchase_price_cents !== null && officialRef?.purchase_price_cents !== undefined) {
+              buyPrice = officialRef.purchase_price_cents;
+            } else if (buyPrice === null && existingArticle?.purchase_price_cents !== null && existingArticle?.purchase_price_cents !== undefined) {
+              buyPrice = existingArticle.purchase_price_cents;
+            }
+
+            let salePrice = row.mapped.sale_price && row.mapped.sale_price.trim() !== ''
               ? parseEurosToCents(row.mapped.sale_price)
               : null;
+            if (salePrice === null && officialRef?.sale_price_cents !== null && officialRef?.sale_price_cents !== undefined) {
+              salePrice = officialRef.sale_price_cents;
+            } else if (salePrice === null && existingArticle?.sale_price_cents !== null && existingArticle?.sale_price_cents !== undefined) {
+              salePrice = existingArticle.sale_price_cents;
+            }
 
             params.backend.saveArticle({
               id: row.isDuplicate ? row.existingId : undefined,

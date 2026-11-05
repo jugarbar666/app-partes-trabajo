@@ -1,0 +1,139 @@
+[
+  {
+    "category": "Entorno",
+    "testName": "Acceso seguro al portal y conectividad remota",
+    "status": "PASS",
+    "details": {
+      "online": true
+    },
+    "timestamp": "2026-11-05T07:06:00.879Z"
+  },
+  {
+    "category": "Autenticacion",
+    "testName": "Inicio de sesión y carga completa de Administrador",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:06.803Z"
+  },
+  {
+    "category": "Fichajes",
+    "testName": "Desplegable nativo «Más acciones» tipo select idéntico a Catálogos",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:11.330Z"
+  },
+  {
+    "category": "Fichajes",
+    "testName": "Ejecución de acción desde desplegable (Modal de Horarios)",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:14.428Z"
+  },
+  {
+    "category": "Catalogos",
+    "testName": "Recuperación y visualización correcta de precios de catálogo oficial",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:26.459Z"
+  },
+  {
+    "category": "Catalogos",
+    "testName": "Cambio dinámico a catálogo de Clientes",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:31.175Z"
+  },
+  {
+    "category": "Catalogos",
+    "testName": "Búsqueda parcial tolerante a tildes y mayúsculas",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:06:41.891Z"
+  },
+  {
+    "category": "SeguridadVaciado",
+    "testName": "Primera ventana emergente de confirmación en rojo",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:01.120Z"
+  },
+  {
+    "category": "SeguridadVaciado",
+    "testName": "Segunda ventana emergente con confirmación definitiva",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:30.535Z"
+  },
+  {
+    "category": "Revisiones",
+    "testName": "Selector nativo de «Acciones» en cabecera de Revisiones",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:47.713Z"
+  },
+  {
+    "category": "ListaCompra",
+    "testName": "Acceso y visualización de Lista de Compra de Materiales",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:50.078Z"
+  },
+  {
+    "category": "PartesTrabajo",
+    "testName": "Carga de listado integral de Partes de Trabajo",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:52.515Z"
+  },
+  {
+    "category": "PartesArchivados",
+    "testName": "Acceso a historial de Partes Archivados",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:55.128Z"
+  },
+  {
+    "category": "ResponsiveTablet",
+    "testName": "Interfaz adaptada a iPad en Vertical (768x1024)",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:07:58.099Z"
+  },
+  {
+    "category": "ResponsiveTablet",
+    "testName": "Ausencia de desbordamiento horizontal en iPad Horizontal",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:08:01.148Z"
+  },
+  {
+    "category": "ResponsiveMobile",
+    "testName": "Navegación y controles táctiles en Smartphone (390x844)",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:08:04.217Z"
+  },
+  {
+    "category": "PermisosOperario",
+    "testName": "Restricción efectiva de opciones de configuración y auditoría al Operario",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:08:08.757Z"
+  },
+  {
+    "category": "Sincronizacion",
+    "testName": "Sincronización remota con Supabase Cloud",
+    "status": "PASS",
+    "details": {
+      "latencyMs": 1707
+    },
+    "timestamp": "2026-11-05T07:08:13.349Z"
+  },
+  {
+    "category": "Navegacion",
+    "testName": "Presencia y accesibilidad del botón «X Salir»",
+    "status": "PASS",
+    "details": {},
+    "timestamp": "2026-11-05T07:08:15.464Z"
+  }
+]
