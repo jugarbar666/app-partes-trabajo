@@ -1620,45 +1620,26 @@ const WorkOrderDetailLoadedView: React.FC<{
   const validSignature = signatures.length > 0 ? signatures[0] : null;
 
   return (
-    <div ref={topDetailRef} className="space-y-5" data-testid="work-order-detail-top-container">
-      {/* CABECERA PRINCIPAL DEL PARTE: NÚMERO DE PARTE, CLIENTE, VOLVER Y SITUACIÓN */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-2.5">
-        {/* Primera línea: Número de parte */}
+    <div ref={topDetailRef} className="space-y-2.5 sm:space-y-3.5" data-testid="work-order-detail-top-container">
+      {/* CABECERA PRINCIPAL COMPACTA DEL PARTE: VOLVER, NÚMERO DE PARTE, SITUACIÓN Y CLIENTE */}
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200 p-2.5 sm:p-3.5 shadow-xs space-y-1.5">
+        {/* Primera línea: Volver, Número de parte y Situación */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-600" />
+              <span>Volver</span>
+            </button>
+            <span className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight truncate">
               Parte {wo.code}
             </span>
-            <span className="text-slate-300 font-normal">·</span>
-            <span className="text-slate-500 text-xs">
-              Alta: {formatDateTimeES(wo.created_at)}
-            </span>
           </div>
-        </div>
 
-        {/* Segunda línea: Nombre del cliente */}
-        <div className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-          {wo.snapshot_customer_name === 'Cliente borrado' || wo.snapshot_customer_name.includes('borrado') ? (
-            <span className="text-red-700 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-lg text-base inline-flex items-center gap-1.5 font-bold">
-              <AlertTriangle className="w-4 h-4 text-red-600" /> Cliente borrado
-            </span>
-          ) : (
-            wo.snapshot_customer_name
-          )}
-        </div>
-
-        {/* Tercera línea (abajo en la misma línea): Botón Volver a la izquierda y Situación a la derecha */}
-        <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-600" />
-            <span>Volver</span>
-          </button>
-
-          <div>
+          <div className="shrink-0">
             <WorkOrderStatusBadge
               status={wo.status}
               archivedAt={wo.archived_at}
@@ -1666,8 +1647,25 @@ const WorkOrderDetailLoadedView: React.FC<{
               reopenedAt={wo.reopened_at}
               reopenReason={wo.reopen_reason}
               closedAt={wo.closed_at}
+              compact
             />
           </div>
+        </div>
+
+        {/* Segunda línea: Nombre del cliente y fecha de alta */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 pt-1 border-t border-slate-100">
+          <div className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-snug flex items-center gap-1.5 min-w-0">
+            {wo.snapshot_customer_name === 'Cliente borrado' || wo.snapshot_customer_name.includes('borrado') ? (
+              <span className="text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg text-sm inline-flex items-center gap-1 font-bold">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> Cliente borrado
+              </span>
+            ) : (
+              <span className="truncate">{wo.snapshot_customer_name}</span>
+            )}
+          </div>
+          <span className="text-slate-500 text-[11px] shrink-0">
+            Alta: {formatDateTimeES(wo.created_at)}
+          </span>
         </div>
       </div>
 
@@ -1709,17 +1707,17 @@ const WorkOrderDetailLoadedView: React.FC<{
       )}
 
       {/* BLOQUE DESTACADO DE FECHA, HORA, OPERARIOS Y ACCIONES PRINCIPALES */}
-      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 sm:p-5 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-              <Clock className="w-6 h-6 text-white" />
+      <div className="rounded-xl sm:rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-3 sm:p-4 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3.5">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-9 h-9 rounded-lg sm:rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-2">
+              <div className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-2">
                 <span>Fecha y Hora Prevista del Trabajo</span>
               </div>
-              <div className="text-lg sm:text-xl font-extrabold tracking-tight flex flex-wrap items-center gap-3">
+              <div className="text-base sm:text-lg font-extrabold tracking-tight flex flex-wrap items-center gap-2">
                 {isWorkOrderUnscheduled(wo) ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-300 text-slate-950 font-black text-sm shadow-sm border border-amber-400">
                     <Calendar className="w-4 h-4 text-slate-950" />
@@ -1902,13 +1900,13 @@ const WorkOrderDetailLoadedView: React.FC<{
       </div>
 
       {/* Datos del cliente, contacto y dirección específica del servicio */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
         <div
           className={`${
             isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'
-          } bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 text-sm`}
+          } bg-white rounded-xl border border-slate-200 p-3 sm:p-4 space-y-2 text-sm`}
         >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
             <h2 className="font-bold text-slate-900">
               Datos del Servicio e Instantánea del Cliente
             </h2>

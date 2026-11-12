@@ -1,5 +1,5 @@
 {
-  "version": "1.9.8",
-  "releasedAt": "2026-11-05T08:12:00.000Z",
-  "notes": "Rediseño compacto de Catálogos y ficheros con desplegables nativos de fichero y acción, buscador insensible a tildes/mayúsculas; vaciado seguro de cualquier catálogo con doble confirmación roja; rediseño de Revisiones periódicas; fijación del desplegable Más acciones en Fichajes; blindaje y recuperación de importes oficiales de compra y venta de artículos."
+  "version": "1.9.9",
+  "releasedAt": "2026-11-12T08:35:00.000Z",
+  "notes": "Optimización integral de pantallas de selección, consulta y modificación de partes para Operario y Administrador: eliminación de la franja gris inferior aprovechando el 100% de altura hasta la barra inferior; botón central Salir/Volver en la barra inferior sin duplicidad superior; cabecera superior compacta sin solapamientos; tarjetas y detalle de parte más compactos con mayor información visible y conservación de posición al volver."
 }

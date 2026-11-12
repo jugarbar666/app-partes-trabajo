@@ -28,6 +28,7 @@ import {
   FileText,
   ArrowUpRight,
   Euro,
+  ArrowLeft,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
@@ -235,12 +236,12 @@ const WorkOrderMobileCard: React.FC<{
     <div
       key={wo.id}
       data-testid={isArchived ? `archived-card-${wo.id}` : `operator-card-${wo.id}`}
-      className={`${palette.bg} ${palette.border} rounded-2xl border-2 p-4 sm:p-5 shadow-xs space-y-3 flex flex-col justify-between transition hover:shadow-md`}
+      className={`${palette.bg} ${palette.border} rounded-xl sm:rounded-2xl border-2 p-3 sm:p-4 shadow-xs space-y-2 flex flex-col justify-between transition hover:shadow-md`}
     >
-      <div className="space-y-2.5">
-        {/* BANNER DESTACADO DE FECHA Y HORA PREVISTA / HISTÓRICO ARCHIVADO */}
+      <div className="space-y-1.5">
+        {/* BANNER COMPACTO DE FECHA Y HORA PREVISTA / HISTÓRICO ARCHIVADO */}
         <div
-          className={`p-3 sm:p-3.5 rounded-xl shadow-sm space-y-2.5 ${
+          className={`px-2.5 py-2 sm:p-3 rounded-xl shadow-sm space-y-1 ${
             isArchived
               ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white border border-slate-800'
               : isWorkOrderUnscheduled(wo)
@@ -248,10 +249,10 @@ const WorkOrderMobileCard: React.FC<{
               : 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white'
           }`}
         >
-          {/* Fila superior: etiqueta de fecha/archivo en dos líneas y código de parte */}
+          {/* Fila superior: etiqueta de fecha/archivo y código de parte */}
           <div className="flex items-center justify-between gap-2">
             <div
-              className={`flex items-center gap-2 min-w-0 ${
+              className={`flex items-center gap-1.5 min-w-0 ${
                 isArchived
                   ? 'text-slate-300'
                   : isWorkOrderUnscheduled(wo)
@@ -260,7 +261,7 @@ const WorkOrderMobileCard: React.FC<{
               }`}
             >
               <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center shrink-0 ${
                   isArchived
                     ? 'bg-white/10 text-slate-300 border border-slate-700'
                     : isWorkOrderUnscheduled(wo)
@@ -268,10 +269,10 @@ const WorkOrderMobileCard: React.FC<{
                     : 'bg-white/15 text-white'
                 }`}
               >
-                {isArchived ? <Archive className="w-3.5 h-3.5" /> : <Calendar className="w-3.5 h-3.5" />}
+                {isArchived ? <Archive className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
               </div>
-              <div
-                className={`text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider leading-tight ${
+              <span
+                className={`text-[10px] font-extrabold uppercase tracking-wider truncate ${
                   isArchived
                     ? 'text-slate-300'
                     : isWorkOrderUnscheduled(wo)
@@ -279,12 +280,11 @@ const WorkOrderMobileCard: React.FC<{
                     : 'text-blue-100'
                 }`}
               >
-                <div>{isArchived ? 'Histórico' : 'Fecha y Hora'}</div>
-                <div>{isArchived ? 'Archivado' : 'Prevista'}</div>
-              </div>
+                {isArchived ? 'Histórico Archivado' : 'Fecha y Hora Prevista'}
+              </span>
             </div>
             <span
-              className={`font-mono font-extrabold text-xs px-3 py-1 rounded-md shadow-2xs shrink-0 whitespace-nowrap tracking-wide ${
+              className={`font-mono font-extrabold text-[11px] sm:text-xs px-2 py-0.5 rounded-md shadow-2xs shrink-0 whitespace-nowrap tracking-wide ${
                 isArchived
                   ? 'bg-slate-800 border border-slate-700 text-slate-200'
                   : isWorkOrderUnscheduled(wo)
@@ -297,7 +297,7 @@ const WorkOrderMobileCard: React.FC<{
           </div>
 
           {/* Fila inferior: fecha y hora destacada y acciones restringidas */}
-          <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="flex items-center justify-between gap-2">
             <div
               className={`text-sm sm:text-base font-black tracking-tight ${
                 isArchived
@@ -308,7 +308,7 @@ const WorkOrderMobileCard: React.FC<{
               }`}
             >
               {isWorkOrderUnscheduled(wo) && !isArchived ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-300 text-slate-950 font-black text-xs sm:text-sm border border-amber-400 shadow-2xs">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-300 text-slate-950 font-black text-xs border border-amber-400 shadow-2xs">
                   Pendiente de programar
                 </span>
               ) : (
@@ -316,7 +316,7 @@ const WorkOrderMobileCard: React.FC<{
                   <span>{formatDateES(wo.scheduled_at || wo.created_at, tz)}</span>
                   {wo.scheduled_at && (
                     <>
-                      <span className={isArchived ? 'text-slate-400 font-semibold text-xs mx-1.5' : 'text-blue-200 font-semibold text-xs mx-1.5'}>
+                      <span className={isArchived ? 'text-slate-400 font-semibold text-xs mx-1' : 'text-blue-200 font-semibold text-xs mx-1'}>
                         a las
                       </span>
                       <span>{formatTimeES(wo.scheduled_at, tz)} h</span>
@@ -325,9 +325,9 @@ const WorkOrderMobileCard: React.FC<{
                 </>
               )}
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               {isArchived ? (
-                <span className="px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shadow-xs">
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shadow-xs">
                   ■ Archivado
                 </span>
               ) : (
@@ -340,7 +340,7 @@ const WorkOrderMobileCard: React.FC<{
                         e.stopPropagation();
                         onReschedule(wo);
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer shadow-xs shrink-0 ${
                         isWorkOrderUnscheduled(wo)
                           ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
                           : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
@@ -358,7 +358,7 @@ const WorkOrderMobileCard: React.FC<{
                         e.stopPropagation();
                         onReassign(wo);
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer shadow-xs shrink-0 ${
                         isWorkOrderUnscheduled(wo)
                           ? 'bg-amber-200 hover:bg-amber-300 active:bg-amber-400 text-slate-950 border border-amber-400'
                           : 'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/30'
@@ -374,17 +374,18 @@ const WorkOrderMobileCard: React.FC<{
           </div>
         </div>
 
-        <div className="space-y-1.5 pt-0.5">
-          <div className={`text-base font-black tracking-tight leading-snug ${palette.text}`}>
+        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
+          <div className={`text-sm sm:text-base font-black tracking-tight leading-snug ${palette.text}`}>
             {wo.snapshot_customer_name}
           </div>
-          <div>
+          <div className="shrink-0">
             <WorkOrderStatusBadge
               status={wo.status}
               archivedAt={wo.archived_at}
               reopenedAt={wo.reopened_at}
               reopenReason={wo.reopen_reason}
               closedAt={wo.closed_at}
+              compact
             />
           </div>
         </div>
@@ -392,7 +393,7 @@ const WorkOrderMobileCard: React.FC<{
         {wo.reopen_reason && (
           <div
             data-testid={`operator-card-reopen-${wo.id}`}
-            className="p-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 text-xs shadow-2xs space-y-1"
+            className="p-2 rounded-lg bg-amber-100 border border-amber-300 text-amber-950 text-xs shadow-2xs space-y-0.5"
           >
             <div className="flex items-center gap-1.5 font-bold text-amber-900">
               <RotateCcw className="w-3.5 h-3.5 text-amber-700 shrink-0" />
@@ -402,14 +403,14 @@ const WorkOrderMobileCard: React.FC<{
           </div>
         )}
 
-        <div className="text-xs text-slate-700 font-medium">
+        <div className="text-xs text-slate-700 font-medium leading-snug">
           📍 {wo.snapshot_address_line}, {wo.snapshot_postal_code} {wo.snapshot_city}
         </div>
         <div className="text-xs">
           <PhoneActionLinks phone={wo.snapshot_contact_phone} />
         </div>
 
-        <div className={`p-3 rounded-xl border text-xs font-bold leading-relaxed ${palette.innerBox}`}>
+        <div className={`p-2 sm:p-2.5 rounded-lg border text-xs font-bold leading-snug ${palette.innerBox}`}>
           <span className="text-slate-600 font-semibold mr-1">Trabajo a realizar:</span>
           <span>{wo.planned_work}</span>
         </div>
@@ -417,10 +418,10 @@ const WorkOrderMobileCard: React.FC<{
         {wo.total_amount_cents !== null && (
           <div
             data-testid={`operator-card-amount-${wo.id}`}
-            className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between text-emerald-950 text-xs shadow-2xs"
+            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 flex items-center justify-between text-emerald-950 text-xs shadow-2xs"
           >
             <div className="flex items-center gap-1.5 font-bold">
-              <Euro className="w-4 h-4 text-emerald-600 shrink-0" />
+              <Euro className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>Importe a cobrar:</span>
             </div>
             <span className="font-extrabold text-sm text-emerald-800">
@@ -430,7 +431,7 @@ const WorkOrderMobileCard: React.FC<{
         )}
 
         <div className="text-xs text-slate-600 flex items-center justify-between gap-2">
-          <div>
+          <div className="leading-snug">
             👷 <strong>Equipo asignado:</strong> {woOps.length > 0 ? woOps.join(', ') : 'Sin asignar'}
           </div>
           {isAdmin && onReassign && wo.status !== 'cerrado' && wo.archived_at === null && (
@@ -453,7 +454,7 @@ const WorkOrderMobileCard: React.FC<{
       <button
         type="button"
         onClick={() => onOpenDetail(wo.id)}
-        className={`w-full py-2.5 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer transition ${
+        className={`w-full py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer transition ${
           isArchived
             ? 'bg-slate-800 hover:bg-slate-900 border border-slate-700'
             : 'bg-blue-600 hover:bg-blue-700'
@@ -735,6 +736,9 @@ const MainApplicationContent: React.FC = () => {
   const [forcedPassError, setForcedPassError] = useState('');
 
   const mainContainerRef = useRef<HTMLElement>(null);
+  const operatorListScrollRef = useRef<HTMLDivElement>(null);
+  const savedListScrollRef = useRef<{ main: number; operator: number }>({ main: 0, operator: 0 });
+  const [logoLoadError, setLogoLoadError] = useState(false);
 
   const scrollToTopAllApp = () => {
     if (mainContainerRef.current) {
@@ -745,6 +749,22 @@ const MainApplicationContent: React.FC = () => {
       if (document.documentElement) document.documentElement.scrollTop = 0;
       if (document.body) document.body.scrollTop = 0;
     }
+  };
+
+  const restoreListScrollPositions = () => {
+    const saved = savedListScrollRef.current;
+    const apply = () => {
+      if (mainContainerRef.current && saved.main > 0) {
+        mainContainerRef.current.scrollTop = saved.main;
+      }
+      if (operatorListScrollRef.current && saved.operator > 0) {
+        operatorListScrollRef.current.scrollTop = saved.operator;
+      }
+    };
+    requestAnimationFrame(() => {
+      apply();
+      setTimeout(apply, 40);
+    });
   };
 
   const [routeStack, setRouteStack] = useState<ActiveRoute[]>(['dashboard']);
@@ -794,6 +814,12 @@ const MainApplicationContent: React.FC = () => {
     ) {
       return;
     }
+    if (next === 'work_order_detail') {
+      savedListScrollRef.current = {
+        main: mainContainerRef.current?.scrollTop || 0,
+        operator: operatorListScrollRef.current?.scrollTop || 0,
+      };
+    }
     setRouteStack((prev) => {
       if (prev[prev.length - 1] === next) return prev;
       if (typeof window !== 'undefined') {
@@ -816,8 +842,13 @@ const MainApplicationContent: React.FC = () => {
     appBackHandler.setNavigationHandlers({
       onNavigateBack: () => {
         if (routeStackRef.current.length > 1) {
+          const leavingDetail = routeStackRef.current[routeStackRef.current.length - 1] === 'work_order_detail';
           setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
-          scrollToTopAllApp();
+          if (leavingDetail) {
+            restoreListScrollPositions();
+          } else {
+            scrollToTopAllApp();
+          }
           return true;
         }
         return false;
@@ -842,8 +873,13 @@ const MainApplicationContent: React.FC = () => {
       return;
     }
     if (routeStack.length > 1) {
+      const leavingDetail = currentRoute === 'work_order_detail';
       setRouteStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : ['dashboard']));
-      scrollToTopAllApp();
+      if (leavingDetail) {
+        restoreListScrollPositions();
+      } else {
+        scrollToTopAllApp();
+      }
       if (typeof window !== 'undefined' && window.history.state?.level > 1) {
         try {
           window.history.back();
@@ -856,7 +892,7 @@ const MainApplicationContent: React.FC = () => {
 
   // Asegurar que al abrir cualquier parte de trabajo en móvil o escritorio siempre inicie en la cabecera superior
   useEffect(() => {
-    if (currentRoute === 'work_order_detail' || selectedWorkOrderId) {
+    if (currentRoute === 'work_order_detail') {
       scrollToTopAllApp();
       const raf = requestAnimationFrame(scrollToTopAllApp);
       const timer = setTimeout(scrollToTopAllApp, 50);
@@ -2593,35 +2629,36 @@ const MainApplicationContent: React.FC = () => {
       {/* =====================================================================
           COLUMNA PRINCIPAL DERECHA (BARRA SUPERIOR FIJA + CONTENIDO DESPLAZABLE)
       ===================================================================== */}
-      <div className="flex-1 flex flex-col h-screen min-w-0 max-w-full overflow-hidden">
-        {/* Barra Superior Blanca Fija */}
-        <header className="shrink-0 z-30 bg-white border-b border-slate-200/90 px-3 sm:px-4 lg:px-7 py-2.5 flex items-center justify-between gap-2 max-w-full">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full">
+      <div className="flex-1 flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] min-w-0 max-w-full overflow-hidden">
+        {/* Barra Superior Blanca Fija Compacta */}
+        <header className="shrink-0 z-30 bg-white border-b border-slate-200/90 px-2.5 sm:px-4 lg:px-6 py-1.5 sm:py-2 flex items-center justify-between gap-2 max-w-full">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
             {/* Botón de menú móvil */}
             <button
               type="button"
               data-testid="btn-toggle-mobile-menu"
               onClick={() => setMobileMenuOpen((o) => !o)}
-              className="md:hidden p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 shrink-0"
+              className="md:hidden p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 shrink-0"
               aria-label="Abrir o cerrar menú de navegación"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {mobileMenuOpen ? <X className="w-4 h-4 sm:w-5 sm:h-5" /> : <Menu className="w-4 h-4 sm:w-5 sm:h-5" />}
             </button>
 
-            {company.logo_url ? (
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {company.logo_url && !logoLoadError ? (
+              <div className="flex items-center gap-1.5 shrink-0">
                 <img
                   src={company.logo_url}
                   alt={company.company_name}
                   data-testid="header-company-logo"
-                  className="h-7 sm:h-8 max-w-[100px] sm:max-w-[130px] object-contain shrink-0"
+                  onError={() => setLogoLoadError(true)}
+                  className="h-6 sm:h-7 max-w-[76px] sm:max-w-[115px] object-contain shrink-0"
                 />
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-extrabold tracking-wide uppercase">
+                <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-[11px] font-extrabold tracking-wide uppercase">
                   {company.company_name.split(' ')[0]}
                 </span>
               </div>
             ) : (
-              <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-extrabold tracking-wide uppercase shrink-0">
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/80 text-blue-700 text-[11px] font-extrabold tracking-wide uppercase shrink-0">
                 {company.company_name.split(' ')[0]}
               </span>
             )}
@@ -2634,7 +2671,7 @@ const MainApplicationContent: React.FC = () => {
                 onChange={(e) => {
                   handleSwitchSessionRoleDemo(e.target.value);
                 }}
-                className={`px-2 py-1 rounded-lg border text-xs font-bold focus:outline-none max-w-[145px] sm:max-w-none truncate shrink-0 ${
+                className={`px-2 py-1 rounded-lg border text-[11px] sm:text-xs font-bold focus:outline-none min-w-0 max-w-[130px] sm:max-w-none truncate ${
                   isAdmin
                     ? 'bg-amber-50 border-amber-300 text-amber-800'
                     : 'bg-blue-50 border-blue-300 text-blue-800'
@@ -2650,47 +2687,34 @@ const MainApplicationContent: React.FC = () => {
             ) : (
               <div
                 data-testid="header-identified-user-badge"
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold shrink-0 max-w-[155px] sm:max-w-none ${
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] sm:text-xs font-bold min-w-0 max-w-[135px] sm:max-w-none ${
                   isAdmin
                     ? 'bg-amber-50 border-amber-300 text-amber-900'
                     : 'bg-blue-50 border-blue-300 text-blue-900'
                 }`}
                 title={`Sesión iniciada como ${loggedUser.role === 'admin' ? 'Administrador' : 'Operario'}`}
               >
-                <span>{isAdmin ? '👤' : '👷'}</span>
+                <span className="shrink-0">{isAdmin ? '👤' : '👷'}</span>
                 <span className="truncate">{isAdmin ? 'Administrador' : 'Operario'}</span>
               </div>
             )}
 
-            <span className="text-xs text-slate-500 hidden md:inline shrink-0">
+            <span className="text-xs text-slate-500 hidden lg:inline shrink-0">
               Moneda: <strong className="text-slate-700">{company.currency} (€)</strong> · Zona:{' '}
               <strong className="text-slate-700">{tz}</strong>
             </span>
 
             <span
               data-testid="app-installed-version-badge"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-slate-700 text-[11px] font-bold shrink-0"
+              className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-slate-700 text-[10px] sm:text-[11px] font-bold shrink-0"
               title={`Versión instalada en este dispositivo: v${installedVersion}`}
             >
-              <span>Versión:</span>
+              <span className="hidden sm:inline">Versión:</span>
               <strong className="text-blue-700">v{installedVersion}</strong>
             </span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Botón de Salida «X / Salir» siempre visible y accesible en móvil, tablet y escritorio */}
-            <button
-              type="button"
-              data-testid="btn-exit-app"
-              onClick={() => setExitConfirmModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs transition cursor-pointer shadow-2xs shrink-0"
-              aria-label="Salir de la aplicación"
-              title="Salir de la aplicación (conservando la sesión activa)"
-            >
-              <X className="w-4 h-4 text-red-600 stroke-[2.5]" />
-              <span>Salir</span>
-            </button>
-
             {/* Botones de acción y utilidades de cabecera: visibles únicamente en escritorio (en móvil se ocultan para evitar desbordamiento y pantalla en blanco) */}
             <div className="hidden md:flex items-center gap-2 shrink-0">
             {/* Selector interactivo de versiones móviles (Solo visible en rama pruebas / desarrollo; omitido en producción Fontanería Roma) */}
@@ -2963,20 +2987,21 @@ const MainApplicationContent: React.FC = () => {
           </div>
         )}
 
-        {/* Contenedor central de vistas con desplazamiento vertical propio (o fijo en pantallas de listado para que las cabeceras jamás desaparezcan al llegar al final) */}
+        {/* Contenedor central de vistas con desplazamiento vertical propio (aprovecha el 100% del espacio hasta la barra inferior) */}
         <main
           ref={mainContainerRef}
-          className={`flex-1 min-h-0 w-full px-4 lg:px-6 xl:px-8 ${
-            currentRoute === 'work_orders_list' ||
-            currentRoute === 'archived_work_orders' ||
-            currentRoute === 'reviews' ||
-            currentRoute === 'shopping' ||
-            currentRoute === 'attendance' ||
-            currentRoute === 'masters' ||
-            currentRoute === 'admin_system' ||
-            (currentRoute === 'dashboard' && !isAdmin)
-              ? 'flex flex-col md:overflow-hidden pb-32 sm:pb-36 pt-3 overflow-y-auto overscroll-contain mobile-scroll-container'
-              : 'overflow-y-auto overscroll-contain mobile-scroll-container pb-32 sm:pb-36'
+          className={`flex-1 min-h-0 w-full px-2.5 sm:px-4 lg:px-6 xl:px-8 ${
+            currentRoute === 'dashboard' && !isAdmin
+              ? 'flex flex-col overflow-hidden pt-1.5 sm:pt-2.5 pb-0'
+              : currentRoute === 'work_orders_list' ||
+                currentRoute === 'archived_work_orders' ||
+                currentRoute === 'reviews' ||
+                currentRoute === 'shopping' ||
+                currentRoute === 'attendance' ||
+                currentRoute === 'masters' ||
+                currentRoute === 'admin_system'
+              ? 'flex flex-col md:overflow-hidden pt-1.5 sm:pt-2.5 pb-3 overflow-y-auto overscroll-contain'
+              : 'overflow-y-auto overscroll-contain mobile-scroll-container pt-1.5 sm:pt-2.5 pb-4'
           }`}
         >
           {/* =================================================================
@@ -2987,7 +3012,7 @@ const MainApplicationContent: React.FC = () => {
               {isAdmin ? (
                 <>
                   {/* VISTA MÓVIL EXCLUSIVA DE ADMINISTRADOR (md:hidden): PARTES EN FORMATO TARJETAS CON SELECTOR DESPLEGABLE COMPACTO DE ESTADO */}
-                  <div className="block md:hidden space-y-3" data-testid="admin-mobile-home-view">
+                  <div className="block md:hidden space-y-2.5" data-testid="admin-mobile-home-view">
                     {(() => {
                       // Contadores de estados excluyendo partes archivados
                       const countMobilePendientes = pendingAdminWorkOrders.filter((w) => !w.archived_at).length;
@@ -3058,11 +3083,11 @@ const MainApplicationContent: React.FC = () => {
 
                       return (
                         <>
-                          <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-3 pb-2">
-                            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-                              <div className="flex items-center justify-between gap-3">
+                          <div className="sticky top-0 z-30 bg-[#f4f6fa] pt-0.5 pb-1.5">
+                            <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200 p-2.5 sm:p-3.5 shadow-sm space-y-2">
+                              <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
-                                  <h1 className="text-base font-extrabold text-slate-900 truncate">
+                                  <h1 className="text-sm sm:text-base font-extrabold text-slate-900 truncate leading-tight">
                                     Inicio / Partes de trabajo
                                   </h1>
                                   <p className="text-[11px] text-slate-500 truncate">
@@ -3080,14 +3105,14 @@ const MainApplicationContent: React.FC = () => {
                                         setTimeout(() => adminMobileSearchInputRef.current?.focus(), 50);
                                       }
                                     }}
-                                    className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer shadow-2xs ${
                                       adminMobileSearch.trim() || adminMobileSearchOpen
                                         ? 'bg-blue-50 border-blue-300 text-blue-700'
                                         : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
                                     }`}
                                     title="Buscar partes por cualquier campo"
                                   >
-                                    <Search className="w-4 h-4" />
+                                    <Search className="w-3.5 h-3.5" />
                                     <span>Buscar</span>
                                     {adminMobileSearch.trim() && (
                                       <span className="w-2 h-2 rounded-full bg-blue-600"></span>
@@ -3096,9 +3121,9 @@ const MainApplicationContent: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => setCreateWoModalProps({ open: true })}
-                                    className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+                                    className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
                                   >
-                                    <Plus className="w-4 h-4" />
+                                    <Plus className="w-3.5 h-3.5" />
                                     <span>Nuevo</span>
                                   </button>
                                 </div>
@@ -4183,16 +4208,16 @@ const MainApplicationContent: React.FC = () => {
                   );
 
                   return (
-                    <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden" data-testid="operator-home-view">
+                    <div className="flex-1 min-h-0 flex flex-col gap-2 sm:gap-3 overflow-hidden" data-testid="operator-home-view">
                       <div className="shrink-0 bg-[#f4f6fa]">
-                        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3 shadow-sm">
-                          <div className="flex items-center justify-between gap-3">
+                        <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200 p-2.5 sm:p-3.5 space-y-2 shadow-sm">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <h1 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
+                              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 truncate leading-tight">
                                 Mis Partes de Trabajo Asignados ({filteredOperatorWorkOrders.length})
                               </h1>
-                              <p className="text-xs text-slate-500 truncate">
-                                Ordenados por fecha y hora previstas de realización (ascendente)
+                              <p className="text-[11px] text-slate-500 truncate">
+                                Ordenados por fecha y hora previstas (ascendente)
                               </p>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
@@ -4206,14 +4231,14 @@ const MainApplicationContent: React.FC = () => {
                                     setTimeout(() => operatorMobileSearchInputRef.current?.focus(), 50);
                                   }
                                 }}
-                                className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer shadow-2xs ${
                                   operatorMobileSearch.trim() || operatorMobileSearchOpen
                                     ? 'bg-blue-50 border-blue-300 text-blue-700'
                                     : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
                                 }`}
                                 title="Buscar partes por cualquier campo"
                               >
-                                <Search className="w-4 h-4" />
+                                <Search className="w-3.5 h-3.5" />
                                 <span>Buscar</span>
                                 {operatorMobileSearch.trim() && (
                                   <span className="w-2 h-2 rounded-full bg-blue-600"></span>
@@ -4362,7 +4387,7 @@ const MainApplicationContent: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
+                      <div ref={operatorListScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
                         {agendaSortedWorkOrders.length === 0 ? (
                           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
                             No tienes partes pendientes o en curso asignados en este momento.
@@ -4388,7 +4413,7 @@ const MainApplicationContent: React.FC = () => {
                             </button>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3.5">
                             {filteredOperatorWorkOrders.map((wo, idx) => (
                               <WorkOrderMobileCard
                                 key={wo.id}
@@ -5047,49 +5072,80 @@ const MainApplicationContent: React.FC = () => {
             )
           )}
         </main>
-      </div>
 
-      {/* BARRA INFERIOR PERSISTENTE EN MÓVIL Y ACCESO RÁPIDO (Regla 5 y Escenario 18) */}
-      <div
-        data-testid="persistent-mobile-action-bar"
-        className="fixed bottom-0 right-0 left-0 md:left-64 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 px-4 lg:px-8 py-2.5 shadow-lg flex items-center justify-between gap-3"
-      >
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            data-testid="btn-persistent-add-to-shopping"
-            onClick={() => { setQuickShopArticleId(''); setQuickShopModalOpen(true); }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
-          >
-            <ShoppingCart className="w-4 h-4" /> Añadir a compra
-          </button>
-        </div>
-
-        {loggedUser?.can_clock !== false && (
-          <div className="flex items-center gap-2.5" data-testid="persistent-attendance-control">
-            <span className="text-xs font-medium text-slate-600 hidden sm:inline">
-              Estado fichaje:{' '}
-              <strong className={openAttendance ? 'text-emerald-600' : 'text-amber-600'}>
-                {openAttendance
-                  ? `En jornada (desde ${formatTimeES(openAttendance.clock_in_at, tz)})`
-                  : 'Fuera de jornada'}
-              </strong>
-            </span>
+        {/* BARRA INFERIOR PERSISTENTE INTEGRADA EN EL FLUJO FLEX (Elimina franja gris inferior, respeta áreas seguras y distribuye 3 acciones equilibradas) */}
+        <div
+          data-testid="persistent-mobile-action-bar"
+          className="shrink-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 px-2 sm:px-4 lg:px-6 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(15,23,42,0.06)] flex items-center justify-between gap-1.5 sm:gap-3"
+        >
+          <div className="flex-1 sm:flex-initial flex items-center min-w-0">
             <button
               type="button"
-              data-testid="btn-persistent-clock-action"
-              onClick={handleQuickClockToggle}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs ${
-                openAttendance
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              }`}
+              data-testid="btn-persistent-add-to-shopping"
+              onClick={() => { setQuickShopArticleId(''); setQuickShopModalOpen(true); }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-2 min-h-[40px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] sm:text-xs font-bold shadow-xs cursor-pointer whitespace-nowrap tracking-tight"
             >
-              <Clock className="w-4 h-4" />
-              <span>{openAttendance ? 'Fichar Salida' : 'Fichar Entrada'}</span>
+              <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>Añadir a compra</span>
             </button>
           </div>
-        )}
+
+          <div className="shrink-0 flex items-center justify-center">
+            {currentRoute === 'work_order_detail' ? (
+              <button
+                type="button"
+                data-testid="btn-bottom-back"
+                onClick={navigateBack}
+                className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-5 py-2 min-h-[40px] rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-2xs whitespace-nowrap"
+                aria-label="Volver al listado de partes"
+                title="Volver al listado de partes sin cerrar la sesión"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 shrink-0" />
+                <span>Volver</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="btn-exit-app"
+                onClick={() => setExitConfirmModalOpen(true)}
+                className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-5 py-2 min-h-[40px] rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-2xs whitespace-nowrap"
+                aria-label="Salir de la aplicación"
+                title="Salir de la aplicación (conservando la sesión activa)"
+              >
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 stroke-[2.5] shrink-0" />
+                <span>Salir</span>
+              </button>
+            )}
+          </div>
+
+          {loggedUser?.can_clock !== false ? (
+            <div className="flex-1 sm:flex-initial flex items-center justify-end gap-2 min-w-0" data-testid="persistent-attendance-control">
+              <span className="text-xs font-medium text-slate-600 hidden lg:inline whitespace-nowrap">
+                Estado fichaje:{' '}
+                <strong className={openAttendance ? 'text-emerald-600' : 'text-amber-600'}>
+                  {openAttendance
+                    ? `En jornada (desde ${formatTimeES(openAttendance.clock_in_at, tz)})`
+                    : 'Fuera de jornada'}
+                </strong>
+              </span>
+              <button
+                type="button"
+                data-testid="btn-persistent-clock-action"
+                onClick={handleQuickClockToggle}
+                className={`w-full sm:w-auto inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-2 min-h-[40px] rounded-xl text-[11px] sm:text-xs font-bold shadow-xs cursor-pointer whitespace-nowrap tracking-tight ${
+                  openAttendance
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span>{openAttendance ? 'Fichar Salida' : 'Fichar Entrada'}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="hidden sm:block sm:flex-initial" />
+          )}
+        </div>
       </div>
 
       {/* Modal rápido de «Añadir a compra» */}

@@ -1060,19 +1060,19 @@ export const ScreenHeaderBar: React.FC<{
   }, [isMobileSearchOpen]);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3 mb-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className="bg-white rounded-xl border border-slate-200 p-2.5 sm:p-3.5 shadow-2xs space-y-2 mb-2.5 sm:mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shrink-0 cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" /> Volver
+            <ArrowLeft className="w-3.5 h-3.5" /> Volver
           </button>
-          <div>
-            <h1 className="text-lg md:text-xl font-bold text-slate-900">{title}</h1>
-            {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+          <div className="min-w-0">
+            <h1 className="text-base md:text-lg font-bold text-slate-900 leading-tight truncate">{title}</h1>
+            {subtitle && <p className="text-[11px] sm:text-xs text-slate-500 leading-snug line-clamp-2">{subtitle}</p>}
           </div>
         </div>
 
